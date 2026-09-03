@@ -770,6 +770,60 @@ jobs:
           cat build/openal/cme-report.txt
       - run: ccache --show-stats
 
+  # A library that links another port's library, built and then found again.
+  #
+  # The second configure is the point: the first one builds both and writes
+  # them into the store, and the second reads what was written. An entry that
+  # got somebody else's target wrong says nothing while it is being made and
+  # fails when it is read -- ffmpeg kept x264 as one of its own archives,
+  # under the name it was written as, and the build that found ffmpeg again
+  # stopped on a link interface naming lib/libx264::x264.a.
+  ffmpeg-x264:
+    needs: quick
+    runs-on: ubuntu-latest
+    name: ffmpeg with x264, built and then found in the store
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build ccache nasm
+      - uses: actions/cache@v4
+        with:
+          path: .cache/sources
+          key: sources-ffmpeg-x264-${{ hashFiles('registry/ffmpeg/**', 'registry/x264/**') }}
+          restore-keys: sources-ffmpeg-x264-
+      - uses: actions/cache@v4
+        with:
+          path: .cache/ccache
+          key: ccache-ffmpeg-x264-${{ github.sha }}
+          restore-keys: ccache-ffmpeg-x264-
+      - name: built from source
+        run: |
+          cmake -S test/port -B build/ffmpeg -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_SYSTEM=NEVER \
+            -DCME_FEATURES_ffmpeg=x264 \
+            -DCME_PORT_PACKAGE=FFmpeg -DCME_PORT_TARGETS=FFmpeg::avcodec \
+            -DCME_PORT_INCLUDE=libavcodec/avcodec.h \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build/ffmpeg
+          ./build/ffmpeg/cme-port
+      - name: found again, from what the store kept
+        run: |
+          cmake -S test/port -B build/ffmpeg-again -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_SYSTEM=NEVER \
+            -DCME_FEATURES_ffmpeg=x264 \
+            -DCME_PORT_PACKAGE=FFmpeg -DCME_PORT_TARGETS=FFmpeg::avcodec \
+            -DCME_PORT_INCLUDE=libavcodec/avcodec.h \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build/ffmpeg-again
+          ./build/ffmpeg-again/cme-port
+          # From the store and not built again.
+          grep -q "already built" build/ffmpeg-again/cme-report.txt ||
+            cat build/ffmpeg-again/cme-report.txt
+      - run: ccache --show-stats
+
   skia-features:
     needs: quick
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

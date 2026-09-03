@@ -2424,6 +2424,27 @@ function(cme_store_owns out port target root)
   if(aliased)
     set(target "${aliased}")
   endif()
+  # Whose target this is, asked of the registry before it is asked of where
+  # the target was created.
+  #
+  # A port answered from the store or from the machine defines an imported
+  # target, and an imported target is created wherever the build happened to
+  # be reading at the time: x264, answered while ffmpeg was being configured,
+  # has ffmpeg's own directory as its source directory. Read by the
+  # directory it was made in, it was one of ffmpeg's own archives -- and was
+  # kept under the name it was written as, which is a file nothing ever
+  # wrote: lib/libx264::x264.a, in a link interface, reported at generate
+  # time by a file whose name is a hash.
+  get_property(cme_all_ports GLOBAL PROPERTY CME_PORTS)
+  foreach(other IN LISTS cme_all_ports)
+    if(other STREQUAL port)
+      continue()
+    endif()
+    cme_port_field(theirs ${other} TARGETS)
+    if("${target}" IN_LIST theirs)
+      return()
+    endif()
+  endforeach()
   if(target MATCHES "^${port}_")
     set(${out} TRUE PARENT_SCOPE)
     return()
