@@ -251,7 +251,7 @@ function(cme_identity_key out port version)
   set(recipe "")
   get_property(port_dir GLOBAL PROPERTY CME_PORT_${port}_DIR)
   if(port_dir)
-    file(GLOB files "${port_dir}/*.cmake")
+    file(GLOB files "${port_dir}/*.cmake" "${port_dir}/patches/*")
     foreach(file IN LISTS files)
       file(SHA256 "${file}" digest)
       string(APPEND recipe "${digest}")
@@ -1259,7 +1259,7 @@ function(cme_declare_port)
            EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS
-           CONFIGURE_ARGS CONFIGURE_CROSS INSTALLED_TARGETS)
+           CONFIGURE_ARGS CONFIGURE_CROSS INSTALLED_TARGETS PATCHES)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
     message(FATAL_ERROR "cmake-everywhere: a port with no NAME")
@@ -3200,6 +3200,88 @@ function(cme_try_pkgconfig found port package version exact)
   set(${found} TRUE PARENT_SCOPE)
 endfunction()
 
+# What a project changes in a library it did not write.
+#
+# Sometimes a library is wrong about the machine and says so in code rather
+# than in an option: mpg123 asks CMake whether the host has a floating point
+# unit and compiles for the answer, in a cross build, from a query that
+# looks at the wrong machine and answers no on aarch64. Nothing a port can
+# pass fixes a line that runs unconditionally.
+#
+# So a port may carry patches, beside it, and they are applied to the tree
+# after it is fetched. Three things make that safe to do in a cache several
+# projects share:
+#
+# The patches are part of what the port is, so what they produce is kept
+# under a different name in the store -- cme_identity_key reads every file
+# beside the port, and a patch is one.
+#
+# The tree records what was applied to it. A tree patched by one set and
+# then asked for by a build carrying another is not quietly re-patched: it
+# stops, because the answer to "what is in this directory" would otherwise
+# depend on which build ran first.
+#
+# And a patch that does not apply is an error rather than a warning. A
+# library that moved on is a port that has to be looked at.
+function(cme_apply_patches port source)
+  cme_port_field(patches ${port} PATCHES)
+  if(NOT patches)
+    return()
+  endif()
+  get_property(port_dir GLOBAL PROPERTY CME_PORT_${port}_DIR)
+  set(digests "")
+  set(files "")
+  foreach(name IN LISTS patches)
+    set(file "${name}")
+    if(NOT IS_ABSOLUTE "${file}")
+      set(file "${port_dir}/${name}")
+    endif()
+    if(NOT EXISTS "${file}")
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} says it carries the patch ${name}, and "
+        "there is no such file at ${file}")
+    endif()
+    file(SHA256 "${file}" digest)
+    list(APPEND files "${file}")
+    list(APPEND digests "${digest}")
+    cme_lock_fact("${port}" "patch" "${digest}")
+  endforeach()
+  list(JOIN digests " " applied)
+
+  set(marker "${source}/.cme-patched")
+  if(EXISTS "${marker}")
+    file(READ "${marker}" already)
+    string(STRIP "${already}" already)
+    if(already STREQUAL applied)
+      return()
+    endif()
+    message(FATAL_ERROR
+      "cmake-everywhere: ${source} was patched by another set of patches "
+      "than the ones ${port} carries now. That directory is shared between "
+      "builds, so it is not patched again: remove it and configure again.")
+  endif()
+
+  find_program(CME_PATCH NAMES patch)
+  if(NOT CME_PATCH)
+    message(FATAL_ERROR
+      "cmake-everywhere: ${port} carries patches and there is no patch "
+      "program here to apply them with")
+  endif()
+  foreach(file IN LISTS files)
+    execute_process(COMMAND "${CME_PATCH}" -p1 --forward -i "${file}"
+                    WORKING_DIRECTORY "${source}"
+                    RESULT_VARIABLE code
+                    OUTPUT_VARIABLE output ERROR_VARIABLE output)
+    if(NOT code EQUAL 0)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${file} does not apply to ${source}\n${output}")
+    endif()
+    get_filename_component(shown "${file}" NAME)
+    message(STATUS "cmake-everywhere: ${port} is patched by ${shown}")
+  endforeach()
+  file(WRITE "${marker}" "${applied}\n")
+endfunction()
+
 # What a library says about itself, out of its own tree.
 #
 # This is the port, as far as the library is concerned: its version, its
@@ -3569,6 +3651,7 @@ function(cme_build_port port package version exact)
     CPMAddPackage(${arguments})
   endif()
   set_property(GLOBAL PROPERTY CME_TREE_${port} "${${port}_SOURCE_DIR}")
+  cme_apply_patches(${port} "${${port}_SOURCE_DIR}")
 
   # What was actually fetched, rather than what was asked for. A tag moves,
   # a branch certainly moves, and an archive at a URL can be replaced; the

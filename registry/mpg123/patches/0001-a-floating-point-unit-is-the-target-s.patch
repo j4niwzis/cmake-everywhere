@@ -1,0 +1,24 @@
+Whether there is a floating point unit is a question about the machine this
+is being built for. mpg123's CMake build asks CMake about the machine it is
+being built on -- and that query answers by reading the host's flags, which
+on aarch64 says no. A cross build then compiles the fixed point decoder and
+the NEON one together, which its own header refuses:
+
+    #error "Bad decoder choice together with fixed point math!"
+
+An answer given before the question is asked is kept, so that a build that
+knows what it is building for can say so.
+
+--- a/ports/cmake/src/CMakeLists.txt
++++ b/ports/cmake/src/CMakeLists.txt
+@@ -194,7 +194,9 @@
+ check_cpu_arch_arm32(ARCH_IS_ARM32)
+ check_cpu_arch_arm64(ARCH_IS_ARM64)
+ 
+-if(WIN32 OR (ARCH_IS_ARM64 AND APPLE))
++if(DEFINED HAVE_FPU)
++    # Given by whoever configured this build, about the target.
++elseif(WIN32 OR (ARCH_IS_ARM64 AND APPLE))
+     set(HAVE_FPU 1)
+ else()
+     cmake_host_system_information(RESULT HAVE_FPU QUERY HAS_FPU)

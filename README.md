@@ -1099,6 +1099,27 @@ too -- `CONFIGURE_CROSS "--host=@TRIPLE@"` for autotools, four other
 arguments for FFmpeg -- and a placeholder nothing can answer stops the build
 rather than reaching a shell script as an empty argument.
 
+### A library that is wrong about the machine
+
+```cmake
+PATCHES "patches/0001-a-floating-point-unit-is-the-target-s.patch"
+```
+
+Sometimes a library says something in code rather than in an option, and it
+is wrong. mpg123's CMake build asks CMake whether *this* machine has a
+floating point unit and compiles for the answer -- in a cross build, from a
+query about the wrong machine, which says no on aarch64 and produces a
+fixed-point decoder beside a NEON one, which its own header refuses. No
+option fixes a line that runs unconditionally.
+
+So a port may carry patches beside it. Three things make that safe in a
+source cache several projects share. The patches are part of what the port
+is, so what they produce is kept under a different name in the store. The
+tree records what was applied to it, and a tree patched by one set and then
+asked for by a build carrying another stops rather than being patched
+twice. And a patch that does not apply is an error: a library that moved on
+is a port somebody has to look at.
+
 ### A GN project
 
 ```cmake

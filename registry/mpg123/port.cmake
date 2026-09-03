@@ -21,7 +21,13 @@ cme_declare_port(
   CHECK_HEADER mpg123.h
   # The decoder and nothing else. libout123 is an output layer, the programs
   # are programs, and neither is what anything links.
+  # Whether the machine has a floating point unit is a question about the
+  # target, and mpg123 asks CMake about the host. Every machine this builds
+  # for has one: aarch64 and x86-64 always, and armv7 on Android requires
+  # VFP. The patch beside this port makes the answer given here be kept.
+  PATCHES "patches/0001-a-floating-point-unit-is-the-target-s.patch"
   OPTIONS
+    "HAVE_FPU ON"
     "BUILD_LIBOUT123 OFF"
     "BUILD_PROGRAMS OFF"
     "BUILD_TESTING OFF"
