@@ -4117,12 +4117,7 @@ function(cme_build_port port package version exact)
   # describing itself has no business claiming a URL. That is fine until
   # something has to fetch it, which is here.
   cme_port_field(sources_inside ${port} SOURCE_FROM)
-  # A port whose sources are already on this machine needs no coordinates:
-  # SOURCE_DIR is where they are, and where they would have come from is a
-  # question nobody is asking. A build with no network is exactly this case,
-  # and it was told that nothing says where the library comes from while
-  # holding the library.
-  if(NOT listed AND NOT sources_inside AND NOT source_dir)
+  if(NOT listed AND NOT sources_inside)
     set(coordinates FALSE)
     foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY URL)
       cme_port_field(value ${port} ${field})
