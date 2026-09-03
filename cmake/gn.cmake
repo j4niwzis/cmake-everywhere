@@ -15,16 +15,42 @@ include_guard(GLOBAL)
 
 set(CME_GN "" CACHE FILEPATH "The gn executable, when it is not on PATH")
 
+# Whether a file called gn is gn.
+#
+# depot_tools ships a shell script by that name which bootstraps a real one
+# on first use, and until it has been bootstrapped it exits saying so. A gn
+# that cannot answer --version cannot generate a build either, and finding
+# that out from `gn gen` means reading a page of this port's arguments to
+# learn something about the tool.
+function(cme_gn_works out gn why)
+  execute_process(COMMAND "${gn}" --version
+                  RESULT_VARIABLE code
+                  OUTPUT_VARIABLE output ERROR_VARIABLE output)
+  if(code EQUAL 0)
+    set(${out} TRUE PARENT_SCOPE)
+  else()
+    set(${out} FALSE PARENT_SCOPE)
+    set(${why} "${output}" PARENT_SCOPE)
+  endif()
+endfunction()
+
 function(cme_gn_find out)
   if(CME_GN)
-    set(${out} "${CME_GN}" PARENT_SCOPE)
-    return()
+    set(found "${CME_GN}")
+  else()
+    find_program(found NAMES gn)
+    if(NOT found)
+      message(FATAL_ERROR
+        "cmake-everywhere: this port is a GN project and gn is not on PATH. "
+        "Install it, or pass -DCME_GN=/path/to/gn.")
+    endif()
   endif()
-  find_program(found NAMES gn)
-  if(NOT found)
+  cme_gn_works(usable "${found}" why)
+  if(NOT usable)
     message(FATAL_ERROR
-      "cmake-everywhere: this port is a GN project and gn is not on PATH. "
-      "Install it, or pass -DCME_GN=/path/to/gn.")
+      "cmake-everywhere: this port is a GN project and ${found} is not a gn "
+      "that runs:\n${why}"
+      "Install one, or pass -DCME_GN=/path/to/gn.")
   endif()
   set(${out} "${found}" PARENT_SCOPE)
 endfunction()
@@ -373,6 +399,18 @@ function(cme_gn_generate port source build out_description)
     list(APPEND arguments "${substituted}")
   endforeach()
   list(JOIN arguments " " argument_line)
+
+  # gn reads what a project is from a dotfile at its root, and when it
+  # cannot read it says only that. Every tree that builds with gn has one,
+  # so a checkout without it is not that tree -- an extraction that did not
+  # finish, or a directory something else has been at.
+  if(NOT EXISTS "${source}/.gn")
+    message(FATAL_ERROR
+      "cmake-everywhere: ${port} is at ${source} and there is no .gn there. "
+      "That is the file gn reads a project from, and it is in the archive "
+      "this was unpacked from, so what is there is not a whole checkout. "
+      "Remove that directory and configure again.")
+  endif()
 
   file(MAKE_DIRECTORY "${build}")
   message(STATUS "cmake-everywhere: gn gen for ${port}")
