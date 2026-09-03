@@ -73,6 +73,13 @@ function(cme_gn_substitute out text)
   string(REPLACE "@SYSROOT@" "${CMAKE_SYSROOT}" value "${value}")
   string(REPLACE "@PREFIX@" "${CMAKE_INSTALL_PREFIX}" value "${value}")
   string(REPLACE "@BUILD_TYPE@" "${CMAKE_BUILD_TYPE}" value "${value}")
+  # A GN project has its own name for link-time optimisation and its own
+  # default, so the port says which; this only answers whether.
+  if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+    string(REPLACE "@LTO@" "true" value "${value}")
+  else()
+    string(REPLACE "@LTO@" "false" value "${value}")
+  endif()
   string(REPLACE "@SOURCE_DIR@" "${CME_GN_SOURCE_DIR}" value "${value}")
   string(REPLACE "@DEP_INCLUDES@" "${CME_GN_DEP_INCLUDES}" value "${value}")
   # @INCLUDE:port@ -- where one dependency's headers are, as a path. A

@@ -88,6 +88,7 @@ function(cme_environment_pairs out)
       CMAKE_BUILD_TYPE CMAKE_C_FLAGS CMAKE_CXX_FLAGS
       CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE
       CMAKE_SYSROOT CMAKE_POSITION_INDEPENDENT_CODE
+      CMAKE_INTERPROCEDURAL_OPTIMIZATION BUILD_SHARED_LIBS
       CMAKE_CXX_STANDARD CMAKE_OSX_DEPLOYMENT_TARGET CMAKE_OSX_ARCHITECTURES)
     list(APPEND pairs "${name}=${${name}}")
   endforeach()
@@ -130,6 +131,7 @@ function(cme_environment_key out)
     set(parts "${CMAKE_SYSTEM_NAME}" "${CMAKE_SYSTEM_PROCESSOR}"
               "${CMAKE_C_COMPILER_ID}" "${CMAKE_CXX_COMPILER_ID}"
               "${CMAKE_CXX_COMPILER_TARGET}" "${CMAKE_SYSROOT}"
+              "${CMAKE_INTERPROCEDURAL_OPTIMIZATION}" "${BUILD_SHARED_LIBS}"
               "${toolchain}")
   else()
     set(parts "${CMAKE_SYSTEM_NAME}" "${CMAKE_SYSTEM_PROCESSOR}"
@@ -137,6 +139,10 @@ function(cme_environment_key out)
               "${CMAKE_CXX_COMPILER_ID}" "${cxx_major}"
               "${CMAKE_CXX_COMPILER_TARGET}" "${CMAKE_C_COMPILER_TARGET}"
               "${CMAKE_SYSROOT}" "${CMAKE_POSITION_INDEPENDENT_CODE}"
+              # Objects compiled for link-time optimisation are not the same
+              # objects, and a library built one way is not the library built
+              # the other -- whatever else matches.
+              "${CMAKE_INTERPROCEDURAL_OPTIMIZATION}" "${BUILD_SHARED_LIBS}"
               "${CMAKE_CXX_STANDARD}" "${CMAKE_BUILD_TYPE}"
               "${CMAKE_OSX_DEPLOYMENT_TARGET}" "${CMAKE_OSX_ARCHITECTURES}"
               "${toolchain}")
@@ -592,7 +598,8 @@ function(cme_build_external port package version entry)
   # invocation, or it is a different library to the one this build wanted.
   foreach(name CMAKE_TOOLCHAIN_FILE CMAKE_BUILD_TYPE CMAKE_C_COMPILER
                CMAKE_CXX_COMPILER CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_SYSROOT
-               CMAKE_MAKE_PROGRAM CMAKE_PREFIX_PATH)
+               CMAKE_MAKE_PROGRAM CMAKE_PREFIX_PATH CMAKE_CXX_STANDARD
+               CMAKE_INTERPROCEDURAL_OPTIMIZATION)
     if(${name})
       list(APPEND arguments "-D${name}=${${name}}")
     endif()
