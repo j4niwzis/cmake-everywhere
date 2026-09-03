@@ -86,6 +86,8 @@ fi
 echo "refusals -- nothing is fetched, these are decided before that"
 expect_refusal unknown-feature       "has none by that name"
 expect_refusal conflicting-features  "can have at most one of"
+expect_refusal implied-by-variable   "can have at most one of"
+expect_refusal implied-through-a-chain "this build refuses chain-c"
 expect_refusal refused-feature       "this build refuses"
 expect_refusal licence               "accepts only"
 expect_refusal missing-port          "there is no port called"

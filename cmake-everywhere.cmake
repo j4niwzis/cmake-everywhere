@@ -2327,7 +2327,24 @@ function(cme_require port version features reason)
     endif()
     cme_remember_why(${port} ${feature} "${reason}")
   endforeach()
+  # What is going to be on, which is what was asked for here, what the
+  # project asked for by variable, and everything those imply, as far as the
+  # chain goes. Checked against the refusals here rather than before the
+  # expanding: a feature reached through two links is as much a feature this
+  # build will have as one that was named, and refusing it while asking for
+  # something that needs it is the same contradiction either way.
+  list(APPEND features ${CME_FEATURES_${port}})
   cme_expand_implications(${port} "${features}" features)
+  foreach(feature IN LISTS features)
+    cme_feature_refused(refused ${port} ${feature})
+    if(refused)
+      cme_why(chain ${port} ${feature})
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} is asked for with ${feature} -- by "
+        "${chain} -- and this build refuses ${feature}. One of the two has "
+        "to give: ask for it, or stop needing it.")
+    endif()
+  endforeach()
   foreach(feature IN LISTS features)
     if(NOT feature IN_LIST known)
       list(APPEND known "${feature}")
@@ -2389,6 +2406,13 @@ function(cme_enabled_features port out)
       list(APPEND enabled "${feature}")
     endif()
   endforeach()
+  # What those imply, which until now was expanded only for the features a
+  # find_package call named. A feature asked for by cme_features(), by
+  # -DCME_FEATURES_<port>=, or one the port has on by default, implies
+  # exactly the same things -- and did not bring them, so a library was on
+  # without what it is built on being on, and a rule about the two of them
+  # was checked against a set that was never assembled.
+  cme_expand_implications(${port} "${enabled}" enabled)
   set(result "")
   foreach(feature IN LISTS enabled)
     # An empty item is not a feature. A list of two of them is still a list,

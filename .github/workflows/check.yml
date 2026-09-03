@@ -47,6 +47,7 @@ jobs:
         run: |
           set -e
           for case in unknown-feature conflicting-features refused-feature \
+                      implied-by-variable implied-through-a-chain \
                       licence missing-port; do
             if cmake -S "test/cases/$case" -B "build/$case" \
                  -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \

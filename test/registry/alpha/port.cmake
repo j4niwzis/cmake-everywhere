@@ -22,3 +22,10 @@ cme_port_rule(alpha AT_MOST_ONE_OF one two)
 
 function(cme_adapt_alpha source binary)
 endfunction()
+
+# Three links, for asking whether an implication follows a chain: chain-a
+# implies chain-b, which implies chain-c, and nothing else says a word about
+# chain-c.
+cme_port_feature(alpha chain-a SUMMARY "the first link" IMPLIES chain-b)
+cme_port_feature(alpha chain-b SUMMARY "the second link" IMPLIES chain-c)
+cme_port_feature(alpha chain-c SUMMARY "the third link")
