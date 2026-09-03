@@ -88,12 +88,29 @@ as many words and stops: an upstream build system cannot anticipate every
 downstream one, and it would rather not try. That is a fair position, and it
 needs a different mechanism rather than an argument.
 
-`EXTERNAL YES` on a port means it is configured, built and installed on its
-own, with everything that decides what the objects are passed through --
-toolchain file, build type, compilers, flags, sysroot -- because otherwise it
-is a different library to the one this build asked for. What comes back is an
-install prefix, which is also why it survives to the next build: the prefix
-is the store entry.
+So it is not made one:
+
+```cmake
+IMPORT cmake
+IMPORT_TARGETS "jpeg-static=JPEG::JPEG"
+```
+
+It is configured on its own, asked what it would build, and that is built
+here -- in your graph, with your generator, beside everything else. The same
+idea as the GN ports and for the same reason: a build system describes a
+build far better than it can be guessed at.
+
+Two sources, because one is not enough. CMake's File API describes every
+target: its sources, its defines, its include directories, and the exact
+flags each *group* of sources is compiled with, so a project that compiles
+one file differently from the rest still does. It does not describe custom
+commands at all, so those are read out of `build.ninja`, which is where the
+generator wrote them down, and run the way it would have run them: through a
+shell, from the directory they were written for. Reproducing them any other
+way is guessing.
+
+`EXTERNAL YES` still exists and is the escape hatch: configure, build and
+install on its own, and take the install prefix. Nothing uses it now.
 
 ## A port that is only for somewhere
 

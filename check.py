@@ -9,7 +9,7 @@ forgets.
 With --matrix it prints the ports as JSON instead, for a build that runs one
 job per library.
 """
-import glob, json, re, shlex, sys
+import glob, json, os, re, shlex, sys
 
 
 def code(path):
@@ -77,7 +77,10 @@ if "--matrix" in sys.argv:
 
 defined = set()
 called = {}
-files = (["cmake-everywhere.cmake", "cmake/gn.cmake"]
+files = (["cmake-everywhere.cmake"]
+         # Everything here except CPM, which is somebody else's.
+         + [f for f in sorted(glob.glob("cmake/*.cmake"))
+            if os.path.basename(f) != "CPM.cmake"]
          + sorted(glob.glob("registry/*/*.cmake"))
          + sorted(glob.glob("test/registry/*/*.cmake"))
          + sorted(glob.glob("profiles/*.cmake")))

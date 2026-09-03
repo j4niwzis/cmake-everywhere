@@ -302,6 +302,7 @@ endif()
 
 include("${CME_DIR}/cmake/CPM.cmake")
 include("${CME_DIR}/cmake/gn.cmake")
+include("${CME_DIR}/cmake/cmakeproject.cmake")
 
 set(CME_REGISTRY "${CME_DIR}/registry" CACHE PATH
   "Where the ports are. Point this at your own directory to add ports.")
@@ -334,10 +335,10 @@ set(CME_POLICY_VERSION_MINIMUM "3.5" CACHE STRING
 function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
-          POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL)
+          POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
-           GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE)
+           GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
     message(FATAL_ERROR "cmake-everywhere: a port with no NAME")
@@ -1722,7 +1723,8 @@ function(cme_build_port port package version exact)
   endif()
 
   cme_port_field(external ${port} EXTERNAL)
-  if(CME_FETCH_ONLY OR external)
+  cme_port_field(imported ${port} IMPORT)
+  if(CME_FETCH_ONLY OR external OR imported)
     list(APPEND arguments DOWNLOAD_ONLY YES)
   endif()
 
@@ -1734,7 +1736,14 @@ function(cme_build_port port package version exact)
     return()
   endif()
 
-  if(external)
+  if(imported)
+    if(NOT imported STREQUAL "cmake")
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} says IMPORT ${imported}, and the only "
+        "thing that can be imported that way is cmake")
+    endif()
+    cme_cmake_build(${port} "${${port}_SOURCE_DIR}")
+  elseif(external)
     cme_store_entry(entry ${port} "${port_version}")
     if(NOT entry)
       set(entry "${CMAKE_BINARY_DIR}/_cme/${port}-installed")
