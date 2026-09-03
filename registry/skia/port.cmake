@@ -242,6 +242,12 @@ int main() {
   return fn == nullptr;
 }")
 
+# No SYSTEM_CODE here, and not for want of trying: deflate is something Skia
+# uses, not something it offers. Nothing in the public interface appears or
+# disappears with it, so an installed Skia cannot be asked whether it has
+# zlib -- which is why this one is reported as taken at its word rather than
+# checked. A feature that cannot be observed is a fact about the library, and
+# saying so is better than a probe that tests something else and passes.
 cme_port_feature(skia zlib
   SUMMARY "deflate, which PDF and freetype both want"
   DEPENDS zlib
@@ -261,7 +267,15 @@ cme_port_feature(skia freetype
           # machine that has FreeType installed would be compiled against
           # those headers and linked against the one built here.
           "skia_system_freetype2_include_path=\"@INCLUDE:freetype@\""
-  GN_CONFIRM "skia_use_system_freetype2=true")
+  GN_CONFIRM "skia_use_system_freetype2=true"
+  # The font manager that scans a directory is implemented with FreeType and
+  # compiled only when FreeType is on, so a program that names it links
+  # against a Skia that has it and does not against one that has not.
+  SYSTEM_CODE "#include <skia/ports/SkFontMgr_directory.h>
+int main() {
+  sk_sp<SkFontMgr> (*fn)(const char *) = &SkFontMgr_New_Custom_Directory;
+  return fn == nullptr;
+}")
 
 # How Skia reaches GL, which it will not work out for itself.
 #
@@ -277,8 +291,7 @@ cme_port_feature(skia freetype
 # Only where the question arises. Android, macOS and Windows each have one
 # answer and Skia takes it without being told.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
-  cme_port_rule(skia WITH gl AT_LEAST_ONE_OF egl x11)
-endif()
+  endif()
 # Skia asks about EGL before it asks about X11 and takes the first answer,
 # so a build told both is a build where one of them was ignored. Which one
 # matters: a GL context made through GLX and an interface assembled through
