@@ -66,12 +66,36 @@ def ports():
             # Empty means anywhere. A build that is not one of these skips
             # the port rather than failing it.
             "systems": ";".join(fields.get("SYSTEMS", [])),
+            "family": (fields.get("FAMILY") or [""])[0],
+            "source_only": bool(fields.get("SOURCE_ONLY")),
         })
     return found
 
 
+# One job per port is the point of the matrix, and one job per Boost library
+# is 158 jobs saying the same thing about the same release. A family is
+# checked by a sample of it: the umbrella, a header-only leaf, and the one
+# with the most underneath it. What is left out is said out loud rather than
+# looking like coverage.
+SAMPLE = {"boost": ["boost", "boost-mp11", "boost-system", "boost-filesystem"]}
+
+
+def sampled(all_ports):
+    kept, dropped = [], []
+    for entry in all_ports:
+        if entry["source_only"]:
+            continue
+        family = entry["family"]
+        if not family or entry["port"] in SAMPLE.get(family, []):
+            kept.append(entry)
+        else:
+            dropped.append(entry["port"])
+    return kept, dropped
+
+
 if "--matrix" in sys.argv:
-    print(json.dumps([p for p in ports()]))
+    kept, _ = sampled(ports())
+    print(json.dumps(kept))
     raise SystemExit(0)
 
 
@@ -104,9 +128,17 @@ for path in files:
 # A port that says nothing about what it produces cannot be checked by
 # anything but a person reading it.
 for entry in ports():
+    if entry["source_only"]:
+        # A download that other ports live inside produces nothing and is
+        # never asked for by name, so there is nothing for it to say.
+        continue
     for field in ("targets", "licence"):
         if not entry[field]:
             print(f"  {entry['port']} says nothing about its {field}")
             problems += 1
+_, left_out = sampled(ports())
+if left_out:
+    print(f"  {len(left_out)} ports are family members and are not each given a "
+          f"job of their own: {left_out[0]} ... {left_out[-1]}")
 print(f"{len(defined)} commands defined, {len(called)} called, {problems} problems")
 sys.exit(1 if problems else 0)

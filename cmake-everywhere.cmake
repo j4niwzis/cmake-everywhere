@@ -950,7 +950,8 @@ endfunction()
 # Field by field, and the first to say wins, the same as everything else.
 function(cme_port_source port)
   set(fields GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY GIT_TAG
-             GIT_TAG_TEMPLATE GIT_SHALLOW URL URL_HASH SOURCE_SUBDIR VERSION)
+             GIT_TAG_TEMPLATE GIT_SHALLOW URL URL_HASH SOURCE_SUBDIR VERSION
+             SOURCE_FROM)
   cmake_parse_arguments(SOURCE "" "${fields}" "" ${ARGN})
   if(SOURCE_UNPARSED_ARGUMENTS)
     list(JOIN SOURCE_UNPARSED_ARGUMENTS " " extra)
@@ -1000,7 +1001,7 @@ function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
-          PORTS_FROM UNLOCKED)
+          PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS)
@@ -2853,7 +2854,8 @@ function(cme_build_port port package version exact)
   # A port can describe a library without saying where it is -- a library
   # describing itself has no business claiming a URL. That is fine until
   # something has to fetch it, which is here.
-  if(NOT listed)
+  cme_port_field(sources_inside ${port} SOURCE_FROM)
+  if(NOT listed AND NOT sources_inside)
     set(coordinates FALSE)
     foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY URL)
       cme_port_field(value ${port} ${field})
@@ -2872,7 +2874,14 @@ function(cme_build_port port package version exact)
         "  cme_port_source(${port} GIT_REPOSITORY <url> GIT_TAG <tag>)")
     endif()
   endif()
-  CPMAddPackage(${arguments})
+  cme_source_from(inside ${port})
+  if(inside)
+    set(${port}_SOURCE_DIR "${inside}")
+    set(${port}_BINARY_DIR "${CMAKE_BINARY_DIR}/_cme/${port}")
+    cme_lock_fact("${port}" "source" "inside ${port_version}")
+  else()
+    CPMAddPackage(${arguments})
+  endif()
   set_property(GLOBAL PROPERTY CME_TREE_${port} "${${port}_SOURCE_DIR}")
 
   # What was actually fetched, rather than what was asked for. A tag moves,
@@ -3121,6 +3130,160 @@ endfunction()
 #
 # Inside a function the nested call has its own scope and cannot reach this
 # one.
+# Libraries that are one release cut into many pieces.
+#
+# Boost is 158 repositories out of one tarball, ICU is three libraries that
+# must agree, Qt is dozens. Taking one of them from the system and the next
+# from a source tree gives a build two versions of one library, with headers
+# from one and symbols from the other, and the failure turns up as a
+# constructor that reads the wrong offset. There is no diagnosing that from
+# the message.
+#
+# So a port can name a family, and the first member to be answered decides
+# for the rest: from the system, or built, and at which version. A member
+# that cannot be had the same way as the first is an error naming both,
+# rather than a build that mixes them.
+function(cme_family_answer out port)
+  cme_port_field(family ${port} FAMILY)
+  set(${out} "" PARENT_SCOPE)
+  if(NOT family)
+    return()
+  endif()
+  get_property(answer GLOBAL PROPERTY CME_FAMILY_${family}_ANSWER)
+  set(${out} "${answer}" PARENT_SCOPE)
+endfunction()
+
+function(cme_family_settled port package how)
+  cme_port_field(family ${port} FAMILY)
+  if(NOT family)
+    return()
+  endif()
+  get_property(answer GLOBAL PROPERTY CME_FAMILY_${family}_ANSWER)
+  if(answer)
+    return()
+  endif()
+  get_property(chosen GLOBAL PROPERTY CME_PROVIDED_VERSION_${package})
+  set_property(GLOBAL PROPERTY CME_FAMILY_${family}_ANSWER "${how}")
+  set_property(GLOBAL PROPERTY CME_FAMILY_${family}_VERSION "${chosen}")
+  set_property(GLOBAL PROPERTY CME_FAMILY_${family}_FIRST "${port}")
+  if(how STREQUAL "system")
+    set(prose "the system")
+  else()
+    set(prose "here, from source")
+  endif()
+  message(STATUS
+    "cmake-everywhere: ${family} comes from ${prose} at ${chosen}, decided "
+    "by ${port}; every ${family} port in this build is answered the same way")
+endfunction()
+
+# The tree another port's sources are inside.
+#
+# A release that is cut into many repositories is also published as one
+# archive, and taking a hundred and fifty-seven repositories to build twenty
+# of them is a great deal of waiting for the same bytes. A port can say that
+# its sources are a directory inside another port's, and then the archive is
+# fetched once and every member is a subdirectory of it.
+#
+# The port named here is fetched and never built: it is a download, not a
+# library.
+function(cme_source_from out port)
+  cme_port_field(from ${port} SOURCE_FROM)
+  set(${out} "" PARENT_SCOPE)
+  if(NOT from)
+    return()
+  endif()
+  get_property(root GLOBAL PROPERTY CME_FETCHED_${from})
+  if(root)
+    set(${out} "${root}" PARENT_SCOPE)
+    return()
+  endif()
+  cme_port_field(names ${from} PROVIDES)
+  if(NOT names)
+    message(FATAL_ERROR
+      "cmake-everywhere: ${port} says its sources are inside ${from}, and "
+      "there is no port called that.")
+  endif()
+  set(arguments NAME ${from} DOWNLOAD_ONLY YES)
+  foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY URL
+                URL_HASH GIT_TAG GIT_SHALLOW VERSION)
+    cme_port_field(value ${from} ${field})
+    if(value)
+      list(APPEND arguments ${field} "${value}")
+    endif()
+  endforeach()
+  CPMAddPackage(${arguments})
+  set_property(GLOBAL PROPERTY CME_FETCHED_${from} "${${from}_SOURCE_DIR}")
+  cme_port_field(hash ${from} URL_HASH)
+  cme_lock_fact("${from}" "archive" "${hash}")
+  message(STATUS
+    "cmake-everywhere: ${from} is fetched once and every port inside it is a "
+    "directory of ${${from}_SOURCE_DIR}")
+  set(${out} "${${from}_SOURCE_DIR}" PARENT_SCOPE)
+endfunction()
+
+# A port that is a name for other ports and builds nothing itself.
+function(cme_build_virtual port package)
+  cme_port_field(names ${port} TARGETS)
+  cme_port_field(port_version ${port} VERSION)
+  cme_resolve_depends(${port})
+  cme_enabled_features(${port} features)
+  set(parts "")
+  foreach(feature IN LISTS features)
+    cme_feature_field(depends ${port} ${feature} DEPENDS)
+    foreach(spec IN LISTS depends)
+      cme_split_requirement("${spec}" dep wanted wanted_features)
+      cme_port_field(theirs ${dep} TARGETS)
+      foreach(one IN LISTS theirs)
+        if(TARGET ${one})
+          list(APPEND parts "${one}")
+        endif()
+      endforeach()
+    endforeach()
+  endforeach()
+  foreach(name IN LISTS names)
+    if(NOT TARGET ${name})
+      add_library(${name} INTERFACE IMPORTED GLOBAL)
+      if(parts)
+        list(REMOVE_DUPLICATES parts)
+        set_property(TARGET ${name} PROPERTY INTERFACE_LINK_LIBRARIES ${parts})
+      endif()
+    endif()
+  endforeach()
+  set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package} "${port_version}")
+
+  # What the pieces are and where they came from, for the adapter: a port
+  # that builds nothing has no source directory of its own, and everything a
+  # consumer reads about it is made out of its parts.
+  set(trees "")
+  foreach(feature IN LISTS features)
+    cme_feature_field(depends ${port} ${feature} DEPENDS)
+    foreach(spec IN LISTS depends)
+      cme_split_requirement("${spec}" dep wanted wanted_features)
+      get_property(tree GLOBAL PROPERTY CME_TREE_${dep})
+      if(tree)
+        list(APPEND trees "${tree}")
+      endif()
+    endforeach()
+  endforeach()
+  if(trees)
+    list(REMOVE_DUPLICATES trees)
+  endif()
+  set_property(GLOBAL PROPERTY CME_VIRTUAL_PARTS_${port} "${parts}")
+  set_property(GLOBAL PROPERTY CME_VIRTUAL_TREES_${port} "${trees}")
+  if(COMMAND cme_adapt_${port})
+    cmake_language(CALL cme_adapt_${port} "" "")
+  endif()
+
+  # Nothing was fetched and nothing can be pinned, which is not a hole in the
+  # lock: there is nothing here to move.
+  set_property(GLOBAL APPEND PROPERTY CME_LOCK_REACHED "${port}")
+  list(JOIN features ", " listed)
+  if(NOT listed)
+    set(listed "nothing")
+  endif()
+  cme_note_decision("${port}" "as a name for" "${listed}")
+endfunction()
+
 function(cme_resolve package port version exact features out_answer)
   # A floor learned on an earlier run, so this one does not repeat it.
   if(CME_REQUIRE_${package} AND
@@ -3130,7 +3293,32 @@ function(cme_resolve package port version exact features out_answer)
 
   cme_require("${port}" "${version}" "${features}" "the project")
 
+  cme_port_field(virtual ${port} VIRTUAL)
+  if(virtual)
+    cme_build_virtual("${port}" "${package}")
+    set(${out_answer} "port" PARENT_SCOPE)
+    return()
+  endif()
+
+  # What the rest of this library was answered with, if it has a rest.
+  cme_family_answer(family_answer "${port}")
+  cme_port_field(family ${port} FAMILY)
+  if(family_answer STREQUAL "built")
+    get_property(chosen GLOBAL PROPERTY CME_FAMILY_${family}_VERSION)
+    if(chosen AND NOT CME_VERSION_${port})
+      set(CME_VERSION_${port} "${chosen}" CACHE STRING
+          "The version of ${port}, which is the version the rest of ${family} \
+is being built at" FORCE)
+    endif()
+  endif()
+
   cme_system_allowed(try_system "${package}")
+  if(family_answer STREQUAL "built")
+    # The rest of this library is being built, so this piece is too. A
+    # system copy of one piece beside a built copy of another is two
+    # versions of one library in one build.
+    set(try_system FALSE)
+  endif()
   if(try_system)
     # BYPASS_PROVIDER is what keeps this call from being routed straight back
     # here. It is the one place the keyword is allowed.
@@ -3153,6 +3341,7 @@ function(cme_resolve package port version exact features out_answer)
         set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
                      "${${package}_VERSION}")
         cme_note_decision("${package}" "system" "${${package}_VERSION}")
+        cme_family_settled("${port}" "${package}" "system")
         set(${out_answer} "system" PARENT_SCOPE)
         return()
       endif()
@@ -3163,6 +3352,7 @@ function(cme_resolve package port version exact features out_answer)
       cme_enabled_features(${port} needed)
       cme_system_has_features(usable "${package}" "${port}" "${needed}")
       if(usable)
+        cme_family_settled("${port}" "${package}" "system")
         set(${out_answer} "pkg-config" PARENT_SCOPE)
         return()
       endif()
@@ -3174,7 +3364,21 @@ function(cme_resolve package port version exact features out_answer)
       "cmake-everywhere: CME_SYSTEM is ALWAYS and the system has no "
       "${package}")
   endif()
+  if(family_answer STREQUAL "system")
+    get_property(first GLOBAL PROPERTY CME_FAMILY_${family}_FIRST)
+    get_property(chosen GLOBAL PROPERTY CME_FAMILY_${family}_VERSION)
+    message(FATAL_ERROR
+      "cmake-everywhere: ${first} was taken from the system at ${chosen}, so "
+      "the rest of ${family} has to come from there too, and this machine "
+      "has no ${package} that will do. Building this one beside a system "
+      "copy of the others would put two versions of ${family} in one build: "
+      "headers from one and symbols from the other.\n"
+      "Either install it, or build the whole of ${family} here with "
+      "-DCME_SYSTEM_${package}=OFF on every one of them, or the simple way, "
+      "-DCME_SYSTEM=NEVER.")
+  endif()
   cme_build_port("${port}" "${package}" "${version}" "${exact}")
+  cme_family_settled("${port}" "${package}" "built")
   set(${out_answer} "port" PARENT_SCOPE)
 endfunction()
 

@@ -149,12 +149,19 @@ jobs:
       - name: build it on its own
         if: steps.applies.outputs.yes == 'true'
         run: |
+          # The umbrella is the one job that takes Boost as the archive:
+          # one download of everything rather than a repository each, which
+          # is the choice a project using a lot of Boost would make.
+          extra=""
+          if [ "${{ matrix.port.port }}" = "boost" ]; then
+            extra="-DCME_BOOST_ARCHIVE=ON -DCME_FEATURES_boost=filesystem"
+          fi
           cmake -S test/port -B build/port -G Ninja \
             -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
             -DCME_PORT_PACKAGE="${{ matrix.port.package }}" \
             -DCME_PORT_TARGETS="${{ matrix.port.targets }}" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache $extra
           cmake --build build/port
           ./build/port/cme-port
       - run: ccache --show-stats

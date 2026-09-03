@@ -1077,11 +1077,97 @@ worth the name, and a dozen lines of the list above. That is the success
 condition -- ports that are thin, and most of them living with the library
 they describe rather than here.
 
+## A library that is many libraries
+
+Boost is one release cut into 158 repositories. ICU is three libraries that
+have to agree with each other. Qt is dozens. A project usually wants one
+piece -- `boost_mp11` is a megabyte and the superproject archive is a hundred
+-- so each piece is its own port:
+
+```cmake
+find_package(boost_filesystem REQUIRED)
+target_link_libraries(app PRIVATE Boost::filesystem)
+```
+
+and there is an umbrella for the projects that write `find_package(Boost)`
+and name what they use as components:
+
+```cmake
+find_package(Boost COMPONENTS filesystem asio REQUIRED)
+```
+
+The umbrella builds nothing: each component is one of the ports beside it,
+which is where the library actually comes from. Asking for Boost and no
+components asks for no Boost libraries, which is what Boost's own CMake does
+with an empty `BOOST_INCLUDE_LIBRARIES`.
+
+### The family
+
+Which raises the question those 158 ports would otherwise get wrong. If
+`boost_mp11` comes from the system at 1.83 and `boost_filesystem` is built
+here at 1.92 -- because the system's is too old -- the build has two versions
+of one library, with headers from one and symbols from the other, and it
+fails as a constructor reading the wrong offset. There is no diagnosing that
+from the message.
+
+So a port can name a **family**, and the first member of it to be answered
+decides for the rest: from the system or built, and at which version.
+
+```cmake
+FAMILY boost
+```
+
+A member that cannot be had the way the first one was is an error naming both
+and saying what to do about it, rather than a build that mixes them. It is
+not a Boost mechanism: anything released as a set of libraries that must
+match wants it.
+
+### One download or a hundred and fifty-seven
+
+Where the sources come from is the one thing about a Boost library worth a
+choice, and it is one switch:
+
+```
+-DCME_BOOST_ARCHIVE=ON
+```
+
+Off, every library is its own repository, which is the small download when a
+project uses one or two of them. On, all of it is the release archive that
+Boost publishes, fetched once, and every port is a directory inside it --
+which is faster from about the tenth library and is the same libraries
+either way.
+
+Underneath it is not a Boost mechanism: `SOURCE_FROM` says a port's sources
+are a directory inside another port's, and that other port is fetched once
+and never built. Anything published both as many repositories and as one
+archive can say the same.
+
+### Written from what Boost declares
+
+Every one of those repositories says in its own CMakeLists which targets it
+defines and which of the others it links. That is the dependency graph, kept
+by the people who change it, so `tools/boost-ports.py` reads it and writes
+the ports:
+
+```sh
+python3 tools/boost-ports.py 1.92.0
+```
+
+The generated ports are ports like any other -- nothing reads them
+differently -- and the script is run again when Boost is released rather than
+maintained by hand. A hand-written copy of that graph would be a hundred and
+fifty-eight files that rot at the next release, which is the failure this
+repository keeps warning about in other people's build systems.
+
+The per-port CI does not run a job for each of them: a family is checked by a
+sample, and what is left out is printed rather than left looking like
+coverage.
+
 ## What is here
 
 zlib, libpng, libjpeg-turbo, libwebp, freetype, expat, xz, libzip, ogg,
 vorbis, FLAC, opus, libsndfile, minimp3, mpg123, openal-soft, oboe, glfw,
-Skia.
+Skia, and Boost -- 157 of it, one port per library, plus the umbrella.
 
 That is not a registry yet, and it is not trying to become one. It is enough
 to show the shapes -- a library with CMake, a library without one, a library
@@ -1317,6 +1403,8 @@ cmake -S test/skia -B build/skia -G Ninja \
 | `CME_LOCK_ALL` | reach everything and write a whole lock |
 | `CME_LOCK_UPDATE` | take what this build resolved to as the new lock, for everything |
 | `CME_RELOCK` | the ports this build may write new facts about |
+| `CME_VERSION_<port>` | the version to build, and what a family's decision sets |
+| `CME_BOOST_ARCHIVE` | take Boost as one archive rather than a repository per library |
 | `CME_UNLOCKED` | ports being followed rather than pinned |
 | `CME_LOCK_FILE` | where the report of one build is written |
 | `CME_STORE` | where built libraries are kept, or empty for none |
