@@ -1,0 +1,26 @@
+fmt uses malloc and free and includes neither.
+
+format.h opens by defining _LIBCPP_REMOVE_TRANSITIVE_INCLUDES -- it asks the
+standard library not to hand it anything it did not ask for -- and then calls
+malloc and free in fmt::detail::allocator without including <cstdlib>. Every
+other header it includes happens to declare them on a desktop, so this holds
+everywhere it has been built.
+
+Against bionic's headers it does not, and the compiler says what it found
+instead:
+
+    error: use of undeclared identifier 'malloc'; did you mean 'tzalloc'?
+    error: 'tzalloc' is unavailable: introduced in Android 35
+
+The include is added where the others are, spelled the same way.
+
+--- a/fmt-11.1.1/include/fmt/format.h
++++ b/fmt-11.1.1/include/fmt/format.h
+@@ -43,6 +43,7 @@
+ #  include <cmath>    // std::signbit
+ #  include <cstddef>  // std::byte
+ #  include <cstdint>  // uint32_t
++#  include <cstdlib>  // std::malloc, std::free
+ #  include <cstring>  // std::memcpy
+ #  include <limits>   // std::numeric_limits
+ #  include <new>      // std::bad_alloc

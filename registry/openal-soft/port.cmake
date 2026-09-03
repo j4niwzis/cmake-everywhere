@@ -1,16 +1,27 @@
 # Missing upstream: little. OpenAL Soft ships CMake and exports
 # OpenAL::OpenAL; what is here is which backends to build, which is a
 # decision about the machine rather than about the library.
+# 1.24.3 rather than the newest.
+#
+# 1.23.1 names uint8_t without including <cstdint>, which libstdc++ 15 no
+# longer reaches for it, so that one does not compile. 1.25 marks the mixer
+# [[clang::nonblocking]], and libstdc++'s std::variant throws and holds
+# static locals, so clang refuses to infer the attribute through it -- an
+# effect of pairing a library that was annotated against libc++ with the
+# other standard library.
+#
+# 1.24.3 has the include and not the annotations.
 cme_declare_port(
   NAME openal-soft
   PROVIDES OpenAL openal OPENAL
-  VERSION 1.23.1
+  VERSION 1.24.3
   GITHUB_REPOSITORY kcat/openal-soft
-  GIT_TAG 1.23.1
+  GIT_TAG 1.24.3
   GIT_TAG_TEMPLATE "@VERSION@"
   LICENSE LGPL-2.0-or-later
   SYSTEM_PKGCONFIG "openal:OpenAL::OpenAL"
   LINK_NAMES "openal=OpenAL::OpenAL"
+  PATCHES patches/0001-fmt-uses-malloc-and-free.patch
   TARGETS OpenAL::OpenAL
   CHECK_HEADER AL/al.h
   # A library, and nothing beside it: the examples and the utilities are
