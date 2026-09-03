@@ -612,6 +612,44 @@ library with CMake, a library without one, and a library with a different
 build system entirely -- and enough to prove the interesting case:
 `find_package(SndFile)` alone brings four more.
 
+## A build with no network
+
+Some builders take the network away on purpose -- flatpak-builder does -- and
+a build that reaches for it there does not fail cleanly, it hangs and then
+fails obscurely. So fetching and building are separable.
+
+On a machine that has a network:
+
+```sh
+cmake -S tools/prefetch -B build/prefetch \
+  -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=$PWD/cmake-everywhere.cmake \
+  -DCPM_SOURCE_CACHE=$PWD/vendor \
+  -DCME_PREFETCH="skia;openal-soft;libsndfile" \
+  -DCME_FEATURES_skia="gl;png;freetype"
+```
+
+Nothing is compiled; every library named, and everything underneath it, is
+fetched into `vendor/` and left there. Ask for the same features the real
+build will ask for -- a feature is what brings a dependency, so fetching Skia
+without `png` does not fetch libpng, and the offline build would stop at the
+first thing it could not reach.
+
+Then, wherever there is no network:
+
+```sh
+cmake -S . -B build -G Ninja \
+  -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=.../cmake-everywhere.cmake \
+  -DCPM_SOURCE_CACHE=/path/to/vendor \
+  -DCME_OFFLINE=ON
+```
+
+`CME_OFFLINE` refuses to fetch rather than failing to: what is not in the
+cache is an error naming what is missing, not a timeout.
+
+The same project, the same code, both ways round -- which is the point. A
+project should not need one dependency arrangement for a normal build and
+another one for a builder that unplugs the network.
+
 ## Checking it
 
 There is a build that runs one job per library, so a port that has rotted is

@@ -30,6 +30,27 @@ endif()
 # difference between a minute and half an hour on something like Skia. Ports
 # are given it; the project doing the consuming is left exactly as it
 # configured itself.
+# A build with no network. Everything a build reads has to be in the source
+# cache already, put there by a run that did have one -- which is what
+# tools/prefetch is for. This is not an optimisation: some builders, flatpak
+# among them, take the network away on purpose, and a build that quietly
+# reaches for it there does not fail, it hangs and then fails obscurely.
+option(CME_OFFLINE "Refuse to fetch anything; use what is in the cache" OFF)
+if(CME_OFFLINE)
+  if(NOT CPM_SOURCE_CACHE)
+    message(FATAL_ERROR
+      "cmake-everywhere: CME_OFFLINE and no CPM_SOURCE_CACHE. Offline means "
+      "reading a cache somebody filled, so there has to be one.")
+  endif()
+  set(FETCHCONTENT_FULLY_DISCONNECTED ON CACHE BOOL "" FORCE)
+  message(STATUS "cmake-everywhere: offline, reading ${CPM_SOURCE_CACHE}")
+endif()
+
+# Fetch and stop. Used by tools/prefetch to fill a cache for a build that
+# will have no network, and useless for anything else: nothing is built, so
+# nothing can be linked.
+option(CME_FETCH_ONLY "Fetch what the ports name and build none of it" OFF)
+
 set(CME_COMPILER_CACHE "AUTO" CACHE STRING
   "A compiler cache for ports: AUTO to use ccache when it is there, OFF, or \
 the name of one")
@@ -1038,7 +1059,17 @@ function(cme_build_port port package version exact)
     set(CMAKE_POLICY_VERSION_MINIMUM "${policy}")
   endif()
 
+  if(CME_FETCH_ONLY)
+    list(APPEND arguments DOWNLOAD_ONLY YES)
+  endif()
+
   CPMAddPackage(${arguments})
+
+  if(CME_FETCH_ONLY)
+    message(STATUS "cmake-everywhere: fetched ${port} ${port_version}")
+    cme_note_decision("${port}" "fetched" "${port_version}")
+    return()
+  endif()
 
   if(gn_targets)
     cme_gn_build(${port} "${${port}_SOURCE_DIR}")
