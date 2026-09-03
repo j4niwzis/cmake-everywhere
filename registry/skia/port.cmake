@@ -64,6 +64,32 @@ cme_declare_port(
     "skia_use_system_freetype2=true"
 )
 
+# Skia has no find_package convention to obey, because nobody ever wrote one.
+# So these names are ours, and they say what they do rather than repeating
+# Skia's argument spellings: a consumer should not have to know that the
+# Vulkan backend is called skia_use_vulkan.
+cme_port_feature(skia vulkan
+  SUMMARY "the Vulkan backend, in addition to GL"
+  GN_ARGS "skia_use_vulkan=true")
+
+cme_port_feature(skia pdf
+  SUMMARY "the PDF backend"
+  GN_ARGS "skia_enable_pdf=true")
+
+cme_port_feature(skia fontconfig
+  SUMMARY "find fonts through the system's fontconfig"
+  GN_ARGS "skia_use_fontconfig=true"
+          "skia_enable_fontmgr_custom_empty=false")
+
+cme_port_feature(skia svg
+  SUMMARY "the SVG module, which needs expat"
+  GN_ARGS "skia_enable_svg=true" "skia_use_expat=true"
+          "skia_use_system_expat=true")
+
+cme_port_feature(skia skottie
+  SUMMARY "the Lottie animation module"
+  GN_ARGS "skia_enable_skottie=true")
+
 function(cme_adapt_skia source binary)
   cme_export_variable(Skia SKIA_FOUND TRUE)
   cme_export_variable(Skia SKIA_LIBRARY Skia::skia)

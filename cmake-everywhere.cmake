@@ -62,6 +62,47 @@ function(cme_declare_port)
   endforeach()
 endfunction()
 
+# What a library can optionally be. A feature is not a group of libraries --
+# that was a bad idea and it is gone -- it is one capability of one library,
+# with the arguments that turn it on and whatever else it then needs:
+#
+#   cme_port_feature(skia vulkan
+#     GN_ARGS "skia_use_vulkan=true"
+#     SUMMARY "the Vulkan backend")
+#
+# Features are additive and they compose by union, the way versions compose
+# by maximum: if anything in the build needs skia with Vulkan, the one Skia
+# in the build has Vulkan.
+function(cme_port_feature port feature)
+  cmake_parse_arguments(FEATURE "" "SUMMARY" "GN_ARGS;OPTIONS;DEPENDS" ${ARGN})
+  set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
+  foreach(field GN_ARGS OPTIONS DEPENDS SUMMARY)
+    set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
+      "${FEATURE_${field}}")
+  endforeach()
+endfunction()
+
+function(cme_feature_field out port feature field)
+  get_property(value GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field})
+  set(${out} "${value}" PARENT_SCOPE)
+endfunction()
+
+# The features a project wants from a library it did not write the
+# find_package call for:
+#
+#   cme_features(skia vulkan pdf)
+#
+# find_package(Skia COMPONENTS vulkan) says the same thing and is understood
+# too. Skia has no find_package convention to obey -- nobody wrote one -- so
+# both spellings are ours.
+function(cme_features port)
+  set(chosen "${CME_FEATURES_${port}}")
+  list(APPEND chosen ${ARGN})
+  list(REMOVE_DUPLICATES chosen)
+  set(CME_FEATURES_${port} "${chosen}" CACHE STRING
+    "Features wanted from the ${port} port" FORCE)
+endfunction()
+
 function(cme_port_field out port field)
   get_property(value GLOBAL PROPERTY CME_PORT_${port}_${field})
   set(${out} "${value}" PARENT_SCOPE)
@@ -176,21 +217,30 @@ endfunction()
 # A dependency may carry a floor: "ogg>=1.3" means this port does not work
 # with anything older. Constraints are data in the registry, so the whole
 # graph can be read before a single add_subdirectory has run.
-function(cme_split_requirement spec out_name out_version)
-  if(spec MATCHES "^([^><=]+)>=(.+)$")
+# "ogg", "ogg>=1.3", "skia[vulkan]", "skia[vulkan,pdf]>=2" -- a dependency
+# says which version it needs and which features it needs it to have.
+function(cme_split_requirement spec out_name out_version out_features)
+  set(rest "${spec}")
+  set(features "")
+  if(rest MATCHES "^([^[]+)\\[([^]]*)\\](.*)$")
+    set(rest "${CMAKE_MATCH_1}${CMAKE_MATCH_3}")
+    string(REPLACE "," ";" features "${CMAKE_MATCH_2}")
+  endif()
+  if(rest MATCHES "^([^><=]+)>=(.+)$")
     set(${out_name} "${CMAKE_MATCH_1}" PARENT_SCOPE)
     set(${out_version} "${CMAKE_MATCH_2}" PARENT_SCOPE)
   else()
-    set(${out_name} "${spec}" PARENT_SCOPE)
+    set(${out_name} "${rest}" PARENT_SCOPE)
     set(${out_version} "" PARENT_SCOPE)
   endif()
+  set(${out_features} "${features}" PARENT_SCOPE)
 endfunction()
 
 # Walks the graph raising the floor on every port in it. This is the whole
 # point of the constraints being data: a version asked for by something deep
 # in the graph is known before the shallow end is built, so nothing has to be
 # built twice and nothing ends up older than something else needed.
-function(cme_require port version)
+function(cme_require port version features)
   get_property(have GLOBAL PROPERTY CME_REQUIRED_VERSION_${port})
   get_property(visited GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port})
   if(version AND (NOT have OR have VERSION_LESS version))
@@ -199,15 +249,49 @@ function(cme_require port version)
     # need more of something else at the new version.
     set(visited FALSE)
   endif()
+  # The same for features, and for the same reason: a feature can bring
+  # dependencies of its own, and those have to be walked too.
+  get_property(known GLOBAL PROPERTY CME_REQUIRED_FEATURES_${port})
+  foreach(feature IN LISTS features)
+    if(NOT feature IN_LIST known)
+      cme_port_field(declared ${port} FEATURES)
+      if(NOT feature IN_LIST declared)
+        message(FATAL_ERROR
+          "cmake-everywhere: something asks ${port} for a feature called "
+          "${feature}, and the port has none by that name. It has: ${declared}")
+      endif()
+      list(APPEND known "${feature}")
+      set(visited FALSE)
+    endif()
+  endforeach()
+  set_property(GLOBAL PROPERTY CME_REQUIRED_FEATURES_${port} "${known}")
   if(visited)
     return()
   endif()
   set_property(GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port} TRUE)
+
+  cme_enabled_features(${port} enabled)
   cme_port_field(depends ${port} DEPENDS)
-  foreach(spec IN LISTS depends)
-    cme_split_requirement("${spec}" name wanted)
-    cme_require("${name}" "${wanted}")
+  foreach(feature IN LISTS enabled)
+    cme_feature_field(extra ${port} ${feature} DEPENDS)
+    list(APPEND depends ${extra})
   endforeach()
+  foreach(spec IN LISTS depends)
+    cme_split_requirement("${spec}" name wanted wanted_features)
+    cme_require("${name}" "${wanted}" "${wanted_features}")
+  endforeach()
+endfunction()
+
+# Everything asked of this port by anything, plus whatever the project asked
+# for directly.
+function(cme_enabled_features port out)
+  get_property(enabled GLOBAL PROPERTY CME_REQUIRED_FEATURES_${port})
+  list(APPEND enabled ${CME_FEATURES_${port}})
+  if(enabled)
+    list(REMOVE_DUPLICATES enabled)
+    list(SORT enabled)
+  endif()
+  set(${out} "${enabled}" PARENT_SCOPE)
 endfunction()
 
 # The version this port is going to be built at: what it pins, unless
@@ -305,12 +389,27 @@ function(cme_build_port port package version exact)
   # needing itself would otherwise never stop.
   set_property(GLOBAL PROPERTY CME_BUILT_${port} TRUE)
 
+  cme_enabled_features(${port} features)
+  if(features)
+    list(JOIN features ", " listed)
+    message(STATUS "cmake-everywhere: ${port} with ${listed}")
+  endif()
+
   cme_port_field(depends ${port} DEPENDS)
+  foreach(feature IN LISTS features)
+    cme_feature_field(extra ${port} ${feature} DEPENDS)
+    list(APPEND depends ${extra})
+  endforeach()
   foreach(spec IN LISTS depends)
-    cme_split_requirement("${spec}" dep wanted)
+    cme_split_requirement("${spec}" dep wanted wanted_features)
     cme_port_field(names ${dep} PROVIDES)
     list(GET names 0 first)
-    find_package(${first} ${wanted} QUIET REQUIRED)
+    if(wanted_features)
+      find_package(${first} ${wanted} QUIET REQUIRED
+                   COMPONENTS ${wanted_features})
+    else()
+      find_package(${first} ${wanted} QUIET REQUIRED)
+    endif()
   endforeach()
 
   cme_port_field(source_subdir ${port} SOURCE_SUBDIR)
@@ -387,6 +486,13 @@ function(cme_build_port port package version exact)
       list(APPEND arguments OPTIONS ${options})
     endif()
   endif()
+  foreach(feature IN LISTS features)
+    cme_feature_field(extra ${port} ${feature} OPTIONS)
+    if(extra AND NOT overlay AND NOT gn_targets)
+      list(APPEND arguments OPTIONS ${extra})
+    endif()
+    list(APPEND options ${extra})
+  endforeach()
   if(CME_OPTIONS_${port})
     list(APPEND arguments OPTIONS ${CME_OPTIONS_${port}})
     list(APPEND options ${CME_OPTIONS_${port}})
@@ -431,7 +537,9 @@ function(cme_build_port port package version exact)
   string(TOUPPER "${package}" upper)
   cme_export_variable(${package} ${package}_VERSION "${port_version}")
   cme_export_variable(${package} ${upper}_VERSION "${port_version}")
-  cme_note_decision("${port}" "built" "${port_version}")
+  set_property(GLOBAL PROPERTY CME_BUILT_FEATURES_${port} "${features}")
+  list(JOIN features "," listed)
+  cme_note_decision("${port}" "built" "${port_version} [${listed}]")
 endfunction()
 
 # ---------------------------------------------------------------- provider
@@ -443,11 +551,22 @@ macro(cme_provider cme_method cme_package)
     if(cme_port)
       set(cme_wanted "")
       set(cme_exact FALSE)
+      set(cme_components FALSE)
+      set(cme_asked_features "")
       foreach(cme_argument IN ITEMS ${ARGN})
-        if("${cme_argument}" MATCHES "^[0-9]+(\\.[0-9]+)*$" AND NOT cme_wanted)
+        if("${cme_argument}" STREQUAL "COMPONENTS" OR
+           "${cme_argument}" STREQUAL "OPTIONAL_COMPONENTS")
+          set(cme_components TRUE)
+        elseif("${cme_argument}" MATCHES
+               "^(REQUIRED|QUIET|EXACT|CONFIG|MODULE|NO_MODULE|GLOBAL|REGISTRY_VIEW|NAMES|BYPASS_PROVIDER)$")
+          set(cme_components FALSE)
+          if("${cme_argument}" STREQUAL "EXACT")
+            set(cme_exact TRUE)
+          endif()
+        elseif(cme_components)
+          list(APPEND cme_asked_features "${cme_argument}")
+        elseif("${cme_argument}" MATCHES "^[0-9]+(\\.[0-9]+)*$" AND NOT cme_wanted)
           set(cme_wanted "${cme_argument}")
-        elseif("${cme_argument}" STREQUAL "EXACT")
-          set(cme_exact TRUE)
         endif()
       endforeach()
 
@@ -459,7 +578,7 @@ macro(cme_provider cme_method cme_package)
 
       get_property(cme_answered GLOBAL PROPERTY CME_ANSWERED_${cme_package})
       if(NOT cme_answered)
-        cme_require("${cme_port}" "${cme_wanted}")
+        cme_require("${cme_port}" "${cme_wanted}" "${cme_asked_features}")
         set(cme_answered "port")
         cme_system_allowed(cme_try_system "${cme_package}")
         if(cme_try_system)
@@ -505,6 +624,36 @@ macro(cme_provider cme_method cme_package)
       # with the floor raised and resolves it correctly from the beginning.
       # Once per requirement, not once per call: it is in the cache
       # afterwards.
+      # The same for a feature asked for after the library is already here.
+      # A feature cannot be added to something already built either.
+      get_property(cme_built_features GLOBAL PROPERTY
+                   CME_BUILT_FEATURES_${cme_port})
+      set(cme_missing "")
+      foreach(cme_feature IN LISTS cme_asked_features)
+        if(NOT cme_feature IN_LIST cme_built_features)
+          list(APPEND cme_missing "${cme_feature}")
+        endif()
+      endforeach()
+      if(cme_missing AND cme_answered STREQUAL "port")
+        set(cme_learned "${CME_FEATURES_${cme_port}}")
+        list(APPEND cme_learned ${cme_missing})
+        list(REMOVE_DUPLICATES cme_learned)
+        list(JOIN cme_missing ", " cme_listed)
+        if("${cme_learned}" STREQUAL "${CME_FEATURES_${cme_port}}")
+          message(FATAL_ERROR
+            "cmake-everywhere: ${cme_port} is already asked for with "
+            "${cme_listed} and was built without. Nothing else can explain "
+            "that: look at the port.")
+        endif()
+        set(CME_FEATURES_${cme_port} "${cme_learned}" CACHE STRING
+          "Features wanted from the ${cme_port} port" FORCE)
+        cme_note_decision("${cme_package}" "needs feature" "${cme_listed}")
+        message(FATAL_ERROR
+          "cmake-everywhere: ${cme_package} is already here without "
+          "${cme_listed}, and something now asks for it. Written down -- run "
+          "cmake again and it will be built with it.")
+      endif()
+
       get_property(cme_have GLOBAL PROPERTY
                    CME_PROVIDED_VERSION_${cme_package})
       if(cme_wanted AND cme_have AND cme_have VERSION_LESS cme_wanted)

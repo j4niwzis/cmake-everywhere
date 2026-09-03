@@ -154,6 +154,52 @@ GIT_TAG_TEMPLATE "v@VERSION@"
 A port without one refuses the request instead of checking out something that
 is not what was asked for.
 
+## Features
+
+A library is often not one thing. Skia with Vulkan and Skia without are the
+same library built differently, and something deep in a dependency graph may
+need the one with it while the project that started the build never mentioned
+Vulkan at all.
+
+So a port declares what its library can optionally be, in names that say what
+they do rather than repeating the project's own argument spellings:
+
+```cmake
+cme_port_feature(skia vulkan
+  SUMMARY "the Vulkan backend, in addition to GL"
+  GN_ARGS "skia_use_vulkan=true")
+```
+
+A consumer asks for them either way round:
+
+```cmake
+find_package(Skia COMPONENTS vulkan)
+cme_features(skia vulkan pdf)
+```
+
+and a port asks for them from another port in its dependency, which is where
+this earns its keep:
+
+```cmake
+DEPENDS "skia[vulkan]>=2" "zlib"
+```
+
+Features compose by union, the way versions compose by maximum: if anything
+in the build needs Skia with Vulkan, the one Skia in the build has Vulkan.
+They are gathered in the same walk of the graph, before anything is built, so
+a feature needed at the bottom is known while the top is still being decided.
+A feature can bring dependencies of its own, and those are walked too.
+
+A feature that does not exist is refused, with the list of the ones that do.
+A feature asked for after the library is already built is written down and
+the run stops, exactly as a version is -- the next configure builds it with
+the feature from the start.
+
+This is not the old grouping. `graphics` was a group of libraries and it was
+wrong: a renderer can be built out of others. `vulkan` is one capability of
+one library, and the library is the only thing that knows what turning it on
+means.
+
 ## Options for a library being built
 
 ```cmake
