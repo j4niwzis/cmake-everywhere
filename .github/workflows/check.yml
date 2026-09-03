@@ -508,6 +508,28 @@ jobs:
         if: always()
         run: cat build/cargo/cme-report.txt || true
 
+  # A program the build runs rather than links, built by the build that runs
+  # it. What it checks is that the steps of a project with its own toolchain
+  # become steps of this one: the tool's compile and link appear in this
+  # build's own progress, and what it wrote is there afterwards.
+  tool:
+    needs: quick
+    runs-on: ubuntu-latest
+    name: a program for this machine, in this graph
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build
+      - run: |
+          cmake -S test/tool -B build/tool -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_LOCK= -DCME_STORE=
+          cmake --build build/tool | tee /tmp/steps.txt
+          cat build/tool/stamp.txt
+          # In this build's steps, not in a build inside one of them.
+          grep -q "cme-stamp: Linking CXX executable" /tmp/steps.txt
+          # And nothing is done a second time.
+          cmake --build build/tool | grep -q "no work to do"
+
   # Whether a library nobody has ported can be used anyway. Everything this
   # one touches is made while it runs: an upstream repository, a directory of
   # ports, a repository of ports. Nothing is downloaded and nothing is in the

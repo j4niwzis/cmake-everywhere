@@ -22,9 +22,15 @@ include_guard(GLOBAL)
 
 # The compiler of the machine doing the building, when it is not the one this
 # build is aimed at. Unset means whichever one CMake finds for itself.
-set(CME_BUILD_MACHINE_C_COMPILER "" CACHE FILEPATH
+#
+# A string rather than a file path, because a compiler may be named rather
+# than pointed at -- "clang++-22" is what a machine calls it, and CMake looks
+# such a name up on PATH. A cache entry of type FILEPATH does not leave it a
+# name: it makes it absolute against wherever the build happens to be, and
+# then CMake is told to compile with a file that was never there.
+set(CME_BUILD_MACHINE_C_COMPILER "" CACHE STRING
     "C compiler for programs this build runs rather than ships")
-set(CME_BUILD_MACHINE_CXX_COMPILER "" CACHE FILEPATH
+set(CME_BUILD_MACHINE_CXX_COMPILER "" CACHE STRING
     "C++ compiler for programs this build runs rather than ships")
 set(CME_BUILD_MACHINE_C_FLAGS "" CACHE STRING
     "Flags for programs this build runs rather than ships")
