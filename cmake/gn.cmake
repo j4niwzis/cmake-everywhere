@@ -99,6 +99,16 @@ function(cme_gn_substitute out text)
   string(REPLACE "@SYSROOT@" "${CMAKE_SYSROOT}" value "${value}")
   string(REPLACE "@PREFIX@" "${CMAKE_INSTALL_PREFIX}" value "${value}")
   string(REPLACE "@BUILD_TYPE@" "${CMAKE_BUILD_TYPE}" value "${value}")
+  # The sysroot, as an item of a GN list of flags or as nothing at all: a
+  # build that has none must not be handed --sysroot= with nothing after
+  # it. GN describes a build for a machine it was told about, and a project
+  # that finds its own sysroot from an NDK it does not have finds none --
+  # which is a compile with no string.h in it.
+  set(cme_gn_sysroot "")
+  if(CMAKE_SYSROOT)
+    set(cme_gn_sysroot "\"--sysroot=${CMAKE_SYSROOT}\",")
+  endif()
+  string(REPLACE "@SYSROOT_FLAG@" "${cme_gn_sysroot}" value "${value}")
   # A GN project has its own name for link-time optimisation and its own
   # default, so the port says which; this only answers whether.
   if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)

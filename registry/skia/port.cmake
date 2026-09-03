@@ -85,6 +85,13 @@ cme_declare_port(
     # No fonts and no text shaping.
     "skia_use_freetype=false"
     "skia_use_fontconfig=false"
+    # Android's own font manager, which reads the system font configuration
+    # through the NDK and includes ICU's headers to do it. It is on by
+    # default for any Android build with freetype, and a sysroot that has
+    # no ICU stops at unicode/uchar.h. A font manager is a feature here,
+    # and this one has not been asked for.
+    "skia_enable_fontmgr_android_ndk=false"
+    "skia_enable_fontmgr_android=false"
     "skia_use_fontations=false"
     "skia_use_harfbuzz=false"
     "skia_use_icu=false"
@@ -110,8 +117,8 @@ cme_declare_port(
     "skia_enable_svg=false"
     "skia_enable_skottie=false"
     "skia_enable_tools=false"
-    "extra_cflags=[@DEP_INCLUDES@]"
-    "extra_ldflags=[@DEP_LIBDIRS@]"
+    "extra_cflags=[@SYSROOT_FLAG@@DEP_INCLUDES@]"
+    "extra_ldflags=[@SYSROOT_FLAG@@DEP_LIBDIRS@]"
   GN_CONFIRM
     "is_official_build=true"
   LICENSE BSD-3-Clause
