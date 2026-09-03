@@ -248,6 +248,50 @@ function(cme_environment_pairs out)
   set(${out} "${pairs}" PARENT_SCOPE)
 endfunction()
 
+# What an optimisation level already turns on, asked of the compiler.
+#
+# "-O3 -ftree-vectorize" and "-O3" are the same build if that level already
+# vectorises, and telling them apart costs a rebuild of everything for a
+# flag that changed nothing. Whether they are the same is not something to
+# have an opinion about: GCC will say, flag by flag --
+#
+#   gcc -Q --help=optimizers -O3
+#     -ftree-vectorize                    [enabled]
+#     -funroll-loops                      [disabled]
+#
+# -- and the answer belongs to that compiler at that version, which is the
+# only place it is true.
+#
+# Clang cannot be asked. Its levels are pipelines of passes rather than sets
+# of switches, and a good many -f flags it accepts do nothing at all; there
+# is no list to get and inventing one would be the guess this is avoiding.
+# So with clang nothing is collapsed and a redundant flag costs a rebuild,
+# which is the safe direction.
+function(cme_optimisation_defaults out compiler level)
+  string(MAKE_C_IDENTIFIER "${compiler}${level}" cme_slot)
+  if(DEFINED CME_OPTIMISATIONS_${cme_slot})
+    set(${out} "${CME_OPTIMISATIONS_${cme_slot}}" PARENT_SCOPE)
+    return()
+  endif()
+  set(cme_said "")
+  if(compiler AND level)
+    execute_process(COMMAND "${compiler}" -Q --help=optimizers "${level}"
+                    OUTPUT_VARIABLE cme_text ERROR_QUIET
+                    RESULT_VARIABLE cme_code)
+    if(cme_code EQUAL 0)
+      string(REPLACE "\n" ";" cme_lines "${cme_text}")
+      foreach(cme_line IN LISTS cme_lines)
+        if(cme_line MATCHES "^ +-f([A-Za-z0-9-]+) +\\[(enabled|disabled)\\]")
+          list(APPEND cme_said "${CMAKE_MATCH_1}=${CMAKE_MATCH_2}")
+        endif()
+      endforeach()
+    endif()
+  endif()
+  set(CME_OPTIMISATIONS_${cme_slot} "${cme_said}" CACHE INTERNAL
+      "What ${compiler} says ${level} turns on")
+  set(${out} "${cme_said}" PARENT_SCOPE)
+endfunction()
+
 # What a set of flags does to an object, as a string two builds can compare.
 #
 # Three things are true of flags and none of them is obvious from the text:
@@ -318,6 +362,18 @@ function(cme_significant_flags out text)
       set(cme_optimisation "${cme_word}")
       continue()
     endif()
+    # A switch the level already sets this way says nothing.
+    if(CME_OPTIMISATION_DEFAULTS AND cme_word MATCHES "^-f(no-)?([A-Za-z0-9-]+)$")
+      set(cme_negated "${CMAKE_MATCH_1}")
+      set(cme_switch "${CMAKE_MATCH_2}")
+      set(cme_wanted "enabled")
+      if(cme_negated)
+        set(cme_wanted "disabled")
+      endif()
+      if("${cme_switch}=${cme_wanted}" IN_LIST CME_OPTIMISATION_DEFAULTS)
+        continue()
+      endif()
+    endif()
     # A switch and the switch that turns it off are one family; so are the
     # settings written -fname=value.
     if(cme_word MATCHES "^-(f|m)(no-)?([^=]+)(=.*)?$")
@@ -351,6 +407,17 @@ function(cme_flags_of out language)
     string(TOUPPER "${CMAKE_BUILD_TYPE}" cme_config)
     string(APPEND cme_text " ${CMAKE_${language}_FLAGS_${cme_config}}")
   endif()
+  # Which level these flags end up at, so the compiler can be asked what it
+  # already turns on there.
+  set(cme_level "")
+  separate_arguments(cme_words UNIX_COMMAND "${cme_text}")
+  foreach(cme_word IN LISTS cme_words)
+    if(cme_word MATCHES "^-O[0-9szg]?$" OR cme_word STREQUAL "-Ofast")
+      set(cme_level "${cme_word}")
+    endif()
+  endforeach()
+  cme_optimisation_defaults(CME_OPTIMISATION_DEFAULTS
+                            "${CMAKE_${language}_COMPILER}" "${cme_level}")
   cme_significant_flags(cme_said "${cme_text}")
   set(${out} "${cme_said}" PARENT_SCOPE)
 endfunction()

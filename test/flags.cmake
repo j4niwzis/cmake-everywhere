@@ -57,6 +57,20 @@ different("-O2 -flto=full" "-O2 -flto=full -fno-lto")
 different("-O2 -march=x86-64-v3" "-O2")
 different("-O2 -fvisibility=hidden" "-O2 -fvisibility=default")
 
+# What the compiler says its level already turns on.
+#
+# With that answer, a flag the level sets the same way says nothing and two
+# builds that differ only by it are one library. Without it -- clang, which
+# has no such answer to give -- every flag counts, which is the safe way to
+# be wrong.
+set(CME_OPTIMISATION_DEFAULTS "tree-vectorize=enabled;unroll-loops=disabled")
+same("-O3 -ftree-vectorize" "-O3")
+same("-O3 -fno-unroll-loops" "-O3")
+different("-O3 -funroll-loops" "-O3")
+different("-O3 -fno-tree-vectorize" "-O3")
+set(CME_OPTIMISATION_DEFAULTS "")
+different("-O3 -ftree-vectorize" "-O3")
+
 if(problems GREATER 0)
   message(FATAL_ERROR "${problems} answers about flags are wrong")
 endif()
