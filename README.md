@@ -1330,6 +1330,17 @@ machine it was built on, and how much of that matters is a judgement:
 | `COMPATIBLE` (default) | what decides whether objects link and behave: the compiler and its major version, the target, the sysroot, the toolchain file, position independence, the C++ standard, the build type |
 | `LOOSE` | only what makes the objects usable at all: the target and which compiler it was |
 
+One thing is in the name in every mode, including the loosest: a digest of
+this repository's own code. What a port says is already part of the entry's
+identity; what *reads* the port decides what a build contains just as much,
+and it is not something about the machine that a build can be forgiving
+about. Without it, a fix to an importer -- one that put objects into an
+archive they had been missing from -- left the name exactly as it was, and a
+build that had just been fixed was answered with the library from before the
+fix, out of a path with `store` in it. The cost is that updating this
+repository rebuilds what it had built; the alternative is a cache that
+answers with the bug you just fixed.
+
 `COMPATIBLE` means a patch release of the same compiler, a changed warning
 flag or a different `-O` is a hit rather than half an hour. In every mode the
 whole environment is recorded next to the library and compared on the way

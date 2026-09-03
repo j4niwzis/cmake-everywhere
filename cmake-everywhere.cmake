@@ -88,6 +88,35 @@ set_property(CACHE CME_STORE_MATCH PROPERTY STRINGS EXACT COMPATIBLE LOOSE)
 
 # Everything about this build that a compiled library could depend on, as
 # name and value, so that a difference can be named rather than counted.
+# The code that decides what a build contains, as one number.
+#
+# Everything else in the environment is about the machine and the toolchain,
+# and none of it changes when this repository does. So a fix to an importer
+# -- one that put objects into an archive they had been missing from -- left
+# the name of the result exactly as it was, and the store answered a build
+# that had just been fixed with the library from before the fix. The same
+# undefined symbols came back, out of a path with `store` in it.
+#
+# What a port says is already part of the name it is kept under. What reads
+# the port is this.
+function(cme_recipe_digest out)
+  get_property(digest GLOBAL PROPERTY CME_RECIPE_DIGEST)
+  if(NOT digest)
+    file(GLOB files "${CME_DIR}/cmake-everywhere.cmake"
+                    "${CME_DIR}/cmake/*.cmake" "${CME_DIR}/cmake/*.py")
+    list(SORT files)
+    set(text "")
+    foreach(file IN LISTS files)
+      file(SHA256 "${file}" one)
+      string(APPEND text "${one}")
+    endforeach()
+    string(SHA256 digest "${text}")
+    string(SUBSTRING "${digest}" 0 16 digest)
+    set_property(GLOBAL PROPERTY CME_RECIPE_DIGEST "${digest}")
+  endif()
+  set(${out} "${digest}" PARENT_SCOPE)
+endfunction()
+
 function(cme_environment_pairs out)
   set(pairs "")
   foreach(name IN ITEMS
@@ -109,6 +138,8 @@ function(cme_environment_pairs out)
     file(SHA256 "${CMAKE_TOOLCHAIN_FILE}" toolchain)
   endif()
   list(APPEND pairs "TOOLCHAIN=${toolchain}")
+  cme_recipe_digest(recipe)
+  list(APPEND pairs "CME=${recipe}")
   set(${out} "${pairs}" PARENT_SCOPE)
 endfunction()
 
@@ -157,6 +188,10 @@ function(cme_environment_key out)
               "${CMAKE_OSX_DEPLOYMENT_TARGET}" "${CMAKE_OSX_ARCHITECTURES}"
               "${toolchain}")
   endif()
+  # In every mode, including the loosest: this is not something about the
+  # machine that a build can be forgiving about.
+  cme_recipe_digest(recipe)
+  list(APPEND parts "${recipe}")
   list(JOIN parts "|" text)
   set(${out} "${CME_STORE_MATCH}|${text}" PARENT_SCOPE)
 endfunction()

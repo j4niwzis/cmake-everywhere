@@ -611,6 +611,51 @@ function(cme_gn_import port description)
         target_link_libraries(${target} PRIVATE ${other})
       endif()
     endforeach()
+
+    # A GN source_set is not a CMake object library.
+    #
+    # In GN the objects of a source_set go to whatever finally links,
+    # however deep the chain: a static_library that depends on a source_set
+    # that depends on another source_set contains all of it. CMake says the
+    # opposite in as many words -- the object files of a directly linked
+    # object library are used, and "those object files are not transitively
+    # propagated to consumers of the left-hand-side target".
+    #
+    # So Skia's //:skia got the objects of :gpu, which is a source_set, and
+    # not those of :gpu_shared one dep further down, and the program ended
+    # with undefined references inside Skia to Skia. What a group carries --
+    # a system library, in Skia's case freetype -- was lost the same way,
+    # for the same distance.
+    #
+    # Everything under a target that links, through source_sets and groups,
+    # is therefore linked into it directly. The walk stops at anything that
+    # is an archive of its own, which is linked the ordinary way and brings
+    # what is under it along.
+    if(kind STREQUAL "STATIC_LIBRARY" OR kind STREQUAL "SHARED_LIBRARY"
+       OR kind STREQUAL "EXECUTABLE")
+      set(pending "${${prefix}_DEPS}")
+      set(seen "")
+      while(pending)
+        list(POP_FRONT pending current)
+        if(current IN_LIST seen)
+          continue()
+        endif()
+        list(APPEND seen "${current}")
+        set(under "GN_TARGET_${current}")
+        set(under_type "${${under}_TYPE}")
+        if(NOT under_type STREQUAL "source_set"
+           AND NOT under_type STREQUAL "group")
+          continue()
+        endif()
+        if(TARGET ${port}_${current})
+          get_target_property(under_kind ${port}_${current} TYPE)
+          if(NOT under_kind STREQUAL "UTILITY")
+            target_link_libraries(${target} PRIVATE ${port}_${current})
+          endif()
+        endif()
+        list(APPEND pending ${${under}_DEPS})
+      endwhile()
+    endif()
   endforeach()
 endfunction()
 
