@@ -28,7 +28,9 @@ cme_declare_port(
   SYSTEM_PKGCONFIG "x264:x264::x264"
   LINK_NAMES "x264=x264::x264"
   TARGETS x264::x264
-  CHECK_HEADER x264.h
+  # In this order, because x264.h says so and does not do it itself: "You
+  # must include stdint.h before x264.h."
+  CHECK_HEADER stdint.h x264.h
   # On x86 it assembles its own code and says so if it cannot: "Found no
   # assembler. Minimum version is nasm-2.13." On aarch64 the assembly is
   # .S files, which the compiler takes.

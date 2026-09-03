@@ -1567,13 +1567,18 @@ function(cme_declare_port)
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
           PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
-          CHECK_HEADER ARRANGEMENT SYSTEM_HEADER_TARGET CONFIGURE
+          ARRANGEMENT SYSTEM_HEADER_TARGET CONFIGURE
           INSTALLED_INCLUDE SOURCE_DIR MACHINE
           # What a crate is built as: which package of a workspace, which
           # manifest, which target triple, where its generated headers land,
           # and whether the features it has by default are wanted.
           CARGO_PACKAGE CARGO_MANIFEST CARGO_TARGET CARGO_INCLUDE
           CARGO_NO_DEFAULT_FEATURES)
+  # CHECK_HEADER takes more than one, for a header that has to be included
+  # after another: x264.h says "You must include stdint.h before x264.h" and
+  # does not do it itself, so a check that includes it alone reports a
+  # library that cannot be used as a library whose types are missing.
+  #
   # SYSTEM_CODE is a program, and a program has semicolons in it.
   # cmake_parse_arguments splits every argument on semicolons, so a
   # one-value keyword would keep the text up to the first statement and drop
@@ -1583,7 +1588,7 @@ function(cme_declare_port)
            PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG PKGCONFIG_NAMES
            SYSTEM_CODE
            EXCLUDES LICENSE
-           LINK_NAMES TARGETS SYSTEMS PROGRAMS
+           LINK_NAMES TARGETS SYSTEMS PROGRAMS CHECK_HEADER
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS
            CONFIGURE_ARGS CONFIGURE_CROSS INSTALLED_TARGETS PATCHES TREES)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})

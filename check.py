@@ -36,8 +36,34 @@ def declaration_keywords():
     body = body[:body.index("endfunction")]
     words = set()
     for match in re.finditer(r"set\((?:one|many)\s+(.*?)\)", body, re.S):
-        words |= set(match.group(1).split())
-    return words
+        # Without what the comments in that list say. A comment written
+        # between two keywords is prose, and reading it as keywords makes
+        # every word in it one: a note about x264.h and stdint.h made both
+        # of those keywords, and the port that named them as headers was
+        # read as naming no headers at all.
+        text = "\n".join(line for line in match.group(1).splitlines()
+                         if not line.strip().startswith("#"))
+        words |= set(text.split())
+    # And nothing that is not shaped like a keyword. Every keyword here is
+    # upper case, so prose that gets in another way -- a comment written on
+    # the same line as a keyword, a word left behind by an edit -- is not
+    # quietly taken for one.
+    return {word for word in words if re.fullmatch(r"[A-Z][A-Z0-9_]*", word)}
+
+
+def declaration(path, keywords):
+    """The arguments of the cme_declare_port call in a file, by keyword."""
+    call = re.search(r"cme_declare_port\s*\((.*?)\n\)", code(path), re.S)
+    if not call:
+        return None
+    fields, key = {}, None
+    for token in shlex.split(call.group(1)):
+        if token in keywords:
+            key = token
+            fields.setdefault(key, [])
+        elif key:
+            fields[key].append(token)
+    return fields
 
 
 def ports():
@@ -45,19 +71,9 @@ def ports():
     keywords = declaration_keywords()
     found = []
     for path in sorted(glob.glob("registry/*/port.cmake")):
-        text = code(path)
-        call = re.search(r"cme_declare_port\s*\((.*?)\n\)", text, re.S)
-        if not call:
+        fields = declaration(path, keywords)
+        if fields is None:
             continue
-        tokens = shlex.split(call.group(1))
-        fields = {}
-        key = None
-        for token in tokens:
-            if token in keywords:
-                key = token
-                fields.setdefault(key, [])
-            elif key:
-                fields[key].append(token)
         found.append({
             "port": path.split("/")[1],
             "package": (fields.get("PROVIDES") or [path.split("/")[1]])[0],
@@ -71,7 +87,7 @@ def ports():
             # The header a consumer includes, when the port names one. A
             # port that does not is checked by linking alone, which is the
             # weaker question.
-            "header": (fields.get("CHECK_HEADER") or [""])[0],
+            "header": ";".join(fields.get("CHECK_HEADER", [])),
             # What the machine has to have been told, when the library needs
             # something no build can find out on its own.
             "arrangement": (fields.get("ARRANGEMENT") or [""])[0],
@@ -187,6 +203,20 @@ for entry in ports():
         if not entry[field]:
             print(f"  {entry['port']} says nothing about its {field}")
             problems += 1
+# A keyword given nothing. cme_parse_arguments leaves such a keyword with no
+# value at all, which reads in the port exactly like the value it was meant
+# to have: a port said CHECK_HEADER and named two headers, and because the
+# words it named had been taken for keywords elsewhere, it was read as a port
+# that names no header, and the check that would have caught the mistake was
+# the check that stopped running.
+keywords = declaration_keywords()
+for path in sorted(glob.glob("registry/*/port.cmake")):
+    fields = declaration(path, keywords) or {}
+    for field, values in sorted(fields.items()):
+        if not values:
+            print(f"  {path}: {field} is given nothing")
+            problems += 1
+
 _, left_out = sampled(ports())
 if left_out:
     print(f"  {len(left_out)} ports are family members and are not each given a "

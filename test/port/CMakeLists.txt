@@ -42,11 +42,18 @@ endif()
 # perfectly well and cannot be used: xz keeps its API directory PRIVATE and
 # hands it out at install time, so a check that only links says yes to a
 # library nothing can include.
+# More than one, where a header says it has to be included after another:
+# x264.h documents that stdint.h comes first and does not include it, so a
+# check that includes it alone reports a library that cannot be used as a
+# library whose types do not exist.
 set(cme_port_source "${CMAKE_CURRENT_SOURCE_DIR}/main.cc")
 if(CME_PORT_INCLUDE)
   set(cme_port_source "${CMAKE_CURRENT_BINARY_DIR}/include-check.cc")
-  file(WRITE "${cme_port_source}"
-    "#include <cstdio>\n#include <${CME_PORT_INCLUDE}>\n"
+  set(cme_included "#include <cstdio>\n")
+  foreach(cme_header IN LISTS CME_PORT_INCLUDE)
+    string(APPEND cme_included "#include <${cme_header}>\n")
+  endforeach()
+  file(WRITE "${cme_port_source}" "${cme_included}"
     "int main() { std::printf(\"included and linked\\n\"); return 0; }\n")
 endif()
 
