@@ -125,7 +125,11 @@ NOTES = {
 # Boost::asio itself is all three.
 #
 # Which of them Boost::asio is made of is a feature here, and the two that
-# cost another library are off unless they are asked for.""",
+# cost another library are off unless they are asked for. Linking
+# Boost::asio_core instead would be the other way to say it, but it is not a
+# way anything gets to choose: Beast names Boost::asio, and a project that
+# uses Beast over a socket was building Boost.Context -- assembly per
+# architecture -- for coroutines nothing in it calls.""",
     "beast": """# Beast's upstream target links Boost::asio, the aggregate target, but uses
 # only its core. Keeping that spelling here would build Boost.Context and
 # Boost.Date_Time for coroutine and timer parts Beast never calls, so the
@@ -273,6 +277,12 @@ def target(module, defines):
 
 
 def write(path, text):
+    # One blank line between things, never two. A section that is empty --
+    # a library with no features, no adaptation, nothing to patch -- leaves
+    # the blank line before it and the one after it next to each other, and
+    # what that produced was a file this script could not write twice the
+    # same way. The rule is about the output, so it is applied to the output.
+    text = re.sub(r"\n{3,}", "\n\n", text)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as file:
         file.write(text)
@@ -413,7 +423,14 @@ cme_port_feature({core} {feature}
   OPTIONS "{switch} ON"
   TARGETS Boost::{part_target})
 """
-        write(f"registry/{core}/{patch}", open(f"registry/{port(module)}/{patch}").read())
+        # The patch lives with the port it is applied to, which is the core
+        # one this writes. Earlier it lived beside the library's own port and
+        # was copied across, and a tree where it has already moved is a tree
+        # this could not be run in twice.
+        home = f"registry/{core}/{patch}"
+        if not os.path.exists(home):
+            home = f"registry/{port(module)}/{patch}"
+        write(f"registry/{core}/{patch}", open(home).read())
         write(f"registry/{core}/port.cmake", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.
 #
 # Boost.{key(module).title()}, which upstream builds as four targets: this one, a part
@@ -664,7 +681,12 @@ endfunction()
     # the waiting is what keeps one broken leaf from turning into a hundred
     # and fifty red jobs: what is built on it is skipped instead, which is
     # the truth about what was and was not checked.
-    def part_jobs(module):
+    def part_jobs(module, chosen=None):
+        # A part waits for the libraries its feature brings in, and a
+        # workflow that is a sample of the whole set has jobs for some of
+        # them and not others. Waiting for a job that is not in the file is
+        # not a wait: the run is refused before it starts, which is what
+        # happened to the sample when asio's parts began naming Context.
         split = SPLIT.get(module)
         if not split:
             return []
@@ -680,7 +702,8 @@ endfunction()
         for feature, part_target, brings, _ in split[2]:
             part = f"{port(module)}-{feature.replace(chr(95), chr(45))}"
             needs = [f"{port(module)}-core"]
-            needs += [port(name) for name in brings if defines.get(name)]
+            needs += [port(name) for name in brings if defines.get(name)
+                      and (chosen is None or port(name) in chosen)]
             waits = ""
             if needs:
                 waits = "    needs: [" + ", ".join(sorted(needs)) + "]\n"
@@ -746,7 +769,7 @@ endfunction()
             # A library that is more than one port is checked part by part.
             # The core is the interesting one: it is what says that asking
             # for it builds neither Boost.Context nor Boost.Date_Time.
-            for job in part_jobs(module):
+            for job in part_jobs(module, chosen):
                 kept.append(job)
         write(f".github/workflows/{name}.yml", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.
 #

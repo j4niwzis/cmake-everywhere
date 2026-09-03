@@ -114,7 +114,7 @@ jobs:
           package: boost_asio_deadline_timer
           target: Boost::asio_deadline_timer
   boost-asio-spawn:
-    needs: [boost-asio-core, boost-context]
+    needs: [boost-asio-core]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
