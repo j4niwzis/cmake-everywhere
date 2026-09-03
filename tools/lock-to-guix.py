@@ -92,14 +92,25 @@ def contents(directory, commit=None):
 def extension(url):
     """What the file is, when the URL says so.
 
-    A name without one reaches Guix's unpacker as a name it cannot read, and
-    the answer is not to guess: a URL that ends in nothing recognisable gets
-    no extension here and the archive keeps whatever name the fetch gave it.
+    A name without one reaches Guix's unpacker as a name it cannot read --
+    it copies the archive into the build directory and reports success --
+    and the answer is not to guess: a URL that says nothing about the format
+    gets no extension here and the archive keeps whatever name the fetch
+    gave it.
+
+    Two URLs say it two ways. Most end in the name of the file. GitHub's
+    codeload ends in the revision and names the format in the path before
+    it, https://codeload.github.com/google/skia/tar.gz/9d07e5ba..., which is
+    the URL saying so just as plainly.
     """
     for suffix in (".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tgz",
                    ".zip", ".tar"):
         if url.endswith(suffix):
             return suffix
+    for part in reversed(url.split("/")):
+        if part in ("tar.gz", "tar.xz", "tar.bz2", "tar.zst", "tgz", "zip",
+                    "tar"):
+            return "." + part
     return ""
 
 

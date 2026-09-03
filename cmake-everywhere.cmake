@@ -5278,8 +5278,22 @@ is being built at" FORCE)
   # one published nowhere a system would carry it from -- and demanding it of
   # the system would stop every strict build over something no machine was
   # ever going to have.
+  #
+  # Neither is one the build was told to build: CME_SYSTEM_SKIA=OFF beside
+  # CME_SYSTEM=ALWAYS is not a contradiction, it is a general rule and a
+  # stated exception to it -- "everything from this distribution, except this
+  # one, whose copy here is too old". Refusing that made the exception
+  # impossible to state, and a rule that cannot be excepted is a rule
+  # projects work around instead of using.
   cme_port_field(source_only ${port} SOURCE_ONLY)
-  if(CME_SYSTEM STREQUAL "ALWAYS" AND NOT source_only)
+  string(TOUPPER "${package}" cme_asked_upper)
+  set(cme_asked_for_port FALSE)
+  if(DEFINED CME_SYSTEM_${cme_asked_upper} AND
+     NOT CME_SYSTEM_${cme_asked_upper})
+    set(cme_asked_for_port TRUE)
+  endif()
+  if(CME_SYSTEM STREQUAL "ALWAYS" AND NOT source_only AND
+     NOT cme_asked_for_port)
     message(FATAL_ERROR
       "cmake-everywhere: CME_SYSTEM is ALWAYS and the system has no "
       "${package}")
