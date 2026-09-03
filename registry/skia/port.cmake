@@ -137,6 +137,14 @@ cme_port_feature(skia egl
   GN_ARGS "skia_use_egl=true"
   GN_CONFIRM "skia_use_egl=true")
 
+# The other way to reach it, which is X11's: a client whose context was made
+# through GLX needs a Skia assembled through GLX.
+cme_port_feature(skia x11
+  SUMMARY "Ganesh on GL, reaching it through GLX"
+  IMPLIES gl
+  GN_ARGS "skia_use_x11=true"
+  GN_CONFIRM "skia_use_x11=true")
+
 cme_port_feature(skia vulkan
   SUMMARY "the Ganesh backend on Vulkan"
   GN_ARGS "skia_enable_ganesh=true" "skia_use_vulkan=true"
@@ -190,6 +198,29 @@ cme_port_feature(skia freetype
           # those headers and linked against the one built here.
           "skia_system_freetype2_include_path=\"@INCLUDE:freetype@\""
   GN_CONFIRM "skia_use_system_freetype2=true")
+
+# How Skia reaches GL, which it will not work out for itself.
+#
+# Its own build picks the file that assembles a GL interface by asking, in
+# order, whether this is Android, whether EGL was asked for, whether WebGL
+# was, and whether this is Linux with X11 -- and if none of those, it takes
+# GrGLMakeNativeInterface_none.cpp, which returns nothing. A build with
+# skia_use_gl=true and no way to reach GL therefore compiles, links, and
+# hands back a null interface at run time: no context, no frame, and on
+# Wayland no window either, because a window is not shown until something
+# has been drawn into it.
+#
+# Only where the question arises. Android, macOS and Windows each have one
+# answer and Skia takes it without being told.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+  cme_port_rule(skia WITH gl AT_LEAST_ONE_OF egl x11)
+endif()
+# Skia asks about EGL before it asks about X11 and takes the first answer,
+# so a build told both is a build where one of them was ignored. Which one
+# matters: a GL context made through GLX and an interface assembled through
+# EGL do not fit together, and what that looks like is a null interface at
+# run time rather than an error at build time.
+cme_port_rule(skia AT_MOST_ONE_OF egl x11)
 
 # A font database is not a font rasteriser: fontconfig says which file, and
 # FreeType turns it into glyphs.

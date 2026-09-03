@@ -1555,6 +1555,7 @@ endfunction()
 #   cme_port_rule(skia AT_LEAST_ONE_OF gl vulkan)
 #   cme_port_rule(skia EXACTLY_ONE_OF a b c)
 #   cme_port_rule(skia WITHOUT zlib DEPENDS miniz)
+#   cme_port_rule(skia WITH gl AT_LEAST_ONE_OF egl x11)
 #
 # The counted ones cannot all be checked at the same moment: that a feature
 # is missing is only true once nothing more can ask for it, so those are
@@ -2713,6 +2714,31 @@ function(cme_check_closed_rules port)
   foreach(kind IN LISTS kinds)
     get_property(members GLOBAL PROPERTY CME_RULE_${port}_${index})
     math(EXPR index "${index} + 1")
+    # A feature that needs one of several others, and only when it is on
+    # itself. Skia's GL backend is the case: it has to be told how to reach
+    # GL -- EGL or GLX -- and with neither, Skia's own build quietly ends
+    # the chain at GrGLMakeNativeInterface_none.cpp, which returns nothing.
+    if(kind STREQUAL "WITH")
+      set(rest "${members}")
+      list(POP_FRONT rest trigger word)
+      if(NOT trigger IN_LIST enabled OR NOT word STREQUAL "AT_LEAST_ONE_OF")
+        continue()
+      endif()
+      set(on "")
+      foreach(feature IN LISTS rest)
+        if(feature IN_LIST enabled)
+          list(APPEND on "${feature}")
+        endif()
+      endforeach()
+      if(NOT on)
+        list(JOIN rest ", " listed)
+        message(FATAL_ERROR
+          "cmake-everywhere: ${port}'s ${trigger} needs one of ${listed}, "
+          "and this build asked for none of them. Ask for one with "
+          "find_package COMPONENTS, or cme_features.")
+      endif()
+      continue()
+    endif()
     if(NOT kind STREQUAL "AT_LEAST_ONE_OF" AND NOT kind STREQUAL "EXACTLY_ONE_OF")
       continue()
     endif()
