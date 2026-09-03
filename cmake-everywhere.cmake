@@ -1832,7 +1832,17 @@ endfunction()
 # Two shapes of port produce targets two ways. A GN project is imported under
 # names that begin with the port; a CMake project is added as a subdirectory,
 # and its targets are the ones whose source directory is inside its checkout.
-function(cme_store_owns out port target)
+# Whether a target belongs to the library being kept.
+#
+# The port's source directory is the answer, and it used to be read from
+# ${<port>_SOURCE_DIR} -- a variable CPM sets in the scope that called it,
+# which is not this one. Empty, the test fell through and every target the
+# library links looked like somebody else's: openal-soft's own bundled fmt
+# was written into the entry as alsoft::fmt, and a build reading that entry
+# was told to link a target nothing defines.
+#
+# So the root is passed in, taken from the target actually being kept.
+function(cme_store_owns out port target root)
   set(${out} FALSE PARENT_SCOPE)
   # Through an alias to the target it names. A library links what its author
   # called it -- openal-soft links alsoft::fmt, which is an alias for a
@@ -1850,6 +1860,10 @@ function(cme_store_owns out port target)
     return()
   endif()
   get_target_property(where ${target} SOURCE_DIR)
+  if(where AND root AND where MATCHES "^${root}")
+    set(${out} TRUE PARENT_SCOPE)
+    return()
+  endif()
   if(where AND ${port}_SOURCE_DIR AND
      where MATCHES "^${${port}_SOURCE_DIR}")
     set(${out} TRUE PARENT_SCOPE)
@@ -1868,6 +1882,12 @@ endfunction()
 function(cme_store_flatten port target out_archives out_links)
   set(archives "${${out_archives}}")
   set(links "${${out_links}}")
+  # Where this library's own targets live, which is where the one being kept
+  # lives. Anything under it is part of the library.
+  get_target_property(root ${target} SOURCE_DIR)
+  if(NOT root)
+    set(root "")
+  endif()
   get_target_property(public_linked ${target} INTERFACE_LINK_LIBRARIES)
   get_target_property(private_linked ${target} LINK_LIBRARIES)
   foreach(name public_linked private_linked)
@@ -1886,16 +1906,26 @@ function(cme_store_flatten port target out_archives out_links)
       endif()
       continue()
     endif()
+    # An alias is resolved to ask whose target this is, and the name that
+    # goes into the entry is the one that was written here.
+    #
+    # They are not the same name and only one of them is any use to whoever
+    # reads the entry: skiff-widgets links skiff::skiff, whose target is
+    # called skiff, and an entry that says "skiff" says a bare name -- which
+    # is not a namespaced target, so nothing looks for the package that
+    # would define it, and a module library it should have brought along is
+    # simply absent.
+    set(written "${item}")
     get_target_property(aliased ${item} ALIASED_TARGET)
     if(aliased)
       set(item "${aliased}")
     endif()
-    cme_store_owns(mine ${port} ${item})
+    cme_store_owns(mine ${port} ${item} "${root}")
     if(NOT mine)
       # Another library in the registry, or something the consumer has.
       # Named rather than kept, and resolved again by whoever reads this.
-      if(NOT item IN_LIST links)
-        list(APPEND links "${item}")
+      if(NOT written IN_LIST links)
+        list(APPEND links "${written}")
       endif()
       continue()
     endif()
@@ -2196,6 +2226,37 @@ function(cme_store_write port package entry)
       endif()
       string(APPEND text
         "target_compile_features(${alias} INTERFACE cxx_std_${standard})\n")
+      # And whether those units say `import std`. CMake compiles them in a
+      # target of its own, and that target has to be told -- otherwise the
+      # first line of the first interface unit is a module it cannot find,
+      # in a build that has the standard library module right there.
+      get_target_property(module_std ${target} CXX_MODULE_STD)
+      if(NOT module_std)
+        set(module_std "${CMAKE_CXX_MODULE_STD}")
+      endif()
+      if(module_std)
+        string(APPEND text
+          "set_property(TARGET ${alias} PROPERTY CXX_MODULE_STD ON)\n")
+      endif()
+
+      # What those units are compiled with, which is not what a consumer of
+      # the library is compiled with.
+      #
+      # CMake compiles an imported library's interface units in a target of
+      # its own, and that target reads its own properties: this is the set
+      # cmExportFileGenerator writes for an installed module library --
+      # IMPORTED_CXX_MODULES_INCLUDE_DIRECTORIES and the rest. Setting only
+      # the INTERFACE_ properties describes the consumer and says nothing
+      # about the compile that has to happen first, which is why an entry
+      # written that way failed on `import std` and then, once told about
+      # that, on the library's own module.
+      string(APPEND text
+        "set_target_properties(${alias} PROPERTIES\n"
+        "  IMPORTED_CXX_MODULES_INCLUDE_DIRECTORIES \"${includes}\"\n"
+        "  IMPORTED_CXX_MODULES_COMPILE_DEFINITIONS \"${defines}\"\n"
+        "  IMPORTED_CXX_MODULES_COMPILE_OPTIONS \"${options}\"\n"
+        "  IMPORTED_CXX_MODULES_COMPILE_FEATURES \"cxx_std_${standard}\"\n"
+        "  IMPORTED_CXX_MODULES_LINK_LIBRARIES \"${rest}\")\n")
       string(APPEND text
         "target_sources(${alias} INTERFACE\n"
         "  FILE_SET cme_modules TYPE CXX_MODULES\n"
