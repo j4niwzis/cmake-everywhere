@@ -341,6 +341,34 @@ cme_port_feature(skia fontmgr-directory
   IMPLIES freetype
   GN_ARGS "skia_enable_fontmgr_custom_directory=true")
 
+# The fonts an Android device already has.
+#
+# Every Android carries a font configuration -- /system/etc/fonts.xml -- and
+# the families it names, Noto CJK among them. A program that ships its own
+# copies of those is shipping a second copy of something the machine has:
+# ten megabytes of a package, for Japanese and Korean alone.
+#
+# This is the reader of that configuration. It parses XML, which is why it
+# brings expat, and it is built with FreeType like every other font manager
+# here. The other one Skia offers -- the NDK reader -- asks ICU for character
+# properties, and a sysroot without ICU stops at unicode/uchar.h; this one
+# does not.
+#
+# Named after the platform, so it is on wherever it means anything and
+# absent everywhere else: nothing asks for it and nothing has to.
+cme_port_feature(skia android
+  SUMMARY "the font manager that reads Android's own font configuration"
+  IMPLIES freetype
+  DEPENDS expat
+  GN_ARGS "skia_enable_fontmgr_android=true" "skia_use_expat=true"
+  GN_CONFIRM "skia_enable_fontmgr_android=true"
+  SYSTEM_CODE "#include <skia/ports/SkFontMgr_android.h>
+int main() {
+  sk_sp<SkFontMgr> (*fn)(const SkFontMgr_Android_CustomFonts *) =
+      &SkFontMgr_New_Android;
+  return fn == nullptr;
+}")
+
 # PDF streams are deflated, so this is zlib whether it was asked for or not.
 cme_port_feature(skia pdf
   SUMMARY "the PDF backend"
@@ -358,6 +386,94 @@ cme_port_feature(skia svg
 cme_port_feature(skia skottie
   SUMMARY "the Lottie animation module"
   GN_ARGS "skia_enable_skottie=true")
+
+# A font manager with nothing in it.
+#
+# Every program that draws text needs one, and a program that carries its own
+# faces and asks for none of the system's still needs something to hand them
+# to. This is that: no families, no configuration, no FreeType even -- the
+# faces come from SkFontMgr_New_Custom_Data or from the caller.
+cme_port_feature(skia fontmgr-empty
+  SUMMARY "a font manager that offers nothing, for fonts the caller provides"
+  GN_ARGS "skia_enable_fontmgr_custom_empty=true"
+  SYSTEM_CODE "#include <skia/ports/SkFontMgr_empty.h>
+int main() {
+  sk_sp<SkFontMgr> (*fn)() = &SkFontMgr_New_Custom_Empty;
+  return fn == nullptr;
+}")
+
+# Fonts compiled into the library.
+#
+# The same manager, given faces at build time rather than at run time. What
+# it is for is a program that must draw text with no filesystem to read from
+# -- which is every WebAssembly build that does not want to fetch a font
+# before it can draw a letter.
+cme_port_feature(skia fontmgr-embedded
+  SUMMARY "a font manager whose faces are built into the library"
+  IMPLIES freetype
+  GN_ARGS "skia_enable_fontmgr_custom_embedded=true")
+
+# Android's own image decoders, which are the platform's rather than Skia's.
+#
+# A phone already decodes JPEG, PNG, WebP and HEIF, and a program that asks
+# the platform to do it is a program that does not carry three decoders. It
+# needs the NDK's imagedecoder, which is API 30 and later.
+# It means something on Android and nowhere else, and it is a feature rather
+# than part of the android one because a build may want the system'''s font
+# configuration without handing it the decoding as well: the platform
+# decoders are API 30, and this project'''s floor is lower.
+cme_port_feature(skia ndk-images
+  SUMMARY "decoding images through Android's own decoders"
+  GN_ARGS "skia_use_ndk_images=true"
+  SYSTEM_CODE "#include <skia/ports/SkImageGeneratorNDK.h>
+int main() {
+  auto fn = &SkImageGeneratorNDK::MakeFromEncodedNDK;
+  return fn == nullptr;
+}")
+
+# Skia'''s own answer to "make it smaller".
+#
+# It is not a compiler flag: it turns off code paths Skia keeps for speed --
+# specialisations, unrolled loops, a raster pipeline stage per format -- and
+# what comes out is a smaller library that draws the same pictures more
+# slowly. Worth it where the library is downloaded rather than installed.
+cme_port_feature(skia optimize-size
+  SUMMARY "Skia built for size rather than for speed"
+  GN_ARGS "skia_enable_optimize_size=true"
+  GN_CONFIRM "skia_enable_optimize_size=true")
+
+# What this port does not offer, and what each would take.
+#
+# A port that says nothing about a thing it does not have is indistinguishable
+# from a port whose author did not know about it. Skia declares a hundred and
+# twenty-eight options; these are the ones a consumer might reasonably look
+# for here and not find, with the reason.
+#
+#   avif, jxl, gif, raw    Skia decodes these through libavif, libjxl, wuffs
+#                          and dng_sdk with piex. Each is a library this
+#                          registry has no port for, and a feature that
+#                          cannot be built is worse than a feature that is
+#                          named as absent.
+#   text shaping           SkShaper and SkParagraph need harfbuzz for shaping
+#                          and one of icu, icu4x or libgrapheme for the
+#                          Unicode properties. Four ports, and a decision
+#                          about which Unicode backend a registry should
+#                          prefer, which is not a decision to make in a
+#                          hurry.
+#   fontations             A font backend written in Rust, built with cargo.
+#                          Nothing else here needs a Rust toolchain.
+#   dawn, angle            Each is a graphics stack of its own, vendored into
+#                          Skia'''s externals. Ganesh with GL or Vulkan, and
+#                          Graphite, are what this port offers instead.
+#   metal, direct3d, xps   The backends and the document format of systems
+#   fontmgr-win, mac       nothing here builds for. They are not refused on
+#                          principle -- there is simply no machine in this
+#                          registry'''s checks that could say whether they
+#                          work, and an untested feature is a promise nobody
+#                          has kept.
+#   ffmpeg, lua            Skottie can read video through ffmpeg and Skia has
+#                          Lua bindings. Both are modules for tools rather
+#                          than for a library a program links.
 
 function(cme_adapt_skia source binary)
   # Skia includes itself as "include/core/SkCanvas.h" -- a path relative to
