@@ -1,6 +1,5 @@
-# Nothing missing upstream either: opus exports Opus::opus. What is left here
-# is the same list -- where to find it, what it answers to, what it is under
-# -- which is the shape a port keeps once it has nothing to fix.
+# Almost nothing missing upstream: opus exports Opus::opus. The variables here
+# are for consumers that predate it.
 cme_declare_port(
   NAME opus
   PROVIDES Opus opus OPUS

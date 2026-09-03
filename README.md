@@ -559,15 +559,17 @@ port that is one should say it in its first line, so nobody is surprised.
 The same ordering applies to what upstream should do, which is the point of
 the registry: a library that ships its own CMake needs no overlay at all.
 
-## The point is for a port to get thin
+## The point is for this to shrink
 
 A library that ships CMake, resolves its own dependencies instead of calling
 bare `find_package` and hoping, and exports namespaced targets needs nothing
-from this registry to *build*. That combination -- CMake plus CPM.cmake plus
-exported targets -- is what this argues for, and it is about thirty lines of
-work for a library to adopt.
+from this registry. You write `CPMAddPackage` or `find_package` and it works,
+in your project and in every project that depends on yours. That combination
+-- CMake plus CPM.cmake plus exported targets -- is what this argues for, and
+it is about thirty lines of work for a library to adopt.
 
-So most of a port is a note about one of three things being absent upstream:
+So every port here is a note about exactly one of three things being absent
+upstream:
 
 | | what is missing | what the registry does |
 | --- | --- | --- |
@@ -575,32 +577,19 @@ So most of a port is a note about one of three things being absent upstream:
 | 2 | CMake, but dependencies are looked for with bare `find_package` | the provider answers those calls |
 | 3 | CMake, but no namespaced targets and no exported config | an adapter gives the result the names its consumers use |
 
-Those three shrink to nothing as upstreams improve, and a port deleted for
-that reason is this repository working rather than losing.
+Of the eight ports here, `ogg` and `opus` are already close to deletable:
+they export `Ogg::ogg` and `Opus::opus` properly, and all that is left is
+legacy variables that older revisions of *other* libraries read. `minimp3` is
+case 1. The rest are case 2, case 3, or both.
 
-But a port is not only those three, and this is worth being clear about,
-because it is easy to think a well-behaved library needs no entry here at
-all. What remains even when nothing is missing:
+A port deleted because upstream now ships CMake and declares its own
+dependencies is this repository working, not this repository losing. The
+success condition is an empty `registry/`.
 
-* **Features.** A library has its own options -- `WITH_OGG`, `PNG_SHARED` --
-  and nothing in it maps them to a name shared with other libraries, knows
-  that one implies another, brings a dependency into *this* resolution when
-  one is on, or says how to tell whether a copy somebody else built has it.
-* **Versions with digests.** An archive and a hash of it, so a build is the
-  same build tomorrow.
-* **Where it can be found instead.** CMake has no `FindOgg`, so somebody has
-  to say that the pkg-config module `ogg` is this target -- however good
-  libogg's own CMake is.
-* **What it answers to.** A bare `-lpng` finds whatever is installed, and
-  only the registry can say which target that name means here.
-* **The names it is known by.** `Ogg`, `ogg`, `OGG`, `SndFile`, `sndfile`.
-* **What it is under**, so a project can refuse a licence it cannot carry.
-* **Variables its consumers read.** Exporting `Freetype::Freetype` correctly
-  does not set the `FREETYPE_LIBRARIES` that some *other* library reads.
-
-`ogg` and `opus` are the shape a finished port has: no overlay, no adapter
-worth the name, and a dozen lines of the list above. That is the success
-condition -- ports that are thin, not a registry that is empty.
+Ports themselves have the same ladder: an overlay that wraps another build
+system is worth less than one that builds the library with CMake, and a
+generated CMake build is how a large project gets there without the lists
+rotting. See [how good a port is](#how-good-a-port-is).
 
 ## What is here
 

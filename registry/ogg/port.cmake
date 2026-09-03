@@ -1,7 +1,6 @@
-# Nothing missing upstream: libogg ships CMake and exports Ogg::ogg. This is
-# what a finished port looks like -- where to find it, what it answers to,
-# what it is under, and the variables that other libraries read. None of that
-# is libogg's job and none of it goes away as libogg improves.
+# Almost nothing missing upstream: libogg exports Ogg::ogg properly. This port
+# exists for the legacy variables that older revisions of FLAC and libsndfile
+# read, and should be deletable.
 cme_declare_port(
   NAME ogg
   PROVIDES Ogg ogg OGG
