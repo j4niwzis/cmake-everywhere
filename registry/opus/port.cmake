@@ -1,0 +1,22 @@
+# Almost nothing missing upstream: opus exports Opus::opus. The variables here
+# are for consumers that predate it.
+cme_declare_port(
+  NAME opus
+  PROVIDES Opus opus OPUS
+  VERSION 1.5.2
+  GITHUB_REPOSITORY xiph/opus
+  GIT_TAG v1.5.2
+  OPTIONS
+    "OPUS_BUILD_PROGRAMS OFF"
+    "OPUS_BUILD_TESTING OFF"
+    "OPUS_BUILD_SHARED_LIBRARY OFF"
+)
+
+function(cme_adapt_opus source binary)
+  cme_export_variable(Opus OPUS_FOUND TRUE)
+  cme_export_variable(Opus OPUS_LIBRARY Opus::opus)
+  cme_export_variable(Opus OPUS_LIBRARIES Opus::opus)
+  cme_export_variable(Opus OPUS_INCLUDE_DIR "${source}/include")
+  cme_export_variable(Opus OPUS_INCLUDE_DIRS "${source}/include")
+  cme_export_variable(Opus OPUS_VERSION 1.5.2)
+endfunction()
