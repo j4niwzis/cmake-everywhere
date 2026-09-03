@@ -61,6 +61,74 @@ function(cme_configure_environment out)
   set(${out} "${pairs}" PARENT_SCOPE)
 endfunction()
 
+# Where the libraries this port was built against are, for a script that
+# looks for them on the machine.
+#
+# FFmpeg asked for libx264 the only way its configure knows -- pkg-config,
+# or a header and a library on the compiler's own paths -- and a library
+# this build just built is on neither. What answers that is the same thing
+# the GN ports are handed: the include and library directories of what this
+# port depends on, as flags.
+function(cme_configure_dependency_flags port out_cflags out_ldflags)
+  cme_gn_dependency_ports(${port} cme_deps)
+  set(cme_includes "")
+  set(cme_libdirs "")
+  foreach(cme_dep IN LISTS cme_deps)
+    cme_port_field(cme_names ${cme_dep} PROVIDES)
+    list(GET cme_names 0 cme_package)
+    string(TOUPPER "${cme_package}" cme_upper)
+    get_property(cme_exported GLOBAL PROPERTY CME_EXPORT_${cme_package})
+    while(cme_exported)
+      list(POP_FRONT cme_exported cme_name cme_value)
+      string(REPLACE "@CME@" ";" cme_value "${cme_value}")
+      if(cme_name STREQUAL "${cme_upper}_INCLUDE_DIRS" OR
+         cme_name STREQUAL "${cme_package}_INCLUDE_DIRS")
+        list(APPEND cme_includes ${cme_value})
+      endif()
+    endwhile()
+    cme_port_field(cme_targets ${cme_dep} TARGETS)
+    foreach(cme_target IN LISTS cme_targets)
+      if(NOT TARGET ${cme_target})
+        continue()
+      endif()
+      get_target_property(cme_aliased ${cme_target} ALIASED_TARGET)
+      if(cme_aliased)
+        set(cme_target "${cme_aliased}")
+      endif()
+      get_target_property(cme_kind ${cme_target} TYPE)
+      if(cme_kind STREQUAL "STATIC_LIBRARY" OR cme_kind STREQUAL "SHARED_LIBRARY")
+        # Where the archive will be, which is where this build puts what it
+        # builds rather than anywhere a script would look.
+        list(APPEND cme_libdirs "$<TARGET_FILE_DIR:${cme_target}>")
+      endif()
+      get_target_property(cme_dirs ${cme_target} INTERFACE_INCLUDE_DIRECTORIES)
+      foreach(cme_dir IN LISTS cme_dirs)
+        if(cme_dir MATCHES "^\\$<BUILD_INTERFACE:(.+)>$")
+          list(APPEND cme_includes "${CMAKE_MATCH_1}")
+        elseif(NOT cme_dir MATCHES "^\\$<")
+          list(APPEND cme_includes "${cme_dir}")
+        endif()
+      endforeach()
+    endforeach()
+  endforeach()
+  if(cme_includes)
+    list(REMOVE_DUPLICATES cme_includes)
+  endif()
+  if(cme_libdirs)
+    list(REMOVE_DUPLICATES cme_libdirs)
+  endif()
+  set(cme_said "")
+  foreach(cme_dir IN LISTS cme_includes)
+    string(APPEND cme_said " -I${cme_dir}")
+  endforeach()
+  set(${out_cflags} "${cme_said}" PARENT_SCOPE)
+  set(cme_said "")
+  foreach(cme_dir IN LISTS cme_libdirs)
+    string(APPEND cme_said " -L${cme_dir}")
+  endforeach()
+  set(${out_ldflags} "${cme_said}" PARENT_SCOPE)
+endfunction()
+
 # What a configure argument is written in terms of.
 #
 # The same idea as the GN ports: the port names its project's own spelling
@@ -122,6 +190,11 @@ function(cme_configure_substitute out port value)
   endif()
   string(REPLACE "@BUILD_MACHINE_CC@" "${cme_build_machine_cc}" value
          "${value}")
+  if(value MATCHES "@DEPENDS_(C|LD)FLAGS@")
+    cme_configure_dependency_flags(${port} cme_dep_cflags cme_dep_ldflags)
+    string(REPLACE "@DEPENDS_CFLAGS@" "${cme_dep_cflags}" value "${value}")
+    string(REPLACE "@DEPENDS_LDFLAGS@" "${cme_dep_ldflags}" value "${value}")
+  endif()
   if(value MATCHES "@([A-Z_]+)@")
     message(FATAL_ERROR
       "cmake-everywhere: ${port} asks for @${CMAKE_MATCH_1}@ in a configure "
@@ -254,6 +327,33 @@ function(cme_configure_configure port source build prefix)
   endforeach()
   set(arguments "${filled}")
   cme_configure_environment(environment)
+
+  # Where the libraries this port was built against say what they are.
+  #
+  # A configure script looks for a library with pkg-config, and a library
+  # this build installed a moment ago is in a prefix of its own that nothing
+  # on this machine knows about. Its .pc file is in there, correct and
+  # unread; naming the directory is all it takes.
+  cme_gn_dependency_ports(${port} cme_deps)
+  set(cme_pkg_dirs "")
+  foreach(cme_dep IN LISTS cme_deps)
+    if(CME_INSTALLED_${cme_dep})
+      foreach(cme_where "lib/pkgconfig" "lib64/pkgconfig" "share/pkgconfig")
+        if(IS_DIRECTORY "${CME_INSTALLED_${cme_dep}}/${cme_where}")
+          list(APPEND cme_pkg_dirs "${CME_INSTALLED_${cme_dep}}/${cme_where}")
+        endif()
+      endforeach()
+    endif()
+  endforeach()
+  if(cme_pkg_dirs)
+    list(JOIN cme_pkg_dirs ":" cme_pkg_path)
+    if(DEFINED ENV{PKG_CONFIG_PATH} AND NOT "$ENV{PKG_CONFIG_PATH}" STREQUAL "")
+      set(cme_pkg_path "${cme_pkg_path}:$ENV{PKG_CONFIG_PATH}")
+    endif()
+    list(APPEND environment "PKG_CONFIG_PATH=${cme_pkg_path}")
+    message(STATUS
+      "cmake-everywhere: ${port} is told where ${cme_pkg_path} is")
+  endif()
 
   message(STATUS "cmake-everywhere: building ${port} with its own configure")
   execute_process(

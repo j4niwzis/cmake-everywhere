@@ -154,13 +154,21 @@ cme_port_feature(ffmpeg opus
                  "--enable-demuxer=ogg")
 
 # x264 is the encoder anything watching wants, and it is GPL: linking it
-# makes the result GPL. Off unless asked for, and not only because of the
-# licence -- it is a library that has to be installed, which the rest of
-# this port deliberately does not need.
+# makes the result GPL. Off unless asked for, which is a licence saying so
+# and not a guess about what a build wants.
+#
+# It comes from the port beside this one rather than from the machine, so
+# there is nothing to install and a phone gets the same encoder a desktop
+# does. FFmpeg looks for it the only way its configure knows -- pkg-config,
+# or a header and a library on the compiler's own paths -- and a library
+# this build has just built is on neither, so it is told where.
 cme_port_feature(ffmpeg x264
-  SUMMARY "H.264 through libx264, which is GPL and has to be installed"
+  SUMMARY "H.264 through libx264, which is GPL"
+  DEPENDS x264
   CONFIGURE_ARGS "--enable-libx264" "--enable-gpl"
-                 "--enable-encoder=libx264,libx264rgb")
+                 "--enable-encoder=libx264,libx264rgb"
+                 "--extra-cflags=@DEPENDS_CFLAGS@"
+                 "--extra-ldflags=@DEPENDS_LDFLAGS@")
 
 function(cme_adapt_ffmpeg source binary)
   # Where its headers are, for whoever links it. Every source it compiles

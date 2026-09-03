@@ -100,6 +100,18 @@ def compile_of(words, root):
         if word.startswith("-I"):
             includes.append(word[2:])
             continue
+        # How a project writes down what a source included is that
+        # project's business and not this build's: CMake writes its own -MD
+        # -MT -MF, and the ones read here would be a second set naming files
+        # in a directory this build does not use. Worse, the value of -MF
+        # was dropped while the flag was kept, so a flag added after it --
+        # the -x that says a .S is assembly -- became its argument, and
+        # clang looked for a file called assembler-with-cpp.
+        if word in ("-MD", "-MMD", "-MP", "-MG", "-M", "-MM"):
+            continue
+        if word in ("-MF", "-MT", "-MQ") and index < len(words):
+            index += 1
+            continue
         if word in ("-I", "-isystem", "-include") and index < len(words):
             if word == "-I":
                 includes.append(words[index])
