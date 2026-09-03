@@ -11,6 +11,12 @@
 # other standard library.
 #
 # 1.24.3 has the include and not the annotations.
+# openal-soft links its bundled fmt as alsoft::fmt, an alias for a static
+# library in its own tree. An entry written before aliases were resolved
+# names that alias, and a build reading such an entry is told to link a
+# target nothing defines. Entries are addressed by, among other things, the
+# digest of this file -- so this paragraph is also what makes those entries
+# unreachable.
 cme_declare_port(
   NAME openal-soft
   PROVIDES OpenAL openal OPENAL
