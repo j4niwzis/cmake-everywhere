@@ -18,6 +18,20 @@ cme_declare_port(
     # CMake checks an install(EXPORT) even when the directory it is in is
     # EXCLUDE_FROM_ALL. A dependency does not install itself here anyway.
     "LIBZIP_DO_INSTALL OFF"
+    # The C11 Annex K functions, which glibc and bionic both lack and which
+    # libzip looks for by linking. A toolchain whose probes stop at an
+    # archive -- which is every toolchain for a sysroot that cannot link an
+    # executable, Android among them -- answers yes to every such question,
+    # and the answer here is no on both counts.
+    "HAVE_MEMCPY_S OFF"
+    "HAVE_STRNCPY_S OFF"
+    "HAVE_STRERROR_S OFF"
+    "HAVE_STRERRORLEN_S OFF"
+    # clonefile is macOS's, and asking for it by linking gets a yes from any
+    # toolchain whose probes stop at an archive. Saying no here is saying
+    # what Linux is: it has FICLONERANGE, which is a different question and
+    # is asked separately.
+    "HAVE_CLONEFILE OFF"
     "BUILD_TOOLS OFF"
     "BUILD_REGRESS OFF"
     "BUILD_EXAMPLES OFF"
