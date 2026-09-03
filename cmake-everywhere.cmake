@@ -3037,6 +3037,10 @@ endfunction()
 # for directly.
 function(cme_enabled_features port out)
   get_property(enabled GLOBAL PROPERTY CME_REQUIRED_FEATURES_${port})
+  # What a find_package listed under OPTIONAL_COMPONENTS: build it with
+  # these, but do not refuse an installed copy for want of them.
+  get_property(wanted GLOBAL PROPERTY CME_WANTED_FEATURES_${port})
+  list(APPEND enabled ${wanted})
   list(APPEND enabled ${CME_FEATURES_${port}})
   # A feature the library says is on unless somebody says otherwise, and one
   # a project wants wherever it exists.
@@ -3053,6 +3057,35 @@ function(cme_enabled_features port out)
   # exactly the same things -- and did not bring them, so a library was on
   # without what it is built on being on, and a rule about the two of them
   # was checked against a set that was never assembled.
+  # A rule that states a minimum does not say which to take, so the first
+  # named is taken -- and said, because a choice nobody made is still a
+  # choice somebody has to know about.
+  get_property(asked GLOBAL PROPERTY CME_ASKED_RULES_${port})
+  foreach(rule IN LISTS asked)
+    string(REPLACE "|" ";" parts "${rule}")
+    list(POP_FRONT parts kind)
+    if(NOT kind STREQUAL "AT_LEAST_ONE_OF" AND NOT kind STREQUAL "EXACTLY_ONE_OF")
+      continue()
+    endif()
+    set(count 0)
+    foreach(item IN LISTS parts)
+      if(item IN_LIST enabled)
+        math(EXPR count "${count} + 1")
+      endif()
+    endforeach()
+    if(count EQUAL 0)
+      list(GET parts 0 first)
+      list(JOIN parts ", " listed)
+      get_property(said GLOBAL PROPERTY CME_SAID_RULE_${port}_${first})
+      if(NOT said)
+        message(STATUS
+          "cmake-everywhere: ${port} is built with ${first}, because this "
+          "build asked for one of ${listed} and named none")
+        set_property(GLOBAL PROPERTY CME_SAID_RULE_${port}_${first} TRUE)
+      endif()
+      list(APPEND enabled "${first}")
+    endif()
+  endforeach()
   cme_expand_implications(${port} "${enabled}" enabled)
   set(result "")
   foreach(feature IN LISTS enabled)
@@ -3115,15 +3148,70 @@ endfunction()
 # have. Only the rules that state a minimum: a copy with too few backends is
 # not a copy this build can use, and a copy with more of something than a
 # rule allows is somebody else's build being generous.
+# A rule a consumer stated in its find_package call, in the same shape as one
+# the port states about itself: "KIND|a|b|c".
+function(cme_asked_rules_allow ok why port present)
+  set(${ok} TRUE PARENT_SCOPE)
+  set(${why} "" PARENT_SCOPE)
+  get_property(rules GLOBAL PROPERTY CME_ASKED_RULES_${port})
+  foreach(rule IN LISTS rules)
+    string(REPLACE "|" ";" parts "${rule}")
+    list(POP_FRONT parts kind)
+    set(count 0)
+    foreach(item IN LISTS parts)
+      if(item IN_LIST present)
+        math(EXPR count "${count} + 1")
+      endif()
+    endforeach()
+    list(JOIN parts ", " listed)
+    if(kind STREQUAL "AT_LEAST_ONE_OF" AND count EQUAL 0)
+      set(${ok} FALSE PARENT_SCOPE)
+      set(${why} "this build asked for one of ${listed} and it has none"
+          PARENT_SCOPE)
+      return()
+    elseif(kind STREQUAL "EXACTLY_ONE_OF" AND NOT count EQUAL 1)
+      set(${ok} FALSE PARENT_SCOPE)
+      set(${why} "this build asked for exactly one of ${listed} and it has "
+                 "${count}" PARENT_SCOPE)
+      return()
+    elseif(kind STREQUAL "AT_MOST_ONE_OF" AND count GREATER 1)
+      set(${ok} FALSE PARENT_SCOPE)
+      set(${why} "this build asked for at most one of ${listed} and it has "
+                 "${count}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+endfunction()
+
 function(cme_rules_allow ok why port present)
   set(${ok} TRUE PARENT_SCOPE)
   set(${why} "" PARENT_SCOPE)
+  cme_asked_rules_allow(asked reason ${port} "${present}")
+  if(NOT asked)
+    set(${ok} FALSE PARENT_SCOPE)
+    set(${why} "${reason}" PARENT_SCOPE)
+    return()
+  endif()
   get_property(rules GLOBAL PROPERTY CME_RULES_${port})
   set(index 0)
   foreach(kind IN LISTS rules)
     get_property(items GLOBAL PROPERTY CME_RULE_${port}_${index})
     math(EXPR index "${index} + 1")
-    if(NOT kind STREQUAL "AT_LEAST_ONE_OF" AND NOT kind STREQUAL "EXACTLY_ONE_OF")
+    if(kind STREQUAL "WITH")
+      # WITH <feature> AT_LEAST_ONE_OF <a> <b>: a requirement that only
+      # applies when that feature is there.
+      list(GET items 0 with)
+      list(LENGTH items length)
+      if(length LESS 3)
+        continue()
+      endif()
+      list(GET items 1 inner)
+      if(NOT inner STREQUAL "AT_LEAST_ONE_OF" OR NOT with IN_LIST present)
+        continue()
+      endif()
+      list(SUBLIST items 2 -1 items)
+    elseif(NOT kind STREQUAL "AT_LEAST_ONE_OF"
+           AND NOT kind STREQUAL "EXACTLY_ONE_OF")
       continue()
     endif()
     set(count 0)
@@ -4591,17 +4679,62 @@ macro(cme_provider cme_method cme_package)
       set(cme_wanted "")
       set(cme_exact FALSE)
       set(cme_components FALSE)
+      set(cme_optional FALSE)
+      set(cme_group "")
       set(cme_asked_features "")
+      set(cme_wanted_features "")
+      set(cme_one_of "")
       foreach(cme_argument IN ITEMS ${ARGN})
-        if("${cme_argument}" STREQUAL "COMPONENTS" OR
+        # A word find_package does not have, read by this provider and never
+        # passed on. Everything after it, until the next keyword, is a set of
+        # features of which the library must have one:
+        #
+        #   find_package(Skia REQUIRED COMPONENTS gl
+        #                AT_LEAST_ONE_OF egl x11)
+        #
+        # COMPONENTS says every one of these, OPTIONAL_COMPONENTS says none
+        # of these is required, and neither can say what a consumer means by
+        # "some way of reaching GL, and I do not care which".
+        if("${cme_argument}" MATCHES
+           "^(AT_LEAST_ONE_OF|AT_MOST_ONE_OF|EXACTLY_ONE_OF)$")
+          if(cme_group AND cme_current_group)
+            list(JOIN cme_current_group "|" cme_joined)
+            list(APPEND cme_one_of "${cme_group}|${cme_joined}")
+          endif()
+          set(cme_components FALSE)
+          set(cme_group "${cme_argument}")
+          set(cme_current_group "")
+        elseif("${cme_argument}" STREQUAL "COMPONENTS" OR
            "${cme_argument}" STREQUAL "OPTIONAL_COMPONENTS")
+          if(cme_group AND cme_current_group)
+            list(JOIN cme_current_group "|" cme_joined)
+            list(APPEND cme_one_of "${cme_group}|${cme_joined}")
+          endif()
+          set(cme_group "")
           set(cme_components TRUE)
+          # The difference between the two is what an installed copy has to
+          # have. A component is a requirement; an optional one says build it
+          # with this, and is not a reason to refuse a copy that was built
+          # without it -- which is how a project asks for "GL through
+          # whichever of EGL and GLX you have".
+          if("${cme_argument}" STREQUAL "OPTIONAL_COMPONENTS")
+            set(cme_optional TRUE)
+          else()
+            set(cme_optional FALSE)
+          endif()
         elseif("${cme_argument}" MATCHES
                "^(REQUIRED|QUIET|EXACT|CONFIG|MODULE|NO_MODULE|GLOBAL|REGISTRY_VIEW|NAMES|BYPASS_PROVIDER)$")
+          if(cme_group AND cme_current_group)
+            list(JOIN cme_current_group "|" cme_joined)
+            list(APPEND cme_one_of "${cme_group}|${cme_joined}")
+          endif()
+          set(cme_group "")
           set(cme_components FALSE)
           if("${cme_argument}" STREQUAL "EXACT")
             set(cme_exact TRUE)
           endif()
+        elseif(cme_group)
+          list(APPEND cme_current_group "${cme_argument}")
         elseif(cme_components)
           # A third-party project asking for COMPONENTS means its own
           # components: libsndfile asks Vorbis for Enc and File, which are
@@ -4610,7 +4743,11 @@ macro(cme_provider cme_method cme_package)
           # port that provides the library provides all of it.
           cme_port_field(cme_declared "${cme_port}" FEATURES)
           if("${cme_argument}" IN_LIST cme_declared)
-            list(APPEND cme_asked_features "${cme_argument}")
+            if(cme_optional)
+              list(APPEND cme_wanted_features "${cme_argument}")
+            else()
+              list(APPEND cme_asked_features "${cme_argument}")
+            endif()
           else()
             set(${cme_package}_${cme_argument}_FOUND TRUE)
           endif()
@@ -4619,6 +4756,21 @@ macro(cme_provider cme_method cme_package)
         endif()
       endforeach()
 
+      if(cme_group AND cme_current_group)
+        list(JOIN cme_current_group "|" cme_joined)
+        list(APPEND cme_one_of "${cme_group}|${cme_joined}")
+      endif()
+      foreach(cme_rule IN LISTS cme_one_of)
+        get_property(cme_known GLOBAL PROPERTY CME_ASKED_RULES_${cme_port})
+        if(NOT cme_rule IN_LIST cme_known)
+          set_property(GLOBAL APPEND PROPERTY CME_ASKED_RULES_${cme_port}
+                       "${cme_rule}")
+        endif()
+      endforeach()
+      if(cme_wanted_features)
+        set_property(GLOBAL APPEND PROPERTY CME_WANTED_FEATURES_${cme_port}
+                     ${cme_wanted_features})
+      endif()
       cme_note_ask("${cme_port}")
       get_property(cme_answered GLOBAL PROPERTY CME_ANSWERED_${cme_package})
       if(NOT cme_answered)

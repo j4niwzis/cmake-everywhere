@@ -185,6 +185,12 @@ int main() {
   return fn == nullptr;
 }")
 
+# No rule tying gl to egl or x11. Skia's own factories for those are one way
+# to get a GL interface and not the only one: GrGLMakeAssembledInterface
+# builds it from a loader the consumer supplies, and a consumer that made the
+# GL context has one. A Skia with gl and neither factory is a usable Skia for
+# such a consumer, and Debian ships exactly that.
+
 cme_port_feature(skia vulkan
   SUMMARY "the Ganesh backend on Vulkan"
   GN_ARGS "skia_enable_ganesh=true" "skia_use_vulkan=true"
