@@ -84,6 +84,9 @@ cme_declare_port(
     # host strip will not read one.
     "--ar=@AR@"
     "--ranlib=@RANLIB@"
+    # It builds and runs programs of its own to write tables, and those run
+    # here rather than there.
+    "--host-cc=@BUILD_MACHINE_CC@"
     "--nm=@NM@"
     "--strip=@STRIP@"
 )

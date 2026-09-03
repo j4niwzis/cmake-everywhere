@@ -111,6 +111,17 @@ function(cme_configure_substitute out port value)
   string(REPLACE "@TARGET_CPU@" "${processor}" value "${value}")
   string(REPLACE "@TARGET_OS_LOWER@" "${system}" value "${value}")
   string(REPLACE "@CROSS_PREFIX@" "${CME_CROSS_PREFIX}" value "${value}")
+  # The compiler of the machine doing the building, for a project that needs
+  # one during a cross build: FFmpeg compiles and runs generators of its own
+  # to write tables. Its default is gcc, and a machine that has a compiler
+  # but not that one is a configure that stops with "Host compiler lacks C11
+  # support" -- a true sentence about a compiler that is not there.
+  set(cme_build_machine_cc "${CME_BUILD_MACHINE_C_COMPILER}")
+  if(NOT cme_build_machine_cc)
+    set(cme_build_machine_cc "cc")
+  endif()
+  string(REPLACE "@BUILD_MACHINE_CC@" "${cme_build_machine_cc}" value
+         "${value}")
   if(value MATCHES "@([A-Z_]+)@")
     message(FATAL_ERROR
       "cmake-everywhere: ${port} asks for @${CMAKE_MATCH_1}@ in a configure "
@@ -167,6 +178,11 @@ endfunction()
 # compiles and archives is one to build with CONFIGURE instead.
 function(cme_configure_import port build)
   find_program(CME_MAKE NAMES gmake make)
+  if(NOT CME_MAKE)
+    message(FATAL_ERROR
+      "cmake-everywhere: ${port} is built by make, and what it would do is "
+      "read by running it. There is no make here.")
+  endif()
   find_package(Python3 QUIET COMPONENTS Interpreter)
   if(NOT Python3_EXECUTABLE)
     set(Python3_EXECUTABLE python3)
