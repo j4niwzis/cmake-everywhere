@@ -1304,7 +1304,7 @@ function(cme_declare_port)
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
           PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
           CHECK_HEADER ARRANGEMENT SYSTEM_HEADER_TARGET CONFIGURE
-          INSTALLED_INCLUDE)
+          INSTALLED_INCLUDE SOURCE_DIR)
   # SYSTEM_CODE is a program, and a program has semicolons in it.
   # cmake_parse_arguments splits every argument on semicolons, so a
   # one-value keyword would keep the text up to the first statement and drop
@@ -3959,7 +3959,22 @@ function(cme_build_port port package version exact)
   #
   # SYSTEM: their headers are not yours, so their warnings are not yours.
   set(arguments NAME ${port} EXCLUDE_FROM_ALL YES SYSTEM YES)
-  if(listed)
+  # A checkout somebody else made, named by whoever knows where it is.
+  #
+  # This is what a build with no network is given: flatpak-builder fetches
+  # every library into a directory of its own and a generated overlay says
+  # which. Nothing is fetched here then, and the coordinates the registry
+  # carries are not consulted -- they describe where this would have come
+  # from, and it has come from somewhere.
+  cme_port_field(source_dir ${port} SOURCE_DIR)
+  if(source_dir AND NOT IS_DIRECTORY "${source_dir}")
+    message(FATAL_ERROR
+      "cmake-everywhere: ${port} says its sources are in ${source_dir}, and "
+      "there is no such directory.")
+  endif()
+  if(source_dir)
+    list(APPEND arguments SOURCE_DIR "${source_dir}")
+  elseif(listed)
     get_property(url GLOBAL PROPERTY CME_SOURCE_${port}_${port_version}_URL)
     get_property(hash GLOBAL PROPERTY CME_SOURCE_${port}_${port_version}_HASH)
     list(APPEND arguments URL "${url}" URL_HASH "${hash}")
@@ -3988,7 +4003,7 @@ function(cme_build_port port package version exact)
       endif()
     endif()
   endif()
-  if(port_version)
+  if(port_version AND NOT source_dir)
     list(APPEND arguments VERSION "${port_version}")
   endif()
   cme_port_field(gn_targets ${port} GN_TARGETS)
@@ -4102,7 +4117,12 @@ function(cme_build_port port package version exact)
   # describing itself has no business claiming a URL. That is fine until
   # something has to fetch it, which is here.
   cme_port_field(sources_inside ${port} SOURCE_FROM)
-  if(NOT listed AND NOT sources_inside)
+  # A port whose sources are already on this machine needs no coordinates:
+  # SOURCE_DIR is where they are, and where they would have come from is a
+  # question nobody is asking. A build with no network is exactly this case,
+  # and it was told that nothing says where the library comes from while
+  # holding the library.
+  if(NOT listed AND NOT sources_inside AND NOT source_dir)
     set(coordinates FALSE)
     foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY URL)
       cme_port_field(value ${port} ${field})
@@ -4943,6 +4963,33 @@ macro(cme_provider cme_method cme_package)
         # project to ask needs them as much as the first. After the first
         # time the answer is in the cache and this costs nothing.
         find_package(${cme_package} ${cme_wanted} QUIET GLOBAL BYPASS_PROVIDER)
+        # And when that finds nothing, because the copy on this machine was
+        # not recognised by a find_package in the first place.
+        #
+        # A library can be on a machine without being findable that way:
+        # mpg123 installs a header and a .pc file and neither a Find module
+        # nor a config package, so what decided it was there was pkg-config
+        # and a header. The targets were made here, from that. Answering by
+        # asking find_package again then reports nothing found, about a
+        # library this build had already resolved and is about to link.
+        if(NOT ${cme_package}_FOUND)
+          cme_port_field(cme_promised "${cme_port}" TARGETS)
+          set(cme_all TRUE)
+          foreach(cme_one IN LISTS cme_promised)
+            if(NOT TARGET ${cme_one})
+              set(cme_all FALSE)
+            endif()
+          endforeach()
+          if(cme_promised AND cme_all)
+            get_property(cme_exported GLOBAL PROPERTY CME_EXPORT_${cme_package})
+            while(cme_exported)
+              list(POP_FRONT cme_exported cme_name cme_value)
+              string(REPLACE "@CME@" ";" cme_value "${cme_value}")
+              set(${cme_name} "${cme_value}")
+            endwhile()
+            set(${cme_package}_FOUND TRUE)
+          endif()
+        endif()
       else()
         get_property(cme_exported GLOBAL PROPERTY CME_EXPORT_${cme_package})
         while(cme_exported)
