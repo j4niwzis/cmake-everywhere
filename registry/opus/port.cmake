@@ -10,9 +10,11 @@ cme_declare_port(
     "OPUS_BUILD_PROGRAMS OFF"
     "OPUS_BUILD_TESTING OFF"
     "OPUS_BUILD_SHARED_LIBRARY OFF"
+  SYSTEM_PKGCONFIG "opus:Opus::opus"
 )
 
 function(cme_adapt_opus source binary)
+  cme_alias(Opus::opus opus)
   cme_export_variable(Opus OPUS_FOUND TRUE)
   cme_export_variable(Opus OPUS_LIBRARY Opus::opus)
   cme_export_variable(Opus OPUS_LIBRARIES Opus::opus)

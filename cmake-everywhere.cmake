@@ -40,7 +40,7 @@ function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM)
-  set(many PROVIDES OPTIONS DEPENDS)
+  set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
     message(FATAL_ERROR "cmake-everywhere: a port with no NAME")
@@ -77,6 +77,20 @@ function(cme_export_variable package name value)
   string(REPLACE ";" "@CME@" encoded "${value}")
   set_property(GLOBAL APPEND PROPERTY CME_EXPORT_${package}
     "${name}" "${encoded}")
+endfunction()
+
+# Options for a library that is about to be compiled, from the project doing
+# the compiling. Set before the find_package that first asks for it, in the
+# same file that installs the provider:
+#
+#   cme_options(flac "WITH_OGG OFF")
+#
+# They are appended after the port's own, so they win. A package taken from
+# the system is taken as it is: nothing here can change how it was built, and
+# saying so is better than appearing to.
+function(cme_options port)
+  set(CME_OPTIONS_${port} "${ARGN}" CACHE STRING
+    "Extra build options for the ${port} port" FORCE)
 endfunction()
 
 # An alias so that whatever the upstream calls its target -- zlibstatic,
@@ -129,6 +143,68 @@ function(cme_system_allowed out package)
   endif()
 endfunction()
 
+# Most distributions ship a .pc file and no CMake config at all, and CMake
+# has no FindOgg, FindVorbis, FindFLAC or FindSndFile of its own. So a
+# find_package for any of them fails on a machine that has the library
+# installed, and the port would be built for nothing. A port that says
+# SYSTEM_PKGCONFIG names the modules to ask pkg-config for instead, and the
+# target each one answers to.
+function(cme_try_pkgconfig found port package version)
+  set(${found} FALSE PARENT_SCOPE)
+  cme_port_field(mapping ${port} SYSTEM_PKGCONFIG)
+  if(NOT mapping)
+    return()
+  endif()
+  find_package(PkgConfig QUIET)
+  if(NOT PKG_CONFIG_FOUND)
+    return()
+  endif()
+
+  set(index 0)
+  set(aliases "")
+  set(includes "")
+  foreach(pair IN LISTS mapping)
+    # "module:Namespace::target", split at the first colon because the
+    # target name has two of its own.
+    if(pair MATCHES "^([^:]+):(.+)$")
+      set(module "${CMAKE_MATCH_1}")
+      set(alias "${CMAKE_MATCH_2}")
+    else()
+      set(module "${pair}")
+      set(alias "")
+    endif()
+    set(query "${module}")
+    if(version AND index EQUAL 0)
+      set(query "${module} >= ${version}")
+    endif()
+    set(prefix CME_PC_${port}_${index})
+    pkg_check_modules(${prefix} QUIET IMPORTED_TARGET GLOBAL "${query}")
+    if(NOT ${prefix}_FOUND)
+      return()
+    endif()
+    if(alias AND NOT TARGET ${alias})
+      add_library(${alias} ALIAS PkgConfig::${prefix})
+    endif()
+    if(alias)
+      list(APPEND aliases "${alias}")
+    endif()
+    list(APPEND includes ${${prefix}_INCLUDE_DIRS})
+    math(EXPR index "${index} + 1")
+  endforeach()
+
+  string(TOUPPER "${package}" upper)
+  list(REMOVE_DUPLICATES includes)
+  cme_export_variable(${package} ${package}_FOUND TRUE)
+  cme_export_variable(${package} ${upper}_FOUND TRUE)
+  cme_export_variable(${package} ${upper}_LIBRARIES "${aliases}")
+  cme_export_variable(${package} ${upper}_LIBRARY "${aliases}")
+  cme_export_variable(${package} ${upper}_INCLUDE_DIRS "${includes}")
+  cme_export_variable(${package} ${upper}_INCLUDE_DIR "${includes}")
+  cme_export_variable(${package} ${upper}_VERSION "${CME_PC_${port}_0_VERSION}")
+  cme_note_decision("${package}" "pkg-config" "${CME_PC_${port}_0_VERSION}")
+  set(${found} TRUE PARENT_SCOPE)
+endfunction()
+
 # Builds one port and everything it needs. Called from the provider, so the
 # nested find_package() calls the port's own CMakeLists makes come back
 # through the provider and are answered from what is already here.
@@ -176,6 +252,10 @@ function(cme_build_port port package version)
     if(options)
       list(APPEND arguments OPTIONS ${options})
     endif()
+  endif()
+  if(CME_OPTIONS_${port})
+    list(APPEND arguments OPTIONS ${CME_OPTIONS_${port}})
+    list(APPEND options ${CME_OPTIONS_${port}})
   endif()
 
   # Read by cmake_minimum_required in the tree about to be added. A normal
@@ -240,6 +320,12 @@ macro(cme_provider cme_method cme_package)
             set(cme_answered "system")
             cme_note_decision("${cme_package}" "system"
                               "${${cme_package}_VERSION}")
+          else()
+            cme_try_pkgconfig(cme_by_pc "${cme_port}" "${cme_package}"
+                              "${cme_wanted}")
+            if(cme_by_pc)
+              set(cme_answered "pkg-config")
+            endif()
           endif()
         endif()
         if(cme_answered STREQUAL "port")

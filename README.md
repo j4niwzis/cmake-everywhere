@@ -49,6 +49,44 @@ Per package: `-DCME_SYSTEM_ZLIB=OFF` builds that one and leaves the rest
 alone. Every decision is written to `cme-lock.txt` in the build directory --
 which package came from where, and at what version.
 
+## Options for a library being built
+
+```cmake
+cme_options(flac "WITH_OGG OFF")
+cme_options(libsndfile "ENABLE_MPEG ON")
+```
+
+Set in the same file that installs the provider, before the `find_package`
+that first asks for the library. They are appended after the port's own
+options, so they win. `-DCME_OPTIONS_flac="WITH_OGG OFF"` does the same from
+the command line.
+
+They apply only to a library that is being compiled. A copy taken from the
+system is taken as it was built, and nothing here can change that -- which is
+worth knowing rather than discovering.
+
+## Why it built something you have installed
+
+Most distributions ship a `.pc` file and no CMake config, and CMake has no
+`FindOgg`, `FindVorbis`, `FindFLAC` or `FindSndFile` of its own. So a plain
+`find_package(Ogg)` fails on a machine that has libogg installed, and without
+help the port would be built for nothing.
+
+A port therefore also names the pkg-config modules it can be satisfied by,
+and the target each one should answer to:
+
+```cmake
+SYSTEM_PKGCONFIG
+  "vorbis:Vorbis::vorbis"
+  "vorbisenc:Vorbis::vorbisenc"
+  "vorbisfile:Vorbis::vorbisfile"
+```
+
+The order is: CMake config or Find module, then pkg-config, then build it.
+`cme-lock.txt` in the build directory says which of the three answered for
+each package, so a build that took longer than expected can be read rather
+than guessed at.
+
 ## A port
 
 Adding a library is one directory in `registry/`. Everything except the

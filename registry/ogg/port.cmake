@@ -10,12 +10,16 @@ cme_declare_port(
   OPTIONS
     "INSTALL_DOCS OFF"
     "BUILD_TESTING OFF"
+  SYSTEM_PKGCONFIG "ogg:Ogg::ogg"
 )
 
-# libogg already names its target Ogg::ogg, so there is nothing to alias.
-# The variables are still exported: FLAC and libsndfile look for OGG_LIBRARY
+# The variables are exported because FLAC and libsndfile look for OGG_LIBRARY
 # and OGG_INCLUDE_DIR in some of their revisions.
 function(cme_adapt_ogg source binary)
+  # libogg names Ogg::ogg itself, so this does nothing there. It is here for
+  # the revisions that only name it in the config file they install, which a
+  # build tree does not have.
+  cme_alias(Ogg::ogg ogg)
   cme_export_variable(Ogg OGG_FOUND TRUE)
   cme_export_variable(Ogg OGG_LIBRARY Ogg::ogg)
   cme_export_variable(Ogg OGG_LIBRARIES Ogg::ogg)

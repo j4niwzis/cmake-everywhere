@@ -14,9 +14,11 @@ cme_declare_port(
     "BUILD_CXXLIBS OFF"
     "INSTALL_MANPAGES OFF"
     "WITH_FORTIFY_SOURCE OFF"
+  SYSTEM_PKGCONFIG "flac:FLAC::FLAC"
 )
 
 function(cme_adapt_flac source binary)
+  cme_alias(FLAC::FLAC FLAC)
   cme_export_variable(FLAC FLAC_FOUND TRUE)
   cme_export_variable(FLAC FLAC_LIBRARY FLAC::FLAC)
   cme_export_variable(FLAC FLAC_LIBRARIES FLAC::FLAC)

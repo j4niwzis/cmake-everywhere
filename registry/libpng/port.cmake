@@ -14,6 +14,7 @@ cme_declare_port(
     "PNG_TESTS OFF"
     "PNG_TOOLS OFF"
     "PNG_FRAMEWORK OFF"
+  SYSTEM_PKGCONFIG "libpng:PNG::PNG"
 )
 
 # libpng looks for zlib with find_package(ZLIB) inside its own CMakeLists,
@@ -30,4 +31,5 @@ function(cme_adapt_libpng source binary)
   cme_export_variable(PNG PNG_INCLUDE_DIRS "${source};${binary}")
   cme_export_variable(PNG PNG_VERSION_STRING 1.6.44)
   target_include_directories(png_static PUBLIC "${source}" "${binary}")
-endfunction()
+endfunction(  SYSTEM_PKGCONFIG "libpng:PNG::PNG"
+)

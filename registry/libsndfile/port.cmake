@@ -14,11 +14,13 @@ cme_declare_port(
     "ENABLE_EXTERNAL_LIBS ON"
     "ENABLE_MPEG OFF"
     "ENABLE_CPACK OFF"
+  SYSTEM_PKGCONFIG "sndfile:SndFile::sndfile"
 )
 
 # One find_package(SndFile) brings ogg, vorbis, FLAC and opus with it,
 # because libsndfile asks for them itself and those calls arrive here.
 function(cme_adapt_libsndfile source binary)
+  cme_alias(SndFile::sndfile sndfile)
   cme_export_variable(SndFile SndFile_FOUND TRUE)
   cme_export_variable(SndFile SNDFILE_FOUND TRUE)
   cme_export_variable(SndFile SNDFILE_LIBRARY SndFile::sndfile)
