@@ -41,9 +41,35 @@ def entries(lock):
             # A port answered by the system, or a name for other ports.
             # Nothing was fetched for it and nothing has to be.
             continue
+        # "SHA512=abc..." -- the algorithm is part of what was written down,
+        # because a port says which one it pinned with and they are not
+        # interchangeable. Writing a sha512 into a field named sha256 is a
+        # comparison that fails on the length and reports a mismatch.
         digest = facts.get("archive", "")
-        digest = digest.split("=", 1)[1] if "=" in digest else digest
-        yield port, url, facts.get("commit"), digest
+        algorithm = "sha256"
+        if "=" in digest:
+            algorithm, digest = digest.split("=", 1)
+            algorithm = algorithm.lower()
+        yield port, url, facts.get("commit"), algorithm, digest
+
+
+def archive_type(url):
+    """What kind of archive a URL names, when its name does not say.
+
+    flatpak-builder reads the format from the file name, and a name is not
+    always one: Skia is fetched from codeload.github.com/google/skia/tar.gz/
+    <commit>, whose last component is a commit. The format is in the path
+    rather than in an extension, so it is read from there and stated.
+    """
+    for ending, kind in (("tar.gz", "tar-gzip"), ("tgz", "tar-gzip"),
+                         ("tar.bz2", "tar-bzip2"), ("tar.xz", "tar-xz"),
+                         ("tar.zst", "tar-zstd"), ("zip", "zip"),
+                         ("tar", "tar")):
+        if url.endswith("." + ending):
+            return None  # the name says it; flatpak-builder will read it
+        if ("/" + ending + "/") in url:
+            return kind
+    return None
 
 
 def main():
@@ -66,19 +92,28 @@ def main():
 
     written = []
     incomplete = []
-    for port, url, commit, digest in entries(lock):
+    for port, url, commit, algorithm, digest in entries(lock):
         where = f"{arguments.dest}/{port}"
         if commit:
             written.append({"type": "git", "url": url, "commit": commit,
                             "dest": where})
+        elif digest and algorithm in ("sha256", "sha512"):
+            source = {"type": "archive", "url": url, algorithm: digest,
+                      "dest": where}
+            kind = archive_type(url)
+            if kind:
+                source["archive-type"] = kind
+            written.append(source)
         elif digest:
-            written.append({"type": "archive", "url": url, "sha256": digest,
-                            "dest": where})
+            # md5 and sha1 are things flatpak-builder will still check and
+            # neither is worth writing into a manifest today.
+            incomplete.append(f"{port}: pinned with {algorithm}")
+            continue
         else:
             # A URL with neither a commit nor a digest is not something to
             # write into a manifest: flatpak-builder would fetch whatever is
             # there today. Said here rather than written out.
-            incomplete.append(port)
+            incomplete.append(f"{port}: a URL with no commit and no digest")
             continue
         directory = os.path.join(arguments.ports, port)
         os.makedirs(directory, exist_ok=True)
@@ -97,8 +132,7 @@ def main():
 
     print(f"{len(written)} sources, {len(written)} ports", file=sys.stderr)
     for port in incomplete:
-        print(f"  {port}: a URL with no commit and no digest, left out",
-              file=sys.stderr)
+        print(f"  {port}: left out", file=sys.stderr)
     return 1 if incomplete else 0
 
 
