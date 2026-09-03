@@ -952,6 +952,13 @@ at the point somebody asks for it rather than at the first flag the compiler
 does not recognise. The build that checks the registry skips it rather than
 failing it.
 
+The names are CMake's -- `Android`, `Darwin`, `Emscripten` -- and the
+question is asked of the platform above rather than of `CMAKE_SYSTEM_NAME`,
+because the two are not always the same sentence. A toolchain that compiles
+against bionic with an `aarch64-linux-android` triple and leaves the system
+name as `Linux` is building for Android, and oboe was refused to it for
+being Linux.
+
 ### Old projects
 
 CMake 4 refuses to configure a project whose `cmake_minimum_required` asks

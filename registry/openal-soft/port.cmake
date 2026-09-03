@@ -39,6 +39,12 @@ cme_declare_port(
     "ALSOFT_TESTS OFF"
     "ALSOFT_INSTALL_EXAMPLES OFF"
     "ALSOFT_INSTALL_UTILS OFF"
+    # And no install rules at all. Nothing of a dependency is installed
+    # anyway -- the port is added with EXCLUDE_FROM_ALL, which ignores them
+    # -- but CMake still checks an install(EXPORT) it will never run, and
+    # OpenAL Soft's exports a target that links oboe, which is in no export
+    # set of OpenAL Soft's. The check does not care that the rules are dead.
+    "ALSOFT_INSTALL OFF"
     "ALSOFT_BACKEND_OBOE OFF"
     "ALSOFT_BACKEND_OPENSL OFF"
 )

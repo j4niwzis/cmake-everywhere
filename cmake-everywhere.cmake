@@ -2054,7 +2054,37 @@ function(cme_store_flatten port target out_archives out_links)
     endif()
   endforeach()
   foreach(item IN LISTS public_linked private_linked)
-    string(REGEX REPLACE "^\\$<LINK_ONLY:(.*)>$" "\\1" item "${item}")
+    # Generator expressions that wrap a name rather than say anything about
+    # it. openal-soft links $<BUILD_INTERFACE:alsoft::fmt>, and an entry that
+    # copied the whole expression wrote a link interface that evaluates, in
+    # the build that reads the entry, to a target nobody there ever made:
+    # "the link interface of OpenAL::OpenAL contains alsoft::fmt, but the
+    # target was not found". Unwrapped, it is a name this can ask whose it
+    # is -- and it is the port's own, so it is kept rather than named.
+    #
+    # In a loop, because they nest: openal-soft links its bundled fmt as
+    # $<BUILD_LOCAL_INTERFACE:alsoft::fmt>, which CMake keeps privately as
+    # $<LINK_ONLY:$<BUILD_LOCAL_INTERFACE:alsoft::fmt>>.
+    #
+    # BUILD_LOCAL_INTERFACE says the link is for this build system only and
+    # is not exported -- which is true of an installed copy and not of one
+    # kept here: a static archive does not contain what it links, so the
+    # entry needs fmt's archive beside OpenAL's. Left wrapped, the name was
+    # written into the entry as it stood and the next build stopped on a
+    # link interface containing alsoft::fmt, a target only the build that
+    # made the entry ever had.
+    set(before "")
+    while(NOT before STREQUAL item)
+      set(before "${item}")
+      string(REGEX REPLACE "^\\$<LINK_ONLY:(.*)>$" "\\1" item "${item}")
+      string(REGEX REPLACE "^\\$<BUILD_INTERFACE:(.*)>$" "\\1" item "${item}")
+      string(REGEX REPLACE "^\\$<BUILD_LOCAL_INTERFACE:(.*)>$" "\\1" item "${item}")
+    endwhile()
+    # And what is only for an installed copy is for nobody here: nothing of
+    # a port is installed, and the entry is read from where it lies.
+    if(item MATCHES "^\\$<INSTALL_INTERFACE:")
+      continue()
+    endif()
     if(NOT item)
       continue()
     endif()
