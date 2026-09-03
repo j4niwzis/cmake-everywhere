@@ -1,0 +1,1535 @@
+# Written by tools/boost-ports.py. Do not edit: run the script again.
+#
+# Every Boost library there is a port for, for a change to the ports or to the script that writes them.
+#
+# One job per Boost library, each waiting for the libraries it is built on,
+# in the order Boost's own dependency graph gives. A job apiece says which
+# library broke rather than which build did; the waiting means a broken leaf
+# skips what is above it instead of failing it many times over.
+name: boost-all
+
+on:
+  push:
+    paths:
+      - 'registry/boost*/**'
+      - 'tools/boost-ports.py'
+      - '.github/workflows/boost-all.yml'
+  workflow_dispatch:
+
+jobs:
+  boost-system:
+    needs: [boost-assert, boost-compat, boost-config, boost-throw-exception, boost-variant2, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-system
+          package: boost_system
+          target: Boost::system
+  boost-multi-array:
+    needs: [boost-array, boost-assert, boost-concept-check, boost-config, boost-core, boost-functional, boost-iterator, boost-mpl, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-multi-array
+          package: boost_multi_array
+          target: Boost::multi_array
+  boost-math:
+    needs: [boost-assert, boost-concept-check, boost-config, boost-core, boost-integer, boost-lexical-cast, boost-predef, boost-random, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-math
+          package: boost_math
+          target: Boost::math
+  boost-smart-ptr:
+    needs: [boost-assert, boost-config, boost-core, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-smart-ptr
+          package: boost_smart_ptr
+          target: Boost::smart_ptr
+  boost-parameter:
+    needs: [boost-config, boost-core, boost-function, boost-fusion, boost-mp11, boost-mpl, boost-optional, boost-preprocessor, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-parameter
+          package: boost_parameter
+          target: Boost::parameter
+  boost-algorithm:
+    needs: [boost-array, boost-assert, boost-bind, boost-concept-check, boost-config, boost-core, boost-exception, boost-function, boost-iterator, boost-mpl, boost-range, boost-regex, boost-throw-exception, boost-tuple, boost-type-traits, boost-unordered]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-algorithm
+          package: boost_algorithm
+          target: Boost::algorithm
+  boost-any:
+    needs: [boost-config, boost-throw-exception, boost-type-index]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-any
+          package: boost_any
+          target: Boost::any
+  boost-concept-check:
+    needs: [boost-config, boost-preprocessor, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-concept-check
+          package: boost_concept_check
+          target: Boost::concept_check
+  boost-tti:
+    needs: [boost-config, boost-function-types, boost-mpl, boost-preprocessor, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-tti
+          package: boost_tti
+          target: Boost::tti
+  boost-functional:
+    needs: [boost-config, boost-core, boost-function, boost-function-types, boost-mpl, boost-preprocessor, boost-type-traits, boost-typeof, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-functional
+          package: boost_functional
+          target: Boost::functional
+  boost-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-config
+          package: boost_config
+          target: Boost::config
+  boost-log:
+    needs: [boost-align, boost-asio, boost-assert, boost-atomic, boost-bind, boost-config, boost-core, boost-date-time, boost-exception, boost-filesystem, boost-function-types, boost-fusion, boost-interprocess, boost-intrusive, boost-io, boost-iterator, boost-move, boost-mpl, boost-optional, boost-parameter, boost-phoenix, boost-predef, boost-preprocessor, boost-property-tree, boost-proto, boost-range, boost-regex, boost-smart-ptr, boost-spirit, boost-system, boost-thread, boost-throw-exception, boost-type-index, boost-type-traits, boost-utility, boost-winapi, boost-xpressive]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-log
+          package: boost_log
+          target: Boost::log
+  boost-interprocess:
+    needs: [boost-assert, boost-config, boost-container, boost-intrusive, boost-move, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-interprocess
+          package: boost_interprocess
+          target: Boost::interprocess
+  boost-exception:
+    needs: [boost-assert, boost-config, boost-core, boost-smart-ptr, boost-throw-exception, boost-tuple, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-exception
+          package: boost_exception
+          target: Boost::exception
+  boost-foreach:
+    needs: [boost-config, boost-core, boost-iterator, boost-mpl, boost-range, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-foreach
+          package: boost_foreach
+          target: Boost::foreach
+  boost-spirit:
+    needs: [boost-array, boost-assert, boost-config, boost-core, boost-endian, boost-function, boost-function-types, boost-fusion, boost-integer, boost-io, boost-iterator, boost-move, boost-mpl, boost-optional, boost-phoenix, boost-pool, boost-preprocessor, boost-proto, boost-range, boost-smart-ptr, boost-thread, boost-throw-exception, boost-type-traits, boost-typeof, boost-unordered, boost-utility, boost-variant]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-spirit
+          package: boost_spirit
+          target: Boost::spirit
+  boost-io:
+    needs: [boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-io
+          package: boost_io
+          target: Boost::io
+  boost-units:
+    needs: [boost-assert, boost-config, boost-core, boost-integer, boost-io, boost-lambda, boost-math, boost-mpl, boost-preprocessor, boost-type-traits, boost-typeof]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-units
+          package: boost_units
+          target: Boost::units
+  boost-preprocessor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-preprocessor
+          package: boost_preprocessor
+          target: Boost::preprocessor
+  boost-format:
+    needs: [boost-assert, boost-config, boost-core, boost-optional, boost-smart-ptr, boost-throw-exception, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-format
+          package: boost_format
+          target: Boost::format
+  boost-xpressive:
+    needs: [boost-assert, boost-config, boost-conversion, boost-core, boost-exception, boost-fusion, boost-integer, boost-iterator, boost-lexical-cast, boost-mpl, boost-numeric-conversion, boost-optional, boost-preprocessor, boost-proto, boost-range, boost-smart-ptr, boost-throw-exception, boost-type-traits, boost-typeof, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-xpressive
+          package: boost_xpressive
+          target: Boost::xpressive
+  boost-integer:
+    needs: [boost-assert, boost-config, boost-core, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-integer
+          package: boost_integer
+          target: Boost::integer
+  boost-thread:
+    needs: [boost-assert, boost-atomic, boost-bind, boost-chrono, boost-concept-check, boost-config, boost-container, boost-container-hash, boost-core, boost-date-time, boost-exception, boost-function, boost-io, boost-move, boost-optional, boost-predef, boost-preprocessor, boost-smart-ptr, boost-system, boost-throw-exception, boost-tuple, boost-type-traits, boost-utility, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-thread
+          package: boost_thread
+          target: Boost::thread
+  boost-tokenizer:
+    needs: [boost-assert, boost-config, boost-iterator, boost-mpl, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-tokenizer
+          package: boost_tokenizer
+          target: Boost::tokenizer
+  boost-timer:
+    needs: [boost-config, boost-io, boost-predef]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-timer
+          package: boost_timer
+          target: Boost::timer
+  boost-regex:
+    needs: [boost-assert, boost-config, boost-predef, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-regex
+          package: boost_regex
+          target: Boost::regex
+  boost-crc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-crc
+          package: boost_crc
+          target: Boost::crc
+  boost-random:
+    needs: [boost-assert, boost-config, boost-core, boost-dynamic-bitset, boost-integer, boost-io, boost-system, boost-throw-exception, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-random
+          package: boost_random
+          target: Boost::random
+  boost-serialization:
+    needs: [boost-array, boost-assert, boost-config, boost-core, boost-detail, boost-function, boost-integer, boost-io, boost-iterator, boost-move, boost-mpl, boost-optional, boost-predef, boost-preprocessor, boost-smart-ptr, boost-spirit, boost-type-traits, boost-unordered, boost-utility, boost-variant]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-serialization
+          package: boost_serialization
+          target: Boost::serialization
+  boost-test:
+    needs: [boost-algorithm, boost-assert, boost-bind, boost-config, boost-core, boost-describe, boost-detail, boost-exception, boost-function, boost-io, boost-iterator, boost-mpl, boost-numeric-conversion, boost-optional, boost-preprocessor, boost-smart-ptr, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-test
+          package: boost_test
+          target: Boost::unit_test_framework
+  boost-date-time:
+    needs: [boost-algorithm, boost-assert, boost-config, boost-core, boost-io, boost-lexical-cast, boost-numeric-conversion, boost-range, boost-smart-ptr, boost-throw-exception, boost-tokenizer, boost-type-traits, boost-utility, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-date-time
+          package: boost_date_time
+          target: Boost::date_time
+  boost-logic:
+    needs: [boost-config, boost-core]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-logic
+          package: boost_logic
+          target: Boost::logic
+  boost-graph:
+    needs: [boost-algorithm, boost-any, boost-array, boost-assert, boost-bimap, boost-concept-check, boost-config, boost-container-hash, boost-conversion, boost-core, boost-detail, boost-foreach, boost-function, boost-integer, boost-iterator, boost-lexical-cast, boost-math, boost-move, boost-mpl, boost-multi-index, boost-multiprecision, boost-optional, boost-parameter, boost-preprocessor, boost-property-map, boost-property-tree, boost-random, boost-range, boost-regex, boost-serialization, boost-smart-ptr, boost-spirit, boost-throw-exception, boost-tti, boost-tuple, boost-type-traits, boost-typeof, boost-unordered, boost-utility, boost-xpressive]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-graph
+          package: boost_graph
+          target: Boost::graph
+  boost-numeric-conversion:
+    needs: [boost-config, boost-conversion, boost-core, boost-mpl, boost-preprocessor, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-numeric-conversion
+          package: boost_numeric_conversion
+          target: Boost::numeric_conversion
+  boost-lambda:
+    needs: [boost-config, boost-core, boost-detail, boost-iterator, boost-mpl, boost-preprocessor, boost-tuple, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-lambda
+          package: boost_lambda
+          target: Boost::lambda
+  boost-mpl:
+    needs: [boost-config, boost-core, boost-predef, boost-preprocessor, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-mpl
+          package: boost_mpl
+          target: Boost::mpl
+  boost-typeof:
+    needs: [boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-typeof
+          package: boost_typeof
+          target: Boost::typeof
+  boost-tuple:
+    needs: [boost-config, boost-core, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-tuple
+          package: boost_tuple
+          target: Boost::tuple
+  boost-utility:
+    needs: [boost-config, boost-core, boost-io, boost-preprocessor, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-utility
+          package: boost_utility
+          target: Boost::utility
+  boost-dynamic-bitset:
+    needs: [boost-assert, boost-config, boost-container-hash, boost-core, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-dynamic-bitset
+          package: boost_dynamic_bitset
+          target: Boost::dynamic_bitset
+  boost-assign:
+    needs: [boost-array, boost-config, boost-core, boost-move, boost-mpl, boost-preprocessor, boost-ptr-container, boost-range, boost-throw-exception, boost-tuple, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-assign
+          package: boost_assign
+          target: Boost::assign
+  boost-filesystem:
+    needs: [boost-assert, boost-atomic, boost-config, boost-container-hash, boost-core, boost-detail, boost-io, boost-iterator, boost-predef, boost-scope, boost-smart-ptr, boost-system, boost-type-traits, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-filesystem
+          package: boost_filesystem
+          target: Boost::filesystem
+  boost-function:
+    needs: [boost-assert, boost-bind, boost-config, boost-core, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-function
+          package: boost_function
+          target: Boost::function
+  boost-conversion:
+    needs: [boost-assert, boost-config, boost-smart-ptr, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-conversion
+          package: boost_conversion
+          target: Boost::conversion
+  boost-optional:
+    needs: [boost-assert, boost-config, boost-core, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-optional
+          package: boost_optional
+          target: Boost::optional
+  boost-property-tree:
+    needs: [boost-any, boost-assert, boost-bind, boost-config, boost-core, boost-iterator, boost-mpl, boost-multi-index, boost-optional, boost-range, boost-serialization, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-property-tree
+          package: boost_property_tree
+          target: Boost::property_tree
+  boost-bimap:
+    needs: [boost-concept-check, boost-config, boost-container-hash, boost-core, boost-iterator, boost-lambda, boost-mpl, boost-multi-index, boost-preprocessor, boost-throw-exception, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-bimap
+          package: boost_bimap
+          target: Boost::bimap
+  boost-variant:
+    needs: [boost-assert, boost-config, boost-container-hash, boost-core, boost-detail, boost-integer, boost-mpl, boost-preprocessor, boost-throw-exception, boost-type-index, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-variant
+          package: boost_variant
+          target: Boost::variant
+  boost-array:
+    needs: [boost-assert, boost-config, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-array
+          package: boost_array
+          target: Boost::array
+  boost-iostreams:
+    needs: [boost-assert, boost-config, boost-core, boost-detail, boost-function, boost-integer, boost-iterator, boost-mpl, boost-numeric-conversion, boost-preprocessor, boost-random, boost-range, boost-regex, boost-smart-ptr, boost-throw-exception, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-iostreams
+          package: boost_iostreams
+          target: Boost::iostreams
+  boost-multi-index:
+    needs: [boost-assert, boost-bind, boost-config, boost-container-hash, boost-core, boost-integer, boost-mp11, boost-preprocessor, boost-smart-ptr, boost-throw-exception, boost-tuple, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-multi-index
+          package: boost_multi_index
+          target: Boost::multi_index
+  boost-ptr-container:
+    needs: [boost-array, boost-assert, boost-circular-buffer, boost-config, boost-core, boost-iterator, boost-mpl, boost-range, boost-smart-ptr, boost-type-traits, boost-unordered, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-ptr-container
+          package: boost_ptr_container
+          target: Boost::ptr_container
+  boost-statechart:
+    needs: [boost-assert, boost-bind, boost-config, boost-conversion, boost-core, boost-detail, boost-function, boost-mpl, boost-smart-ptr, boost-thread, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-statechart
+          package: boost_statechart
+          target: Boost::statechart
+  boost-static-assert:
+    needs: [boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-static-assert
+          package: boost_static_assert
+          target: Boost::static_assert
+  boost-range:
+    needs: [boost-array, boost-assert, boost-concept-check, boost-config, boost-container-hash, boost-conversion, boost-core, boost-detail, boost-iterator, boost-mpl, boost-optional, boost-preprocessor, boost-regex, boost-tuple, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-range
+          package: boost_range
+          target: Boost::range
+  boost-rational:
+    needs: [boost-assert, boost-config, boost-core, boost-integer, boost-throw-exception, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-rational
+          package: boost_rational
+          target: Boost::rational
+  boost-iterator:
+    needs: [boost-assert, boost-concept-check, boost-config, boost-core, boost-detail, boost-fusion, boost-mpl, boost-optional, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-iterator
+          package: boost_iterator
+          target: Boost::iterator
+  boost-property-map:
+    needs: [boost-any, boost-assert, boost-concept-check, boost-config, boost-core, boost-function, boost-iterator, boost-lexical-cast, boost-mpl, boost-smart-ptr, boost-throw-exception, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-property-map
+          package: boost_property_map
+          target: Boost::property_map
+  boost-program-options:
+    needs: [boost-any, boost-bind, boost-config, boost-core, boost-detail, boost-function, boost-iterator, boost-lexical-cast, boost-smart-ptr, boost-throw-exception, boost-tokenizer, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-program-options
+          package: boost_program_options
+          target: Boost::program_options
+  boost-detail:
+    needs: [boost-config, boost-core, boost-preprocessor, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-detail
+          package: boost_detail
+          target: Boost::detail
+  boost-numeric-interval:
+    needs: [boost-config, boost-detail, boost-logic]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-numeric-interval
+          package: boost_numeric_interval
+          target: Boost::numeric_interval
+  boost-numeric-ublas:
+    needs: [boost-compute, boost-concept-check, boost-config, boost-core, boost-iterator, boost-mpl, boost-numeric-interval, boost-range, boost-serialization, boost-smart-ptr, boost-type-traits, boost-typeof]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-numeric-ublas
+          package: boost_numeric_ublas
+          target: Boost::numeric_ublas
+  boost-wave:
+    needs: [boost-assert, boost-concept-check, boost-config, boost-core, boost-filesystem, boost-format, boost-iterator, boost-lexical-cast, boost-mpl, boost-multi-index, boost-optional, boost-pool, boost-preprocessor, boost-serialization, boost-smart-ptr, boost-spirit, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-wave
+          package: boost_wave
+          target: Boost::wave
+  boost-type-traits:
+    needs: [boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-type-traits
+          package: boost_type_traits
+          target: Boost::type_traits
+  boost-bind:
+    needs: [boost-config, boost-core]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-bind
+          package: boost_bind
+          target: Boost::bind
+  boost-pool:
+    needs: [boost-assert, boost-config, boost-integer, boost-throw-exception, boost-type-traits, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-pool
+          package: boost_pool
+          target: Boost::pool
+  boost-proto:
+    needs: [boost-config, boost-core, boost-fusion, boost-mpl, boost-preprocessor, boost-range, boost-type-traits, boost-typeof, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-proto
+          package: boost_proto
+          target: Boost::proto
+  boost-fusion:
+    needs: [boost-config, boost-container-hash, boost-core, boost-function-types, boost-mpl, boost-preprocessor, boost-tuple, boost-type-traits, boost-typeof, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-fusion
+          package: boost_fusion
+          target: Boost::fusion
+  boost-function-types:
+    needs: [boost-config, boost-core, boost-detail, boost-mpl, boost-preprocessor, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-function-types
+          package: boost_function_types
+          target: Boost::function_types
+  boost-gil:
+    needs: [boost-assert, boost-concept-check, boost-config, boost-container-hash, boost-core, boost-filesystem, boost-headers, boost-integer, boost-iterator, boost-mp11, boost-preprocessor, boost-type-traits, boost-variant2]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-gil
+          package: boost_gil
+          target: Boost::gil
+  boost-intrusive:
+    needs: [boost-assert, boost-config, boost-move]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-intrusive
+          package: boost_intrusive
+          target: Boost::intrusive
+  boost-asio:
+    needs: [boost-align, boost-assert, boost-config, boost-context, boost-date-time, boost-system, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-asio
+          package: boost_asio
+          target: Boost::asio
+  boost-uuid:
+    needs: [boost-assert, boost-config, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-uuid
+          package: boost_uuid
+          target: Boost::uuid
+  boost-circular-buffer:
+    needs: [boost-assert, boost-concept-check, boost-config, boost-core, boost-move, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-circular-buffer
+          package: boost_circular_buffer
+          target: Boost::circular_buffer
+  boost-unordered:
+    needs: [boost-assert, boost-config, boost-container-hash, boost-core, boost-mp11, boost-predef, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-unordered
+          package: boost_unordered
+          target: Boost::unordered
+  boost-signals2:
+    needs: [boost-assert, boost-bind, boost-config, boost-core, boost-function, boost-iterator, boost-move, boost-mpl, boost-optional, boost-parameter, boost-preprocessor, boost-smart-ptr, boost-throw-exception, boost-tuple, boost-type-traits, boost-variant]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-signals2
+          package: boost_signals2
+          target: Boost::signals2
+  boost-accumulators:
+    needs: [boost-array, boost-assert, boost-circular-buffer, boost-concept-check, boost-config, boost-core, boost-fusion, boost-iterator, boost-mpl, boost-numeric-conversion, boost-numeric-ublas, boost-parameter, boost-preprocessor, boost-range, boost-serialization, boost-throw-exception, boost-tuple, boost-type-traits, boost-typeof]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-accumulators
+          package: boost_accumulators
+          target: Boost::accumulators
+  boost-atomic:
+    needs: [boost-align, boost-assert, boost-config, boost-predef, boost-preprocessor, boost-type-traits, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-atomic
+          package: boost_atomic
+          target: Boost::atomic
+  boost-scope-exit:
+    needs: [boost-config, boost-function, boost-preprocessor, boost-type-traits, boost-typeof]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-scope-exit
+          package: boost_scope_exit
+          target: Boost::scope_exit
+  boost-flyweight:
+    needs: [boost-assert, boost-config, boost-container-hash, boost-core, boost-detail, boost-interprocess, boost-mpl, boost-multi-index, boost-parameter, boost-preprocessor, boost-smart-ptr, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-flyweight
+          package: boost_flyweight
+          target: Boost::flyweight
+  boost-icl:
+    needs: [boost-assert, boost-concept-check, boost-config, boost-container, boost-core, boost-date-time, boost-detail, boost-iterator, boost-move, boost-mpl, boost-range, boost-rational, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-icl
+          package: boost_icl
+          target: Boost::icl
+  boost-predef:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-predef
+          package: boost_predef
+          target: Boost::predef
+  boost-chrono:
+    needs: [boost-assert, boost-config, boost-core, boost-integer, boost-move, boost-mpl, boost-predef, boost-ratio, boost-system, boost-throw-exception, boost-type-traits, boost-typeof, boost-utility, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-chrono
+          package: boost_chrono
+          target: Boost::chrono
+  boost-polygon:
+    needs: [boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-polygon
+          package: boost_polygon
+          target: Boost::polygon
+  boost-msm:
+    needs: [boost-any, boost-assert, boost-bind, boost-circular-buffer, boost-config, boost-core, boost-function, boost-fusion, boost-mp11, boost-mpl, boost-parameter, boost-phoenix, boost-preprocessor, boost-proto, boost-serialization, boost-tuple, boost-type-traits, boost-typeof]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-msm
+          package: boost_msm
+          target: Boost::msm
+  boost-heap:
+    needs: [boost-assert, boost-concept-check, boost-config, boost-core, boost-intrusive, boost-iterator, boost-parameter, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-heap
+          package: boost_heap
+          target: Boost::heap
+  boost-coroutine:
+    needs: [boost-assert, boost-config, boost-context, boost-core, boost-exception, boost-move, boost-system, boost-throw-exception, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-coroutine
+          package: boost_coroutine
+          target: Boost::coroutine
+  boost-coroutine2:
+    needs: [boost-assert, boost-config, boost-context]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-coroutine2
+          package: boost_coroutine2
+          target: Boost::coroutine2
+  boost-ratio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-ratio
+          package: boost_ratio
+          target: Boost::ratio
+  boost-numeric-odeint:
+    needs: [boost-assert, boost-compute, boost-config, boost-core, boost-fusion, boost-iterator, boost-math, boost-mpl, boost-multi-array, boost-numeric-ublas, boost-preprocessor, boost-range, boost-throw-exception, boost-type-traits, boost-units, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-numeric-odeint
+          package: boost_numeric_odeint
+          target: Boost::numeric_odeint
+  boost-geometry:
+    needs: [boost-algorithm, boost-any, boost-array, boost-assert, boost-concept-check, boost-config, boost-container, boost-core, boost-endian, boost-function-types, boost-fusion, boost-graph, boost-headers, boost-integer, boost-iterator, boost-lexical-cast, boost-math, boost-move, boost-mpl, boost-multiprecision, boost-numeric-conversion, boost-polygon, boost-predef, boost-qvm, boost-range, boost-rational, boost-serialization, boost-thread, boost-throw-exception, boost-tokenizer, boost-tuple, boost-utility, boost-variant, boost-variant2]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-geometry
+          package: boost_geometry
+          target: Boost::geometry
+  boost-phoenix:
+    needs: [boost-assert, boost-bind, boost-config, boost-core, boost-function, boost-fusion, boost-mpl, boost-predef, boost-preprocessor, boost-proto, boost-range, boost-smart-ptr, boost-type-traits, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-phoenix
+          package: boost_phoenix
+          target: Boost::phoenix
+  boost-move:
+    needs: [boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-move
+          package: boost_move
+          target: Boost::move
+  boost-locale:
+    needs: [boost-assert, boost-charconv, boost-config, boost-core, boost-iterator, boost-predef, boost-thread]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-locale
+          package: boost_locale
+          target: Boost::locale
+  boost-container:
+    needs: [boost-assert, boost-config, boost-intrusive, boost-move]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-container
+          package: boost_container
+          target: Boost::container
+  boost-local-function:
+    needs: [boost-config, boost-mpl, boost-preprocessor, boost-scope-exit, boost-type-traits, boost-typeof, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-local-function
+          package: boost_local_function
+          target: Boost::local_function
+  boost-context:
+    needs: [boost-assert, boost-config, boost-core, boost-mp11, boost-pool, boost-predef, boost-smart-ptr]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-context
+          package: boost_context
+          target: Boost::context
+  boost-type-erasure:
+    needs: [boost-assert, boost-config, boost-core, boost-fusion, boost-iterator, boost-mp11, boost-mpl, boost-preprocessor, boost-smart-ptr, boost-thread, boost-throw-exception, boost-type-traits, boost-typeof, boost-vmd]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-type-erasure
+          package: boost_type_erasure
+          target: Boost::type_erasure
+  boost-multiprecision:
+    needs: [boost-assert, boost-config, boost-core, boost-integer, boost-lexical-cast, boost-math, boost-random]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-multiprecision
+          package: boost_multiprecision
+          target: Boost::multiprecision
+  boost-lockfree:
+    needs: [boost-align, boost-assert, boost-atomic, boost-config, boost-core, boost-parameter, boost-predef, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-lockfree
+          package: boost_lockfree
+          target: Boost::lockfree
+  boost-assert:
+    needs: [boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-assert
+          package: boost_assert
+          target: Boost::assert
+  boost-align:
+    needs: [boost-assert, boost-config, boost-core]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-align
+          package: boost_align
+          target: Boost::align
+  boost-type-index:
+    needs: [boost-config, boost-container-hash, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-type-index
+          package: boost_type_index
+          target: Boost::type_index
+  boost-core:
+    needs: [boost-assert, boost-config, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-core
+          package: boost_core
+          target: Boost::core
+  boost-throw-exception:
+    needs: [boost-assert, boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-throw-exception
+          package: boost_throw_exception
+          target: Boost::throw_exception
+  boost-winapi:
+    needs: [boost-config, boost-predef]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-winapi
+          package: boost_winapi
+          target: Boost::winapi
+  boost-lexical-cast:
+    needs: [boost-config, boost-container, boost-core, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-lexical-cast
+          package: boost_lexical_cast
+          target: Boost::lexical_cast
+  boost-sort:
+    needs: [boost-config, boost-core, boost-range, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-sort
+          package: boost_sort
+          target: Boost::sort
+  boost-convert:
+    needs: [boost-config, boost-core, boost-function-types, boost-lexical-cast, boost-math, boost-mpl, boost-optional, boost-parameter, boost-range, boost-spirit, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-convert
+          package: boost_convert
+          target: Boost::convert
+  boost-endian:
+    needs: [boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-endian
+          package: boost_endian
+          target: Boost::endian
+  boost-vmd:
+    needs: [boost-preprocessor]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-vmd
+          package: boost_vmd
+          target: Boost::vmd
+  boost-dll:
+    needs: [boost-assert, boost-config, boost-core, boost-filesystem, boost-predef, boost-system, boost-throw-exception, boost-type-index, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-dll
+          package: boost_dll
+          target: Boost::dll
+  boost-compute:
+    needs: [boost-algorithm, boost-array, boost-assert, boost-atomic, boost-chrono, boost-config, boost-core, boost-filesystem, boost-function, boost-function-types, boost-fusion, boost-iterator, boost-lexical-cast, boost-mpl, boost-optional, boost-preprocessor, boost-property-tree, boost-proto, boost-range, boost-smart-ptr, boost-thread, boost-throw-exception, boost-tuple, boost-type-traits, boost-typeof, boost-utility, boost-uuid]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-compute
+          package: boost_compute
+          target: Boost::compute
+  boost-hana:
+    needs: [boost-config, boost-core, boost-fusion, boost-mpl, boost-tuple]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-hana
+          package: boost_hana
+          target: Boost::hana
+  boost-metaparse:
+    needs: [boost-config, boost-mpl, boost-predef, boost-preprocessor, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-metaparse
+          package: boost_metaparse
+          target: Boost::metaparse
+  boost-qvm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-qvm
+          package: boost_qvm
+          target: Boost::qvm
+  boost-fiber:
+    needs: [boost-algorithm, boost-assert, boost-config, boost-context, boost-core, boost-filesystem, boost-format, boost-intrusive, boost-predef, boost-smart-ptr]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-fiber
+          package: boost_fiber
+          target: Boost::fiber
+  boost-process:
+    needs: [boost-algorithm, boost-asio, boost-config, boost-core, boost-filesystem, boost-fusion, boost-iterator, boost-move, boost-optional, boost-system, boost-tokenizer, boost-type-index, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-process
+          package: boost_process
+          target: Boost::process
+  boost-stacktrace:
+    needs: [boost-config, boost-container-hash, boost-core, boost-predef, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-stacktrace
+          package: boost_stacktrace
+          target: Boost::stacktrace
+  boost-poly-collection:
+    needs: [boost-assert, boost-config, boost-core, boost-iterator, boost-mp11, boost-mpl, boost-type-erasure, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-poly-collection
+          package: boost_poly_collection
+          target: Boost::poly_collection
+  boost-beast:
+    needs: [boost-asio, boost-assert, boost-bind, boost-config, boost-container, boost-container-hash, boost-core, boost-endian, boost-headers, boost-intrusive, boost-logic, boost-mp11, boost-optional, boost-smart-ptr, boost-static-string, boost-system, boost-throw-exception, boost-type-index, boost-type-traits, boost-winapi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-beast
+          package: boost_beast
+          target: Boost::beast
+  boost-mp11:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-mp11
+          package: boost_mp11
+          target: Boost::mp11
+  boost-callable-traits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-callable-traits
+          package: boost_callable_traits
+          target: Boost::callable_traits
+  boost-contract:
+    needs: [boost-any, boost-assert, boost-config, boost-core, boost-exception, boost-function, boost-function-types, boost-mpl, boost-optional, boost-preprocessor, boost-smart-ptr, boost-thread, boost-type-traits, boost-typeof, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-contract
+          package: boost_contract
+          target: Boost::contract
+  boost-container-hash:
+    needs: [boost-config, boost-describe, boost-mp11]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-container-hash
+          package: boost_container_hash
+          target: Boost::container_hash
+  boost-hof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-hof
+          package: boost_hof
+          target: Boost::hof
+  boost-yap:
+    needs: [boost-hana, boost-preprocessor, boost-type-index]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-yap
+          package: boost_yap
+          target: Boost::yap
+  boost-safe-numerics:
+    needs: [boost-concept-check, boost-config, boost-core, boost-integer, boost-logic, boost-mp11]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-safe-numerics
+          package: boost_safe_numerics
+          target: Boost::safe_numerics
+  boost-headers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-headers
+          package: boost_headers
+          target: Boost::headers
+  boost-outcome:
+    needs: [boost-config, boost-exception, boost-headers, boost-system, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-outcome
+          package: boost_outcome
+          target: Boost::outcome
+  boost-histogram:
+    needs: [boost-config, boost-core, boost-mp11, boost-throw-exception, boost-variant2]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-histogram
+          package: boost_histogram
+          target: Boost::histogram
+  boost-variant2:
+    needs: [boost-assert, boost-config, boost-mp11]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-variant2
+          package: boost_variant2
+          target: Boost::variant2
+  boost-nowide:
+    needs: [boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-nowide
+          package: boost_nowide
+          target: Boost::nowide
+  boost-static-string:
+    needs: [boost-assert, boost-container-hash, boost-core, boost-headers, boost-throw-exception, boost-utility]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-static-string
+          package: boost_static_string
+          target: Boost::static_string
+  boost-stl-interfaces:
+    needs: [boost-assert, boost-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-stl-interfaces
+          package: boost_stl_interfaces
+          target: Boost::stl_interfaces
+  boost-leaf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-leaf
+          package: boost_leaf
+          target: Boost::leaf
+  boost-json:
+    needs: [boost-assert, boost-config, boost-container, boost-container-hash, boost-core, boost-describe, boost-endian, boost-mp11, boost-system, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-json
+          package: boost_json
+          target: Boost::json
+  boost-pfr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-pfr
+          package: boost_pfr
+          target: Boost::pfr
+  boost-describe:
+    needs: [boost-mp11]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-describe
+          package: boost_describe
+          target: Boost::describe
+  boost-lambda2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-lambda2
+          package: boost_lambda2
+          target: Boost::lambda2
+  boost-url:
+    needs: [boost-align, boost-assert, boost-config, boost-core, boost-headers, boost-mp11, boost-optional, boost-system, boost-throw-exception, boost-type-traits, boost-variant2]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-url
+          package: boost_url
+          target: Boost::url
+  boost-mysql:
+    needs: [boost-asio, boost-assert, boost-charconv, boost-compat, boost-config, boost-container, boost-core, boost-describe, boost-endian, boost-intrusive, boost-mp11, boost-optional, boost-system, boost-throw-exception, boost-variant2]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-mysql
+          package: boost_mysql
+          target: Boost::mysql
+  boost-compat:
+    needs: [boost-assert, boost-config, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-compat
+          package: boost_compat
+          target: Boost::compat
+  boost-redis:
+    needs: [boost-asio, boost-assert, boost-core, boost-mp11, boost-system, boost-throw-exception]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-redis
+          package: boost_redis
+          target: Boost::redis
+  boost-cobalt:
+    needs: [boost-asio, boost-callable-traits, boost-circular-buffer, boost-config, boost-container, boost-core, boost-endian, boost-intrusive, boost-mp11, boost-preprocessor, boost-smart-ptr, boost-static-string, boost-system, boost-throw-exception, boost-variant2]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-cobalt
+          package: boost_cobalt
+          target: Boost::cobalt
+  boost-charconv:
+    needs: [boost-assert, boost-config, boost-core]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-charconv
+          package: boost_charconv
+          target: Boost::charconv
+  boost-scope:
+    needs: [boost-config, boost-core, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-scope
+          package: boost_scope
+          target: Boost::scope
+  boost-parser:
+    needs: [boost-assert, boost-hana, boost-type-index]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-parser
+          package: boost_parser
+          target: Boost::parser
+  boost-mqtt5:
+    needs: [boost-asio, boost-assert, boost-container, boost-core, boost-endian, boost-headers, boost-random, boost-range, boost-smart-ptr, boost-system, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-mqtt5
+          package: boost_mqtt5
+          target: Boost::mqtt5
+  boost-hash2:
+    needs: [boost-assert, boost-config, boost-container-hash, boost-describe, boost-mp11]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-hash2
+          package: boost_hash2
+          target: Boost::hash2
+  boost-bloom:
+    needs: [boost-assert, boost-config, boost-container-hash, boost-core, boost-throw-exception, boost-type-traits]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-bloom
+          package: boost_bloom
+          target: Boost::bloom
+  boost-openmethod:
+    needs: [boost-assert, boost-config, boost-core, boost-dynamic-bitset, boost-headers, boost-mp11, boost-preprocessor, boost-smart-ptr]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-openmethod
+          package: boost_openmethod
+          target: Boost::openmethod
+  boost-decimal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-decimal
+          package: boost_decimal
+          target: Boost::decimal

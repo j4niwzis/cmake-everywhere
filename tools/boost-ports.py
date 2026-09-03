@@ -416,6 +416,34 @@ function(cme_adapt_boost source binary)
   endif()
 endfunction()
 """)
+    # The libraries that have broken here, and the ones the other checks
+    # already name. A sample is only worth having if it is made of the
+    # places things went wrong rather than of the first few alphabetically:
+    #
+    #   asio, beast, cobalt        a repository whose name is not its path
+    #   dll, gil                   a stored entry naming its own target
+    #   thread, fiber, process     a stored entry pointing at absent sources
+    #   atomic, date-time, chrono  the entries that pointed
+    #   iostreams                  a probe a source build cannot answer
+    #   locale                     a dependency's tests
+    #   numeric-odeint             a reference inside an if
+    #   static-string              a library asking for the umbrella mid-build
+    #   functional                 a red job that was apt having a bad day
+    #   container                  compiled, deep, and under half of Boost
+    #   mp11, system, filesystem   what the per-port checks name
+    #
+    # The umbrella is not here because there is no job for it here: it is a
+    # name for other ports rather than a library, and check.yml asks about
+    # it, from the archive and from the system.
+    SAMPLE = {
+        "boost-mp11", "boost-system", "boost-filesystem",
+        "boost-asio", "boost-beast", "boost-cobalt", "boost-dll", "boost-gil",
+        "boost-thread", "boost-fiber", "boost-process", "boost-atomic",
+        "boost-date-time", "boost-chrono", "boost-iostreams", "boost-locale",
+        "boost-numeric-odeint", "boost-static-string", "boost-functional",
+        "boost-container",
+    }
+
     # And the build that checks them, one job per library, each waiting for
     # the libraries it is built on.
     #
@@ -446,30 +474,74 @@ endfunction()
           package: boost_{key(module)}
           target: Boost::{target(module, defines)}""")
 
-    write(".github/workflows/boost.yml", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.
+    def workflow(name, chosen, trigger, why):
+        # A job may only wait for a job that is here, so in the sample the
+        # waiting is on the sample.
+        kept = []
+        for module in modules:
+            if not defines.get(module) or key(module) in BY_ARRANGEMENT:
+                continue
+            if chosen is not None and port(module) not in chosen:
+                continue
+            needs = [port(other) for other in edges[module]
+                     if defines.get(other)
+                     and (chosen is None or port(other) in chosen)]
+            waits = ""
+            if needs:
+                waits = "    needs: [" + ", ".join(sorted(needs)) + "]\n"
+            kept.append(f"""  {port(module)}:
+{waits}    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: {port(module)}
+          package: boost_{key(module)}
+          target: Boost::{target(module, defines)}""")
+        write(f".github/workflows/{name}.yml", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.
+#
+# {why}
 #
 # One job per Boost library, each waiting for the libraries it is built on,
 # in the order Boost's own dependency graph gives. A job apiece says which
 # library broke rather than which build did; the waiting means a broken leaf
-# skips what is above it instead of failing it a hundred and fifty times.
-#
-# Every job builds its library and everything underneath it from the
-# repositories. What is shared between them is ccache, under one key for all
-# of them, because most of what any of these jobs compiles is the libraries
-# below it.
-name: boost
+# skips what is above it instead of failing it many times over.
+name: {name}
 
 on:
-  push:
-    paths:
-      - 'registry/boost*/**'
-      - 'cmake-everywhere.cmake'
-      - '.github/workflows/boost.yml'
-  workflow_dispatch:
+{trigger}  workflow_dispatch:
 
 jobs:
-{chr(10).join(jobs)}
+{chr(10).join(kept)}
 """)
+
+    # Two of them, because the two things that change are different sizes.
+    # A change to the machinery can break Boost, and when it does the places
+    # it breaks are the places it has broken before; a change to the ports or
+    # to the script that writes them changes all hundred and fifty-three at
+    # once, and nothing smaller than all of them says whether that worked.
+    #
+    # Nothing weekly. The ports name one release by commit and by digest, so
+    # a run next Sunday builds exactly what a run today built.
+    workflow("boost", SAMPLE,
+             """  push:
+    paths:
+      - 'cmake-everywhere.cmake'
+      - 'cmake/**'
+      - '.github/actions/boost-library/**'
+      - '.github/workflows/boost.yml'
+""",
+             "The Boost libraries that have broken here, for a change to the "
+             "machinery rather than to the ports.")
+    workflow("boost-all", None,
+             """  push:
+    paths:
+      - 'registry/boost*/**'
+      - 'tools/boost-ports.py'
+      - '.github/workflows/boost-all.yml'
+""",
+             "Every Boost library there is a port for, for a change to the "
+             "ports or to the script that writes them.")
 
     print(f"{sum(1 for m in modules if defines.get(m))} ports, the umbrella, "
           f"and a job for each, at {version}")

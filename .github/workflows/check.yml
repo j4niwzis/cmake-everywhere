@@ -16,6 +16,11 @@ name: check
 
 on:
   push:
+    # Nothing here tests a paragraph, and the Guix job below is a hundred and
+    # thirty megabytes and a daemon.
+    paths-ignore:
+      - 'README.md'
+      - 'LICENSE'
   pull_request:
   schedule:
     # Monday morning. This is the one that finds a library whose upstream
@@ -279,6 +284,156 @@ jobs:
             cmake --build build/offline
             ./build/offline/cme-port
           '
+
+  # The same two questions on Guix, which answers them differently enough to
+  # be worth asking twice.
+  no-usr-guix:
+    runs-on: ubuntu-latest
+    needs: quick
+    name: no /usr, no network, on guix
+    steps:
+      - uses: actions/checkout@v4
+      # The tarball, kept between runs. It is a hundred and thirty megabytes
+      # of a fixed version with a fixed digest, so fetching it again every
+      # time is asking a mirror for something we already have.
+      - uses: actions/cache@v4
+        with:
+          path: guix-binary-1.5.0.x86_64-linux.tar.xz
+          key: guix-binary-1.5.0
+      - name: guix
+        run: |
+          # The installer fetches through ftpmirror.gnu.org, which is a
+          # redirector, and the redirector answers 502 -- steadily, not once.
+          # The mirrors it would have sent us to are all fine, so the tarball
+          # is fetched from one of them here and the installer is handed it.
+          #
+          # And pinned, because this is a hundred and thirty megabytes of
+          # binaries about to be run as root: a mirror is a machine that is
+          # not GNU's, and the digest is what makes which mirror answered
+          # not matter.
+          version=1.5.0
+          file=guix-binary-$version.x86_64-linux.tar.xz
+          digest=aa41025489c5061543e9c48873eaa829b900b2da75d40f9648913622f5f47817
+          if [ -f "$file" ] && echo "$digest  $file" | sha256sum -c - >/dev/null 2>&1
+          then
+            echo "already here, and it is the right one"
+          else
+          for mirror in https://ftp.gnu.org/gnu/guix \
+                        https://mirrors.kernel.org/gnu/guix \
+                        https://ftp.funet.fi/pub/gnu/prep/guix \
+                        https://mirror.us-midwest-1.nexcess.net/gnu/guix; do
+            echo "trying $mirror"
+            if wget -q -O "$file" "$mirror/$file"; then
+              break
+            fi
+          done
+          fi
+          echo "$digest  $file" | sha256sum -c - || {
+            echo "what arrived is not what was asked for; stopping"
+            exit 1
+          }
+          wget -q https://guix.gnu.org/install.sh
+          # Newlines, not y: the installer says so itself, and says that
+          # anything else is unsupported and likely to break.
+          yes '' | sudo -E env GUIX_BINARY_FILE_NAME="$PWD/$file" \
+            bash install.sh || {
+            echo "Guix did not install. Nothing about this repository was"
+            echo "checked by this run."
+            exit 1
+          }
+          echo "/var/guix/profiles/per-user/root/current-guix/bin" >> "$GITHUB_PATH"
+
+      - name: a library the machine has, found without a /usr
+        run: |
+          guix shell nss-certs cmake ninja gcc-toolchain pkg-config zlib -- sh -c '
+            set -e
+            # A shell with no certificates cannot check one, and anything
+            # that reaches the network then fails on the certificate rather
+            # than on the reaching.
+            export SSL_CERT_FILE="$GUIX_ENVIRONMENT/etc/ssl/certs/ca-certificates.crt"
+            export SSL_CERT_DIR="$GUIX_ENVIRONMENT/etc/ssl/certs"
+            cmake -S test/port -B build/guix -G Ninja \
+              -DCME_LOCK= -DCME_STORE= \
+              -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+              -DCME_PORT_PACKAGE=ZLIB -DCME_PORT_TARGETS=ZLIB::ZLIB \
+              -DCME_PORT_INCLUDE=zlib.h
+            cmake --build build/guix
+            ./build/guix/cme-port
+            cat build/guix/cme-report.txt
+            grep -qE "^ZLIB (system|pkg-config)" build/guix/cme-report.txt
+          '
+      - name: our digest of a directory against guix's
+        run: |
+          mkdir -p /tmp/tree/sub
+          printf 'hello\n' > /tmp/tree/a.txt
+          printf '#!/bin/sh\n' > /tmp/tree/sub/run.sh
+          chmod +x /tmp/tree/sub/run.sh
+          ours=$(python3 tools/nar-hash.py /tmp/tree)
+          theirs=$(guix hash -r /tmp/tree)
+          echo "ours   $ours"
+          echo "guix   $theirs"
+          test "$ours" = "$theirs"
+
+      - name: fetched with a network, built without one
+        run: |
+          guix shell nss-certs cmake ninja gcc-toolchain pkg-config git -- sh -c '
+            set -e
+            # A shell with no certificates cannot check one, and anything
+            # that reaches the network then fails on the certificate rather
+            # than on the reaching.
+            export SSL_CERT_FILE="$GUIX_ENVIRONMENT/etc/ssl/certs/ca-certificates.crt"
+            export SSL_CERT_DIR="$GUIX_ENVIRONMENT/etc/ssl/certs"
+            cmake -S tools/prefetch -B build/prefetch \
+              -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+              -DCPM_SOURCE_CACHE="$PWD/vendor" \
+              -DCME_PREFETCH="zlib;libpng"
+          '
+          # Ubuntu restricts unprivileged user namespaces through AppArmor,
+          # which is what turned this proof into a request last time. The
+          # runner has sudo; the restriction is one number.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 \
+            >/dev/null 2>&1 || true
+          if unshare -rn true 2>/dev/null; then
+            run="unshare -rn"
+            echo "offline is enforced: this runs with no network at all"
+          else
+            run=""
+            echo "no network namespace here: offline is asked for, not enforced"
+          fi
+          $run guix shell nss-certs cmake ninja gcc-toolchain pkg-config -- sh -c '
+            set -e
+            # A shell with no certificates cannot check one, and anything
+            # that reaches the network then fails on the certificate rather
+            # than on the reaching.
+            export SSL_CERT_FILE="$GUIX_ENVIRONMENT/etc/ssl/certs/ca-certificates.crt"
+            export SSL_CERT_DIR="$GUIX_ENVIRONMENT/etc/ssl/certs"
+            cmake -S test/port -B build/offline -G Ninja \
+              -DCME_LOCK= -DCME_STORE= -DCME_SYSTEM=NEVER -DCME_OFFLINE=ON \
+              -DCPM_SOURCE_CACHE="$PWD/vendor" \
+              -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+              -DCME_PORT_PACKAGE=PNG -DCME_PORT_TARGETS=PNG::PNG \
+              -DCME_PORT_INCLUDE=png.h
+            cmake --build build/offline
+            ./build/offline/cme-port
+          '
+          # And the other direction: the lock this job just wrote, turned
+          # into what Guix would be handed. The sources are in vendor, so
+          # every digest can be computed -- an empty one here would mean the
+          # filling does not work, which is the half the Nix job proves by
+          # handing its file to Nix.
+          python3 tools/lock-to-guix.py tools/prefetch/cme-lock.json \
+            "$PWD/vendor" > /tmp/sources.scm
+          cat /tmp/sources.scm
+          if grep -q 'base32 ""' /tmp/sources.scm; then
+            echo "a digest was left empty while the sources were at hand"
+            exit 1
+          fi
+          # And the fixture, which has a source nothing fetched in it: that
+          # one has to come out empty and say so, because a generated file
+          # that fills in what it does not know is worse than one that does
+          # not.
+          python3 tools/lock-to-guix.py test/lock/cme-lock.json > /tmp/unknown.scm
+          grep -q 'base32 ""' /tmp/unknown.scm
 
   # Whether a library nobody has ported can be used anyway. Everything this
   # one touches is made while it runs: an upstream repository, a directory of
