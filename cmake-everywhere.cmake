@@ -308,6 +308,29 @@ if(CME_COMPILER_CACHE STREQUAL "AUTO")
   endif()
 endif()
 
+# FindBoost is gone, and this answers for Boost.
+#
+# CMake 3.30 removed FindBoost and warns at every find_package(Boost) until
+# the policy is set. Every one of those calls is answered here, by ports,
+# and never by FindBoost -- so the warning is about something that cannot
+# happen, printed once per call, in a build that may make a hundred of them.
+# It is set here rather than left for the project to set, because the project
+# is not the one who decided FindBoost would not be used.
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+  set(CMAKE_POLICY_DEFAULT_CMP0167 NEW)
+endif()
+
+# And the same for a policy warning a port cannot fix. install() DESTINATION
+# paths are normalised under CMP0177, and a released library whose
+# cmake_minimum_required predates it warns for every install rule it has --
+# rules this never runs, because a dependency's install rules are not the
+# consumer's. The trees are not ours to correct, so they are configured with
+# the answer rather than the question.
+if(POLICY CMP0177)
+  set(CMAKE_POLICY_DEFAULT_CMP0177 NEW)
+endif()
+
 # Every project() call in this configuration reads what the tree it is in
 # carries, before its own first line. See cmake/source-ports.cmake.
 list(APPEND CMAKE_PROJECT_INCLUDE_BEFORE "${CME_DIR}/cmake/source-ports.cmake")
