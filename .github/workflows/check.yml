@@ -36,7 +36,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       ports: ${{ steps.ports.outputs.list }}
-      boost: ${{ steps.boost.outputs.list }}
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y ninja-build
@@ -44,8 +43,6 @@ jobs:
         run: python3 check.py
       - id: ports
         run: echo "list=$(python3 check.py --matrix)" >> "$GITHUB_OUTPUT"
-      - id: boost
-        run: echo "list=$(python3 check.py --boost-ports)" >> "$GITHUB_OUTPUT"
       - name: refusals
         run: |
           set -e
@@ -102,53 +99,6 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build/boost
           ./build/boost/cme-port
-      - run: ccache --show-stats
-
-  # And a job for each Boost library on its own, from its own repository.
-  #
-  # A job apiece is what says which library broke rather than which build
-  # did, and from repositories because that is the path where one library is
-  # a small download: each job clones the one it is for and the ones it is
-  # built on, and nothing else. The compiling is shared between runs by
-  # ccache, under one key for all of them, because most of what any of these
-  # jobs compiles is the libraries underneath it.
-  boost-each:
-    needs: quick
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      max-parallel: 20
-      matrix:
-        port: ${{ fromJSON(needs.quick.outputs.boost) }}
-    name: ${{ matrix.port.port }}
-    steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
-      - uses: actions/cache@v4
-        with:
-          path: .cache/sources
-          key: boost-git-${{ matrix.port.port }}-${{ hashFiles('registry/boost-config/port.cmake') }}
-          restore-keys: boost-git-
-      - uses: actions/cache@v4
-        with:
-          path: .cache/ccache
-          key: boost-each-ccache-${{ matrix.port.port }}-${{ github.sha }}
-          restore-keys: |
-            boost-each-ccache-${{ matrix.port.port }}-
-            boost-each-ccache-
-      - name: ${{ matrix.port.package }} and what it is built on
-        run: |
-          export CPM_SOURCE_CACHE="$PWD/.cache/sources"
-          export CCACHE_DIR="$PWD/.cache/ccache"
-          tools/configure -S test/port -B build/one -G Ninja \
-            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
-            -DCME_SYSTEM=NEVER -DCME_STORE= \
-            -DCME_PORT_PACKAGE="${{ matrix.port.package }}" \
-            -DCME_PORT_TARGETS="${{ matrix.port.targets }}" \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          cmake --build build/one
-          ./build/one/cme-port
       - run: ccache --show-stats
 
   # Whether a library nobody has ported can be used anyway. Everything this

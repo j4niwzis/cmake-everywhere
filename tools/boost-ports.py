@@ -372,7 +372,79 @@ function(cme_adapt_boost source binary)
   endif()
 endfunction()
 """)
-    print(f"{sum(1 for m in modules if defines.get(m))} ports and the umbrella, at {version}")
+    # And the build that checks them, one job per library, each waiting for
+    # the libraries it is built on.
+    #
+    # A job apiece says which library broke rather than which build did, and
+    # the waiting is what keeps one broken leaf from turning into a hundred
+    # and fifty red jobs: what is built on it is skipped instead, which is
+    # the truth about what was and was not checked.
+    jobs = []
+    for module in modules:
+        if not defines.get(module):
+            continue
+        needs = [port(other) for other in edges[module] if defines.get(other)]
+        waits = ""
+        if needs:
+            waits = "    needs: [" + ", ".join(sorted(needs)) + "]\n"
+        jobs.append(f"""  {port(module)}:
+{waits}    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - uses: actions/cache@v4
+        with:
+          path: .cache/sources
+          key: boost-git-{port(module)}-{version}
+          restore-keys: boost-git-
+      - uses: actions/cache@v4
+        with:
+          path: .cache/ccache
+          key: boost-ccache-{port(module)}-${{{{ github.sha }}}}
+          restore-keys: |
+            boost-ccache-{port(module)}-
+            boost-ccache-
+      - name: boost_{key(module)} and what it is built on
+        run: |
+          export CPM_SOURCE_CACHE="$PWD/.cache/sources"
+          export CCACHE_DIR="$PWD/.cache/ccache"
+          tools/configure -S test/port -B build/one -G Ninja \\
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \\
+            -DCME_SYSTEM=NEVER -DCME_STORE= -DCME_LOCK= \\
+            -DCME_PORT_PACKAGE=boost_{key(module)} \\
+            -DCME_PORT_TARGETS=Boost::{target(module, defines)} \\
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \\
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build/one
+          ./build/one/cme-port""")
+
+    write(".github/workflows/boost.yml", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.
+#
+# One job per Boost library, each waiting for the libraries it is built on,
+# in the order Boost's own dependency graph gives. A job apiece says which
+# library broke rather than which build did; the waiting means a broken leaf
+# skips what is above it instead of failing it a hundred and fifty times.
+#
+# Every job builds its library and everything underneath it from the
+# repositories. What is shared between them is ccache, under one key for all
+# of them, because most of what any of these jobs compiles is the libraries
+# below it.
+name: boost
+
+on:
+  push:
+    paths:
+      - 'registry/boost*/**'
+      - 'cmake-everywhere.cmake'
+      - '.github/workflows/boost.yml'
+  workflow_dispatch:
+
+jobs:
+{chr(10).join(jobs)}
+""")
+
+    print(f"{sum(1 for m in modules if defines.get(m))} ports, the umbrella, "
+          f"and a job for each, at {version}")
 
 
 if __name__ == "__main__":
