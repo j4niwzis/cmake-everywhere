@@ -47,7 +47,7 @@ function(cme_declare_port)
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
-           GN_ARGS GN_TARGETS GN_CONFIRM)
+           GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
     message(FATAL_ERROR "cmake-everywhere: a port with no NAME")

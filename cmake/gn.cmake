@@ -33,8 +33,33 @@ endfunction()
 # project's own argument spellings -- one calls the compiler cc, the next
 # calls it clang_path -- and asks for these by placeholder, because only this
 # side knows what the consumer is building with.
+# A placeholder that resolves to nothing is not an empty setting, it is a
+# question nobody answered. Passing it on gets an error from the project
+# being described, about its own internals, several steps away from the
+# reason -- cc="" reaches GN as a compiler it then tries to run.
+function(cme_gn_needed name value why)
+  if(NOT value)
+    message(FATAL_ERROR
+      "cmake-everywhere: a port asks for @${name}@ and there is nothing to "
+      "put there. ${why}")
+  endif()
+endfunction()
+
 function(cme_gn_substitute out text)
   set(value "${text}")
+  if(value MATCHES "@CC@")
+    cme_gn_needed(CC "${CMAKE_C_COMPILER}"
+      "No C compiler is configured. A project that says LANGUAGES CXX has "
+      "none; most projects described by GN need both, so say LANGUAGES C CXX.")
+  endif()
+  if(value MATCHES "@CXX@")
+    cme_gn_needed(CXX "${CMAKE_CXX_COMPILER}"
+      "No C++ compiler is configured. Add CXX to the project's LANGUAGES.")
+  endif()
+  if(value MATCHES "@AR@")
+    cme_gn_needed(AR "${CMAKE_AR}"
+      "CMAKE_AR is empty, which happens when no language is enabled at all.")
+  endif()
   string(REPLACE "@CC@" "${CMAKE_C_COMPILER}" value "${value}")
   string(REPLACE "@CXX@" "${CMAKE_CXX_COMPILER}" value "${value}")
   string(REPLACE "@AR@" "${CMAKE_AR}" value "${value}")
@@ -73,13 +98,19 @@ endfunction()
 # Confirms what an argument came out as rather than what was asked for. An
 # argument that is misspelled, overridden or shadowed reads correctly in the
 # command line that set it and wrongly in the build.
-function(cme_gn_confirm gn build name expected)
+function(cme_gn_confirm gn root build name expected)
+  # --root, because gn finds the source tree by walking up from where it is
+  # run and this is not run from there. And the error is kept: a message that
+  # says a command failed without saying what it said is a message that costs
+  # somebody the round trip of asking.
   execute_process(
-    COMMAND "${gn}" args "${build}" "--list=${name}" --short
-    OUTPUT_VARIABLE output RESULT_VARIABLE code
-    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    COMMAND "${gn}" args "${build}" "--root=${root}" "--list=${name}" --short
+    WORKING_DIRECTORY "${root}"
+    OUTPUT_VARIABLE output ERROR_VARIABLE failure RESULT_VARIABLE code
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
   if(NOT code EQUAL 0)
-    message(FATAL_ERROR "cmake-everywhere: gn cannot report ${name}")
+    message(FATAL_ERROR
+      "cmake-everywhere: gn cannot report ${name}\n${failure}")
   endif()
   string(REGEX REPLACE "\n.*" "" first "${output}")
   string(STRIP "${first}" first)
@@ -127,8 +158,32 @@ function(cme_gn_dependency_flags port out_includes out_libdirs)
   set(${out_libdirs} "${quoted_libdirs}" PARENT_SCOPE)
 endfunction()
 
+# A tree that expects to run gn itself, from a path inside itself. Skia does:
+# it normally downloads one into bin/gn, and a step of its own build runs that
+# to ask what the build contains. The gn this configure is using is put there
+# instead of a second copy being fetched -- as a link, so it is plainly the
+# same one.
+function(cme_gn_place gn port source)
+  cme_port_field(places ${port} GN_IN_TREE)
+  foreach(where IN LISTS places)
+    if(EXISTS "${source}/${where}")
+      continue()
+    endif()
+    get_filename_component(directory "${source}/${where}" DIRECTORY)
+    file(MAKE_DIRECTORY "${directory}")
+    file(CREATE_LINK "${gn}" "${source}/${where}" SYMBOLIC RESULT status)
+    if(NOT status STREQUAL "0")
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} runs gn from ${where} inside its own tree, "
+        "and it could not be put there: ${status}")
+    endif()
+    message(STATUS "cmake-everywhere: ${port} runs gn from ${where}")
+  endforeach()
+endfunction()
+
 function(cme_gn_generate port source build out_description)
   cme_gn_find(gn)
+  cme_gn_place("${gn}" ${port} "${source}")
   set(CME_GN_SOURCE_DIR "${source}")
   cme_gn_dependency_flags(${port} CME_GN_DEP_INCLUDES CME_GN_DEP_LIBDIRS)
 
@@ -170,7 +225,8 @@ function(cme_gn_generate port source build out_description)
   endforeach()
   foreach(pair IN LISTS confirm)
     if(pair MATCHES "^([^=]+)=(.*)$")
-      cme_gn_confirm("${gn}" "${build}" "${CMAKE_MATCH_1}" "${CMAKE_MATCH_2}")
+      cme_gn_confirm("${gn}" "${source}" "${build}" "${CMAKE_MATCH_1}"
+                     "${CMAKE_MATCH_2}")
     endif()
   endforeach()
 

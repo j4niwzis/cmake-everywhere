@@ -10,7 +10,9 @@
 #   -DCME_FEATURES_skia="gl;png;freetype"
 
 cmake_minimum_required(VERSION 3.24)
-project(cme-skia LANGUAGES CXX)
+# Both languages: Skia is C++ and the libraries under it are C, and GN is
+# told which compiler to describe the build for.
+project(cme-skia LANGUAGES C CXX)
 
 find_package(Skia REQUIRED)
 
