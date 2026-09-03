@@ -1037,6 +1037,46 @@ function(cme_port_needs port)
                "needs ${ARGN};")
 endfunction()
 
+# A name the copy being built here will define, that is already taken.
+#
+# The machine's copy is looked for first, and finding one defines the
+# targets its config file declares -- under the names upstream uses, since
+# it is the same upstream. When that copy is then refused, for a feature it
+# was not built with, those definitions stay: nothing removes a target in
+# CMake. add_subdirectory then says "cannot create target glfw because an
+# imported target with the same name already exists", once per line of the
+# library's own CMakeLists, about the library rather than about the
+# decision that led there.
+function(cme_note_name_clash port package)
+  cme_port_field(names ${port} LINK_NAMES)
+  set(clashing "")
+  foreach(pair IN LISTS names)
+    if(NOT pair MATCHES "^([^=]+)=")
+      continue()
+    endif()
+    set(name "${CMAKE_MATCH_1}")
+    if(NOT TARGET ${name})
+      continue()
+    endif()
+    get_target_property(imported ${name} IMPORTED)
+    if(imported)
+      list(APPEND clashing "${name}")
+    endif()
+  endforeach()
+  if(NOT clashing)
+    return()
+  endif()
+  list(JOIN clashing ", " listed)
+  string(TOUPPER "${package}" upper)
+  message(WARNING
+    "cmake-everywhere: ${package} is built here, and ${listed} is already "
+    "an imported target -- the copy on this machine was looked at, refused, "
+    "and what it defined cannot be undefined. What comes next is CMake "
+    "refusing to create ${listed}. Configure with -DCME_SYSTEM_${upper}=OFF "
+    "so that copy is not looked at, or with what it is missing installed so "
+    "it can be used.")
+endfunction()
+
 # A port describes one library: where it comes from, what it needs, and what
 # find_package names it answers to. Ports only declare; nothing is fetched
 # until something asks for it.
@@ -2748,8 +2788,30 @@ function(cme_system_has_features out package port features)
   if(NOT libraries)
     set(libraries "${${package}_LIBRARY}")
   endif()
+  if(NOT libraries)
+    # A config file a distribution ships defines a target and sets no
+    # variables, so the target is the only way to link what was found --
+    # and a check that links nothing answers no about every symbol.
+    #
+    # Both names it can be under: what the port promises its consumers, and
+    # what upstream calls it, which is the name a config file installed by
+    # that upstream defines.
+    cme_port_field(targets ${port} TARGETS)
+    cme_port_field(names ${port} LINK_NAMES)
+    foreach(pair IN LISTS names)
+      if(pair MATCHES "^([^=]+)=")
+        list(APPEND targets "${CMAKE_MATCH_1}")
+      endif()
+    endforeach()
+    foreach(target IN LISTS targets)
+      if(TARGET ${target})
+        list(APPEND libraries ${target})
+      endif()
+    endforeach()
+  endif()
   include(CheckIncludeFile)
   include(CheckSymbolExists)
+  include(CheckFunctionExists)
   set(CMAKE_REQUIRED_INCLUDES "${includes}")
   set(CMAKE_REQUIRED_LIBRARIES "${libraries}")
   set(CMAKE_REQUIRED_QUIET TRUE)
@@ -2766,19 +2828,31 @@ function(cme_system_has_features out package port features)
         return()
       endif()
     endforeach()
-    # "symbol:header", because a symbol cannot be looked for without one.
+    # "symbol:header" looks for a symbol the way a program would use it,
+    # through the header that declares it. A bare "symbol" looks for it in
+    # the library alone -- which is the question when the declaration is
+    # somewhere a check cannot reach: glfwGetX11Display is declared in
+    # glfw3native.h behind a macro, and that header includes Xlib.h, so
+    # asking for it through a header asks the machine for X11's headers
+    # rather than about the library that was found.
     cme_feature_field(symbols ${port} ${feature} SYSTEM_SYMBOLS)
     foreach(pair IN LISTS symbols)
-      if(NOT pair MATCHES "^([^:]+):(.+)$")
-        message(FATAL_ERROR
-          "cmake-everywhere: ${port}'s ${feature} says SYSTEM_SYMBOLS "
-          "${pair}, which is not <symbol>:<header>")
+      if(pair MATCHES "^([^:]+):(.+)$")
+        set(symbol "${CMAKE_MATCH_1}")
+        set(header "${CMAKE_MATCH_2}")
+      else()
+        set(symbol "${pair}")
+        set(header "")
       endif()
-      string(MAKE_C_IDENTIFIER "cme_${package}_${CMAKE_MATCH_1}" variable)
-      check_symbol_exists("${CMAKE_MATCH_1}" "${CMAKE_MATCH_2}" ${variable})
+      string(MAKE_C_IDENTIFIER "cme_${package}_${symbol}" variable)
+      if(header)
+        check_symbol_exists("${symbol}" "${header}" ${variable})
+      else()
+        check_function_exists("${symbol}" ${variable})
+      endif()
       if(NOT ${variable})
         message(STATUS
-          "cmake-everywhere: the system ${package} has no ${CMAKE_MATCH_1}, "
+          "cmake-everywhere: the system ${package} has no ${symbol}, "
           "so it was not built with ${feature}")
         set(${out} FALSE PARENT_SCOPE)
         return()
@@ -3416,6 +3490,7 @@ function(cme_build_port port package version exact)
     if(NOT built)
       set(built "${CMAKE_BINARY_DIR}/_cme/${port}")
     endif()
+    cme_note_name_clash(${port} "${package}")
     if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.25)
       add_subdirectory("${tree}" "${built}" EXCLUDE_FROM_ALL SYSTEM)
     else()
