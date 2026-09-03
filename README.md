@@ -541,11 +541,32 @@ library with CMake, a library without one, and a library with a different
 build system entirely -- and enough to prove the interesting case:
 `find_package(SndFile)` alone brings four more.
 
-## Trying it
+## Checking it
 
 ```sh
-test/build.sh                                  # system where possible
-test/build.sh build/from-source -DCME_SYSTEM=NEVER
+test/run.sh               # everything that needs no more than a compiler
+test/run.sh --with-skia   # and the one that needs gn and a long wait
+```
+
+Two kinds of check. The refusals configure a project against a registry of
+libraries that do not exist -- every one of those errors is decided while the
+graph is being walked, so nothing is ever fetched -- and each asserts not
+only that the build stopped but *why*: a refusal for the wrong reason fails
+the check, because the message is the feature.
+
+The builds are real. `test/features` asks freetype for colour bitmap glyphs,
+which brings libpng and zlib under it, and asks flac for nothing and gets its
+Ogg support anyway because the port has that on unless refused. Each is run
+twice, once taking what the system has and once with `CME_SYSTEM=NEVER`.
+
+`test/skia` is separate because it needs `gn` and takes a while. With no
+components it is Skia as a CPU rasteriser, which is the cheapest way to find
+out whether the GN description was read correctly. Then:
+
+```sh
+cmake -S test/skia -B build/skia -G Ninja \
+  -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=$PWD/cmake-everywhere.cmake \
+  -DCME_FEATURES_skia="gl;png;freetype"
 ```
 
 ## Licence
