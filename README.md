@@ -725,6 +725,31 @@ ask, so they are checked when the library is about to be built. `WITHOUT` is
 a dependency that exists because a feature is *off* -- the substitute for
 something that was not enabled.
 
+### Platforms are features too
+
+`android`, `linux`, `windows`, `macos`, `ios`, `freebsd`, `openbsd`,
+`netbsd` and `wasm` are features every port may use without declaring that
+they exist, and they are on when the build is for that platform. Nobody asks
+for one: the toolchain already answered, so `cme_features(skia android)` and
+`-DCME_DEFAULT_FEATURES=-android` are errors rather than switches.
+
+A port uses them the way it uses any other feature -- to carry arguments, a
+dependency, or a rule:
+
+```cmake
+cme_port_feature(skia android GN_ARGS "skia_use_egl=true" DEPENDS oboe)
+cme_port_rule(skia WITH android CONFLICTS x11)
+```
+
+A port that says nothing about a platform never sees the name. It is added
+to the features of the ports that declare it or name it in a rule and to no
+others, because in every other port it would sit in the identity key, in the
+line the log prints and in what an installed copy says it was built with,
+saying the one thing that is true of everything in the build.
+
+A system name this has no word for still works: it becomes itself in
+lowercase, so a port for QNX declares `qnx` and gets it there.
+
 ### Skia, as it is set up here
 
 Nothing by default: the port with no features is Skia as a CPU rasteriser --

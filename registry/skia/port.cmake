@@ -297,16 +297,14 @@ int main() {
 # Its own build picks the file that assembles a GL interface by asking, in
 # order, whether this is Android, whether EGL was asked for, whether WebGL
 # was, and whether this is Linux with X11 -- and if none of those, it takes
-# GrGLMakeNativeInterface_none.cpp, which returns nothing. A build with
-# skia_use_gl=true and no way to reach GL therefore compiles, links, and
-# hands back a null interface at run time: no context, no frame, and on
-# Wayland no window either, because a window is not shown until something
-# has been drawn into it.
+# GrGLMakeNativeInterface_none.cpp, which returns nothing. So on a desktop
+# Linux, gl without egl or x11 compiles, links, and hands back a null
+# interface at run time.
 #
-# Only where the question arises. Android, macOS and Windows each have one
-# answer and Skia takes it without being told.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
-  endif()
+# This port does not require one of the two: a program that reaches GL some
+# other way, or assembles the interface itself out of the loader it already
+# has, is a program this has no business refusing. What it does say is that
+# asking for both is asking for one of them to be ignored.
 # Skia asks about EGL before it asks about X11 and takes the first answer,
 # so a build told both is a build where one of them was ignored. Which one
 # matters: a GL context made through GLX and an interface assembled through

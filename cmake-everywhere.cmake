@@ -1593,9 +1593,111 @@ function(cme_profile name)
   include("${file}")
 endfunction()
 
+# Platforms, as features every port has whether it declares them or not.
+#
+# Nothing asks for android: a build either is for Android or it is not, and
+# the toolchain already answered. So these are not requested and cannot be
+# refused -- they are turned on by what is being built for, for every port at
+# once, and a port that has something to say about a platform says it the way
+# it says everything else:
+#
+#   cme_port_feature(skia android GN_ARGS "skia_use_egl=true" DEPENDS oboe)
+#   cme_port_rule(skia WITH android CONFLICTS x11)
+#
+# A port that says nothing about a platform never sees the name: it is added
+# to the features of the ports that declare it or name it in a rule, and to
+# nothing else.
+set(CME_PLATFORM_FEATURES
+  android linux windows macos ios freebsd openbsd netbsd wasm
+  CACHE INTERNAL "feature names that name a platform rather than a choice")
+
+# The ones that are true of this build. One name, not a family: android is
+# not linux here, because what a port does differently on Android it does
+# differently from Linux.
+function(cme_platform_features out)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(names wasm)
+  elseif(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(names android)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(names linux)
+  elseif(CMAKE_SYSTEM_NAME MATCHES "^(iOS|watchOS|tvOS|visionOS)$")
+    set(names ios)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(names macos)
+  elseif(CMAKE_SYSTEM_NAME MATCHES "^(Windows|WindowsStore|MSYS|CYGWIN)")
+    set(names windows)
+  else()
+    # A system this does not have a name for is still a system, and a port
+    # for it can still say so: QNX becomes qnx, and only a port that names
+    # qnx ever sees it.
+    string(TOLOWER "${CMAKE_SYSTEM_NAME}" names)
+  endif()
+  set(${out} "${names}" PARENT_SCOPE)
+endfunction()
+
+function(cme_platform_feature out name)
+  set(result FALSE)
+  if(name IN_LIST CME_PLATFORM_FEATURES)
+    set(result TRUE)
+  endif()
+  cme_platform_features(here)
+  if(name IN_LIST here)
+    set(result TRUE)
+  endif()
+  set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
+# Whether this port has anything to say about a platform: it declares a
+# feature by that name, or one of its rules names it.
+#
+# Everything else -- every port that builds the same way everywhere -- is
+# left alone. The name would otherwise join its enabled features, and from
+# there its identity key, the line the log prints about it and what an
+# installed copy says it was built with, in all of which it would say
+# nothing: every port in the build was built for the same platform.
+function(cme_port_minds_platform out port feature)
+  set(result FALSE)
+  cme_port_field(declared ${port} FEATURES)
+  if(feature IN_LIST declared)
+    set(result TRUE)
+  endif()
+  get_property(rules GLOBAL PROPERTY CME_RULES_${port})
+  set(index 0)
+  foreach(rule IN LISTS rules)
+    get_property(arguments GLOBAL PROPERTY CME_RULE_${port}_${index})
+    math(EXPR index "${index} + 1")
+    if(feature IN_LIST arguments)
+      set(result TRUE)
+    endif()
+  endforeach()
+  set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
+# The platforms this build is for, kept to the ones the port minds.
+function(cme_port_platform_features port out)
+  cme_platform_features(names)
+  set(result "")
+  foreach(feature IN LISTS names)
+    cme_port_minds_platform(minds ${port} ${feature})
+    if(minds)
+      list(APPEND result "${feature}")
+    endif()
+  endforeach()
+  set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
 # Whether policy says this feature may not be on. A project that asks a
 # library for something directly outranks a blanket rule about every library.
 function(cme_feature_refused out port feature)
+  # A platform is not a policy question. -android in CME_DEFAULT_FEATURES
+  # would otherwise switch off what the toolchain decided, and the library
+  # would be built as if it were not on Android while being on Android.
+  cme_platform_feature(platform "${feature}")
+  if(platform)
+    set(${out} FALSE PARENT_SCOPE)
+    return()
+  endif()
   set(result FALSE)
   if("-${feature}" IN_LIST CME_DEFAULT_FEATURES)
     set(result TRUE)
@@ -3129,6 +3231,14 @@ function(cme_require port version features reason)
   # cme_features() is called before the registry is loaded, so its names can
   # only be checked here.
   foreach(feature IN LISTS CME_FEATURES_${port} CME_FEATURES_OFF_${port})
+    cme_platform_feature(platform "${feature}")
+    if(platform)
+      message(FATAL_ERROR
+        "cmake-everywhere: this build names ${feature} as a feature of "
+        "${port}. ${feature} is a platform: it is on when the build is for "
+        "that platform and off when it is not, and neither asking for it nor "
+        "refusing it changes what this build is for.")
+    endif()
     if(NOT feature IN_LIST declared)
       message(FATAL_ERROR
         "cmake-everywhere: this build names a feature ${feature} for ${port}, "
@@ -3137,6 +3247,14 @@ function(cme_require port version features reason)
   endforeach()
   get_property(known GLOBAL PROPERTY CME_REQUIRED_FEATURES_${port})
   foreach(feature IN LISTS features)
+    cme_platform_feature(platform "${feature}")
+    if(platform)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${reason} asks ${port} for ${feature}, which is a "
+        "platform rather than a feature to ask for: it is on for every port "
+        "when the build is for that platform. A dependency that only exists "
+        "there belongs in cme_port_feature(${port} ${feature} DEPENDS ...).")
+    endif()
     if(NOT feature IN_LIST declared)
       message(FATAL_ERROR
         "cmake-everywhere: ${reason} asks ${port} for a feature called "
@@ -3269,6 +3387,15 @@ function(cme_enabled_features port out)
       list(APPEND enabled "${first}")
     endif()
   endforeach()
+  # The platform. Added before the implications are walked, because a
+  # platform feature brings dependencies the same way any other feature
+  # does, and after everything else, because nothing here can turn it on or
+  # off: what this build is for was settled by the toolchain.
+  cme_port_platform_features(${port} platforms)
+  foreach(feature IN LISTS platforms)
+    cme_remember_why(${port} ${feature} "the platform this build is for")
+  endforeach()
+  list(APPEND enabled ${platforms})
   cme_expand_implications(${port} "${enabled}" enabled)
   set(result "")
   foreach(feature IN LISTS enabled)
@@ -3309,6 +3436,11 @@ function(cme_requested_features port out)
       list(APPEND enabled "${feature}")
     endif()
   endforeach()
+  # A platform is asked for rather than merely defaulted: an installed copy
+  # built without what the port says this platform needs is the wrong copy,
+  # the same as one built without a feature somebody named.
+  cme_port_platform_features(${port} platforms)
+  list(APPEND enabled ${platforms})
   cme_expand_implications(${port} "${enabled}" enabled)
   set(result "")
   foreach(feature IN LISTS enabled)
