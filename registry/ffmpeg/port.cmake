@@ -25,7 +25,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       "--arch=x86_32"
       "--disable-asm"
       "--disable-stripping"
-      "--disable-pthreads"
       "--disable-w32threads"
       "--disable-os2threads")
 endif()
@@ -98,6 +97,11 @@ cme_declare_port(
     "--enable-swscale"
     "--enable-swresample"
     "--enable-protocol=file"
+    # Threads are a feature below, and a feature can only add. So this says
+    # no and the feature says yes where there is a yes to say: its arguments
+    # are given after these, and the last of the two is the one its
+    # configure keeps.
+    "--disable-pthreads"
   CONFIGURE_CROSS
     "--enable-cross-compile"
     "--cross-prefix=@CROSS_PREFIX@"
@@ -112,6 +116,14 @@ cme_declare_port(
     "--host-cc=@BUILD_MACHINE_CC@"
     "--nm=@NM@"
 )
+
+# More than one core, where the machine being built for has more than one
+# thread. Nobody asks for this: a wasm build compiled with -pthread has
+# workers and shared memory and one compiled without has neither, and every
+# other system this builds for has threads.
+cme_port_feature(ffmpeg _machine_threads
+  SUMMARY "encoding and decoding on as many threads as it is given"
+  CONFIGURE_ARGS "--enable-pthreads")
 
 # What can be written without anything else being installed, and what a
 # file written that way is put in. Off, like everything else here: five

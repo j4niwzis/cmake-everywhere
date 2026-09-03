@@ -490,6 +490,58 @@ function(cme_significant_flags out text)
   set(${out} "${cme_said}" PARENT_SCOPE)
 endfunction()
 
+# What the machine being built for can do, read from the flags this build
+# compiles with rather than worked out again by every port.
+#
+# On most systems these questions have one answer: a Linux has threads.
+# WebAssembly is where they do not -- a wasm build has threads when it is
+# compiled with -pthread, which is workers and shared memory, and has none
+# when it is not, and the same sources have to build both ways. A port that
+# assumes one gets a library that will not link into the other, and a port
+# that guesses gets it wrong for somebody.
+#
+# So the answer is worked out once, from what this build actually compiles
+# with, and every port can branch on it:
+#
+#   if(CME_MACHINE_THREADS) ... else() ... endif()
+#
+# Asked for the first time when the first port is declared, because that is
+# after the project has set its flags: read while cmake-everywhere is being
+# included, this would see the flags of a build that has not decided yet.
+function(cme_machine_capabilities)
+  if(DEFINED CME_MACHINE_THREADS)
+    return()
+  endif()
+  set(cme_text "${CMAKE_C_FLAGS} ${CMAKE_CXX_FLAGS}")
+  foreach(cme_config IN ITEMS DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    string(APPEND cme_text
+           " ${CMAKE_C_FLAGS_${cme_config}} ${CMAKE_CXX_FLAGS_${cme_config}}")
+  endforeach()
+  separate_arguments(cme_words UNIX_COMMAND "${cme_text}")
+  # Everywhere else they are there, and a port that asks is asking about the
+  # machine and not about the flags.
+  set(cme_threads TRUE)
+  set(cme_simd FALSE)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(cme_threads FALSE)
+    foreach(cme_word IN LISTS cme_words)
+      # The three spellings of the same thing: the flag, the setting it is
+      # short for, and the instructions it needs.
+      if(cme_word STREQUAL "-pthread" OR cme_word STREQUAL "-matomics"
+         OR cme_word MATCHES "^-s?USE_PTHREADS=1$")
+        set(cme_threads TRUE)
+      endif()
+      if(cme_word STREQUAL "-msimd128")
+        set(cme_simd TRUE)
+      endif()
+    endforeach()
+  endif()
+  set(CME_MACHINE_THREADS "${cme_threads}" CACHE INTERNAL
+      "Whether what is being built for has threads")
+  set(CME_MACHINE_SIMD "${cme_simd}" CACHE INTERNAL
+      "Whether what is being built for has the SIMD instructions")
+endfunction()
+
 # The flags this build compiles with, both kinds of them: the ones that
 # apply always and the ones the build type adds.
 function(cme_flags_of out language)
@@ -1678,6 +1730,9 @@ endfunction()
 # find_package names it answers to. Ports only declare; nothing is fetched
 # until something asks for it.
 function(cme_declare_port)
+  # What this build can do, worked out the first time a port asks and read
+  # by all of them.
+  cme_machine_capabilities()
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
@@ -1916,6 +1971,14 @@ endfunction()
 # Features are additive and they compose by union, the way versions compose
 # by maximum: if anything in the build needs skia with Vulkan, the one Skia
 # in the build has Vulkan.
+# A feature of a port, which is a thing the library can be built with.
+#
+# A feature named _machine_<something> is not one anybody asks for: it is on
+# exactly where the machine being built for can do that something, and off
+# where it cannot. _machine_threads is on where there are threads --
+# everywhere except a wasm build compiled without -pthread -- and
+# _machine_simd where there are the SIMD instructions. What can be named
+# after _machine_ is what cme_machine_capabilities works out.
 function(cme_port_feature port feature)
   cmake_parse_arguments(FEATURE "" "SUMMARY"
     "GN_ARGS;GN_CONFIRM;GN_TARGETS;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;PATCHES;TARGETS;TREES;DEFAULT"
@@ -3895,7 +3958,23 @@ function(cme_enabled_features port out)
   # A feature the library says is on unless somebody says otherwise, and one
   # a project wants wherever it exists.
   cme_port_field(declared ${port} FEATURES)
+  cme_machine_capabilities()
   foreach(feature IN LISTS declared)
+    # What the machine can do is not something to ask for. A feature whose
+    # name begins with _machine_ is on where the machine can do what the
+    # rest of the name says and off where it cannot, whoever asked for
+    # what: a wasm build compiled without -pthread has no threads, and a
+    # library told to use them there compiles code that will not link.
+    if(feature MATCHES "^_machine_(.+)$")
+      set(cme_capability "${CMAKE_MATCH_1}")
+      string(TOUPPER "${cme_capability}" cme_capability)
+      if(CME_MACHINE_${cme_capability})
+        list(APPEND enabled "${feature}")
+      else()
+        list(REMOVE_ITEM enabled "${feature}")
+      endif()
+      continue()
+    endif()
     cme_feature_field(default ${port} ${feature} DEFAULT)
     if(default OR feature IN_LIST CME_DEFAULT_FEATURES)
       list(APPEND enabled "${feature}")
