@@ -57,6 +57,29 @@ jobs:
             echo "  refused: $case"
           done
 
+  # Whether a library built once is found again, and not found when what it
+  # was built with has changed in a way the mode does not allow. zlib,
+  # because the question is about the store rather than about the library.
+  store:
+    needs: quick
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - uses: actions/cache@v4
+        with:
+          path: .cache/sources
+          key: sources-store-${{ hashFiles('registry/zlib/*.cmake') }}
+          restore-keys: sources-store-
+      - name: built once, found again
+        run: test/store.sh "${{ github.workspace }}/build/store-check"
+      - name: what the builds decided
+        if: always()
+        run: |
+          for log in build/store-check/*.log; do
+            echo "=== $log"; tail -20 "$log"
+          done
+
   # Every library on its own, taking what the runner already has where it
   # can. Cheap enough to run on a push.
   ports:

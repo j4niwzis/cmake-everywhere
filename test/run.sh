@@ -88,6 +88,15 @@ expect_refusal refused-feature       "this build refuses"
 expect_refusal licence               "accepts only"
 expect_refusal missing-port          "there is no port called"
 
+echo "the store -- built once, found again, and not found when it should not be"
+if "$here/store.sh" "$out/store" >"$out/store.log" 2>&1; then
+  sed 's/^/  /' "$out/store.log"
+  passed=$((passed + 1))
+else
+  sed 's/^/  /' "$out/store.log"
+  report 1 "store  (see $out/store.log)"
+fi
+
 echo "builds"
 expect_build features "$here/features"
 expect_build features-from-source "$here/features" -DCME_SYSTEM=NEVER

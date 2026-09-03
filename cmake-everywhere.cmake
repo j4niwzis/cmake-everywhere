@@ -204,13 +204,15 @@ function(cme_identity_key out port version)
     string(APPEND recipe "${digest}")
   endforeach()
 
-  # And everything underneath, by the same rule.
+  # And everything underneath, by the same rule and in full. A version and a
+  # feature list is not enough: editing zlib's port changes what zlib is, and
+  # everything built against it is something else too.
   set(beneath "")
   cme_gn_dependency_ports_or_depends(${port} deps)
   foreach(dep IN LISTS deps)
     cme_effective_version(${dep} dep_version)
-    get_property(dep_features GLOBAL PROPERTY CME_REQUIRED_FEATURES_${dep})
-    list(APPEND beneath "${dep}=${dep_version}[${dep_features}]")
+    cme_identity_key(dep_identity ${dep} "${dep_version}")
+    list(APPEND beneath "${dep_identity}")
   endforeach()
 
   list(JOIN options "|" options)
@@ -746,8 +748,9 @@ endfunction()
 # Only what exists now is copied. A header a library generates while building
 # rather than while configuring is not here yet, and a port whose library
 # does that cannot be kept this way; it says so rather than keeping half.
-function(cme_store_keep_headers out port entry directories)
+function(cme_store_keep_headers out ok port entry directories)
   set(result "")
+  set(${ok} TRUE PARENT_SCOPE)
   set(index 0)
   foreach(directory IN LISTS directories)
     string(REGEX REPLACE "^\\$<BUILD_INTERFACE:(.*)>$" "\\1" directory
@@ -759,7 +762,14 @@ function(cme_store_keep_headers out port entry directories)
     file(GLOB_RECURSE headers "${directory}/*.h" "${directory}/*.hpp"
                               "${directory}/*.hh" "${directory}/*.inc")
     if(NOT headers)
-      continue()
+      # Nothing there yet, which means this library writes its headers while
+      # it builds rather than while it configures. Keeping the rest would
+      # keep a library that cannot be compiled against.
+      message(STATUS
+        "cmake-everywhere: ${port} is not kept: ${directory} has no headers "
+        "yet, so it makes them while building")
+      set(${ok} FALSE PARENT_SCOPE)
+      return()
     endif()
     set(kept "${entry}/generated/${index}")
     file(COPY "${directory}/" DESTINATION "${kept}"
@@ -781,12 +791,21 @@ function(cme_store_write port package entry)
   if(NOT aliases)
     return()
   endif()
-  file(MAKE_DIRECTORY "${entry}/lib")
+  # Filled under a name nobody reads and moved into place in one step at the
+  # end. A reader cannot tell a directory being written from a finished one,
+  # and a rename is the only way to say "now".
+  string(RANDOM LENGTH 8 ALPHABET "abcdefghijklmnopqrstuvwxyz0123456789" tag)
+  get_filename_component(parent "${entry}" DIRECTORY)
+  get_filename_component(leaf "${entry}" NAME)
+  set(building "${parent}/.building-${leaf}-${tag}")
+  file(REMOVE_RECURSE "${building}")
+  file(MAKE_DIRECTORY "${building}/lib")
   set(text "# Written by cmake-everywhere. Do not edit; the name is a hash.\n")
   set(main "")
   set(everything "")
   foreach(alias IN LISTS aliases)
     if(NOT TARGET ${alias})
+      file(REMOVE_RECURSE "${building}")
       return()
     endif()
     get_target_property(target ${alias} ALIASED_TARGET)
@@ -797,6 +816,7 @@ function(cme_store_write port package entry)
     if(NOT kind STREQUAL "STATIC_LIBRARY")
       # Only an archive can be kept and used again. Anything else -- an
       # interface library, a shared object -- is left to be built.
+      file(REMOVE_RECURSE "${building}")
       return()
     endif()
     if(NOT main)
@@ -811,7 +831,11 @@ function(cme_store_write port package entry)
         set(${name} "")
       endif()
     endforeach()
-    cme_store_keep_headers(includes ${port} "${entry}" "${includes}")
+    cme_store_keep_headers(includes kept ${port} "${building}" "${includes}")
+    if(NOT kept)
+      file(REMOVE_RECURSE "${building}")
+      return()
+    endif()
 
     set(archives "${target}")
     set(links "")
@@ -847,7 +871,11 @@ function(cme_store_write port package entry)
   while(exported)
     list(POP_FRONT exported name value)
     string(REPLACE "@CME@" ";" value "${value}")
-    cme_store_keep_headers(value ${port} "${entry}" "${value}")
+    cme_store_keep_headers(value kept ${port} "${building}" "${value}")
+    if(NOT kept)
+      file(REMOVE_RECURSE "${building}")
+      return()
+    endif()
     list(JOIN value ";" value)
     string(REPLACE ";" "@CME@" value "${value}")
     string(APPEND text
@@ -868,18 +896,19 @@ function(cme_store_write port package entry)
   endif()
   foreach(archive IN LISTS everything)
     list(APPEND keeping COMMAND ${CMAKE_COMMAND} -E copy_if_different
-         "$<TARGET_FILE:${archive}>" "${entry}/lib/lib${archive}.a")
+         "$<TARGET_FILE:${archive}>" "${building}/lib/lib${archive}.a")
   endforeach()
   add_custom_target(cme_store_${port} ALL
     ${keeping}
-    COMMAND ${CMAKE_COMMAND} -E touch "${entry}/complete"
+    COMMAND ${CMAKE_COMMAND} "-Dfrom=${building}" "-Dto=${entry}"
+            -P "${CME_DIR}/cmake/store-finish.cmake"
     COMMENT "cmake-everywhere: keeping ${port} in the store"
     VERBATIM)
   add_dependencies(cme_store_${port} ${everything})
-  file(WRITE "${entry}/use.cmake" "${text}")
+  file(WRITE "${building}/use.cmake" "${text}")
   cme_environment_pairs(pairs)
   list(JOIN pairs "\n" recorded)
-  file(WRITE "${entry}/environment.txt" "${recorded}\n")
+  file(WRITE "${building}/environment.txt" "${recorded}\n")
 endfunction()
 
 # Headers under a name they are not under in the source tree.

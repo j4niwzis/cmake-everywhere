@@ -720,6 +720,20 @@ input goes into the hash: a hash that is too specific costs a rebuild, and
 one that is not specific enough costs an afternoon of looking for why a
 library behaves as though it were built with something else.
 
+An entry is filled under a name nobody reads and moved into place in one
+step, because a reader cannot tell a directory being written from a finished
+one and a rename is the only way to say "now". Two builds that finish the
+same entry at the same time are finishing the same thing -- the name is a
+hash of everything that decides what is in it -- so the second one throws its
+copy away rather than replacing a directory somebody may be reading.
+
+What it does not do, said here rather than found out. Nothing is ever
+removed: the store grows until somebody deletes a directory in it. And a
+library that writes its headers while building rather than while configuring
+is not kept at all -- it says so and is built each time, which is the honest
+answer, since keeping it would keep something that cannot be compiled
+against.
+
 Turn it off with `-DCME_STORE=` (empty), or point it somewhere else with
 `-DCME_STORE=/path`. There is a compiler cache as well, used when one is
 installed, but it is the smaller half: it makes compiling cheaper, while this
@@ -778,9 +792,17 @@ Locally:
 
 ```sh
 python3 check.py          # nothing is fetched: names, licences, targets
+test/store.sh             # built once, found again, not found when it should not be
 test/run.sh               # everything that needs no more than a compiler
 test/run.sh --with-skia-features   # and the ones that need gn and a wait
 ```
+
+`test/store.sh` asks the store three questions, and none of them is "was it
+faster" -- a timing is not an answer. Every build writes down where each
+library came from, so the questions are asked of that: a library nobody has
+built is *built*; the same library in another build directory comes from the
+*store*; the same library with a difference the mode does not allow is
+*built* again, and with one the mode does allow it is found.
 
 Two kinds of check. The refusals configure a project against a registry of
 libraries that do not exist -- every one of those errors is decided while the
