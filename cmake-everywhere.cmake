@@ -308,6 +308,10 @@ if(CME_COMPILER_CACHE STREQUAL "AUTO")
   endif()
 endif()
 
+# Every project() call in this configuration reads what the tree it is in
+# carries, before its own first line. See cmake/source-ports.cmake.
+list(APPEND CMAKE_PROJECT_INCLUDE_BEFORE "${CME_DIR}/cmake/source-ports.cmake")
+
 include("${CME_DIR}/cmake/CPM.cmake")
 include("${CME_DIR}/cmake/gn.cmake")
 include("${CME_DIR}/cmake/cmakeproject.cmake")
@@ -476,6 +480,64 @@ function(cme_export_line port text)
   endif()
 endfunction()
 
+# Where a port's source is, said apart from what the port is.
+#
+# A library describing itself knows its name, its version, its licence, its
+# features and what it needs. It does not know where it is: the URL in its
+# own CMakeLists is right until somebody forks it, mirrors it, or builds it
+# from a tarball, and then it is a lie that is committed. Where to get it is
+# whoever wants it from source's to say -- a project, an overlay, a registry
+# -- and a port with nothing to say about it is a perfectly good port for a
+# library that is installed.
+#
+#   cme_port_source(hello GITHUB_REPOSITORY me/hello GIT_TAG v1.4.0)
+#
+# Field by field, and the first to say wins, the same as everything else.
+function(cme_port_source port)
+  set(fields GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY GIT_TAG
+             GIT_TAG_TEMPLATE GIT_SHALLOW URL URL_HASH SOURCE_SUBDIR VERSION)
+  cmake_parse_arguments(SOURCE "" "${fields}" "" ${ARGN})
+  if(SOURCE_UNPARSED_ARGUMENTS)
+    list(JOIN SOURCE_UNPARSED_ARGUMENTS " " extra)
+    message(FATAL_ERROR
+      "cmake-everywhere: cme_port_source(${port} ...) says ${extra}, and it "
+      "only says where a port comes from.")
+  endif()
+  set(said "cme_port_source(${port}")
+  foreach(field IN LISTS fields)
+    if("${SOURCE_${field}}" STREQUAL "")
+      continue()
+    endif()
+    get_property(fixed GLOBAL PROPERTY CME_PORT_${port}_FIXED)
+    if(NOT field IN_LIST fixed)
+      set_property(GLOBAL PROPERTY CME_PORT_${port}_${field}
+                   "${SOURCE_${field}}")
+      set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FIXED "${field}")
+      set_property(GLOBAL APPEND_STRING PROPERTY CME_PORT_${port}_RECIPE
+                   "source ${field}=${SOURCE_${field}};")
+    endif()
+    cme_quote(value "${SOURCE_${field}}")
+    string(APPEND said " ${field} \"${value}\"")
+  endforeach()
+  cme_export_line(${port} "${said})")
+endfunction()
+
+# What a port needs, added to what it already said it needs. Written by hand
+# when a port here is short of something, and written by this when a project
+# is installed: what a library asked for while it was built is what it needs,
+# and that is a better list than one kept by hand.
+function(cme_port_needs port)
+  get_property(existing GLOBAL PROPERTY CME_PORT_${port}_DEPENDS)
+  foreach(spec IN LISTS ARGN)
+    if(NOT spec IN_LIST existing)
+      list(APPEND existing "${spec}")
+    endif()
+  endforeach()
+  set_property(GLOBAL PROPERTY CME_PORT_${port}_DEPENDS "${existing}")
+  set_property(GLOBAL APPEND_STRING PROPERTY CME_PORT_${port}_RECIPE
+               "needs ${ARGN};")
+endfunction()
+
 # A port describes one library: where it comes from, what it needs, and what
 # find_package names it answers to. Ports only declare; nothing is fetched
 # until something asks for it.
@@ -494,6 +556,11 @@ function(cme_declare_port)
   if(NOT PORT_PROVIDES)
     set(PORT_PROVIDES "${PORT_NAME}")
   endif()
+  # A project declaring itself has already said its version once.
+  if(NOT PORT_VERSION AND PROJECT_NAME AND PORT_NAME STREQUAL PROJECT_NAME
+     AND PROJECT_VERSION)
+    set(PORT_VERSION "${PROJECT_VERSION}")
+  endif()
   # The first place that names a port is the place it comes from. A project
   # declares before anything is loaded, overlays are loaded before the
   # registry, so this ordering is what lets either of them correct what is
@@ -503,22 +570,39 @@ function(cme_declare_port)
   if(NOT origin)
     set(origin "the project")
   endif()
+  # Two sides know two different things about the same library, and both are
+  # right. A project knows where to get it, because it chose it; the library
+  # knows what it is, what it needs and what it is licensed under, because it
+  # is the library. Neither list is complete and neither should overwrite the
+  # other, so a second declaration of a port fills in what the first did not
+  # say and changes nothing that it did.
+  set(merging FALSE)
   if("${PORT_NAME}" IN_LIST known)
+    set(merging TRUE)
     get_property(first GLOBAL PROPERTY CME_PORT_${PORT_NAME}_ORIGIN)
     message(STATUS
-      "cmake-everywhere: ${PORT_NAME} comes from ${first}; the copy in "
-      "${origin} is not read")
-    return()
+      "cmake-everywhere: ${PORT_NAME} comes from ${first}; ${origin} only "
+      "fills in what it did not say")
   endif()
   get_property(directory GLOBAL PROPERTY CME_PORT_DIRECTORY)
-  set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_ORIGIN "${origin}")
-  set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_DIR "${directory}")
+  if(NOT merging)
+    set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_ORIGIN "${origin}")
+  endif()
+  get_property(known_directory GLOBAL PROPERTY CME_PORT_${PORT_NAME}_DIR)
+  if(directory AND NOT known_directory)
+    # The adapters and the overlay of a port live beside its port.cmake, so a
+    # declaration that has a directory brings one even when it is not first.
+    set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_DIR "${directory}")
+  endif()
   # What the port said, for a port that has no file of its own to hash.
   set(recipe "")
   foreach(field IN LISTS one many)
     string(APPEND recipe "${field}=${PORT_${field}};")
   endforeach()
-  set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_RECIPE "${recipe}")
+  # Appended rather than set: every declaration that contributed to a port is
+  # part of what the port is, and so part of the name its build is kept under.
+  set_property(GLOBAL APPEND_STRING PROPERTY CME_PORT_${PORT_NAME}_RECIPE
+               "${recipe}")
 
   # Written out and installed, when this is the project's own declaration.
   #
@@ -526,7 +610,7 @@ function(cme_declare_port)
   # fetched: those are somebody else's to publish. This is the project saying
   # what it needed, so that whoever installs the project gets to know it
   # without fetching the project.
-  if(CME_EXPORT_PORTS AND origin STREQUAL "the project"
+  if(CME_EXPORT_PORTS AND NOT merging AND origin STREQUAL "the project"
      AND CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
     if(PORT_OVERLAY)
       message(STATUS
@@ -556,21 +640,63 @@ function(cme_declare_port)
       string(APPEND text ")\n")
       file(WRITE "${exported}" "${text}")
       set_property(GLOBAL PROPERTY CME_EXPORTED_${PORT_NAME} "${exported}")
+      set_property(GLOBAL APPEND PROPERTY CME_EXPORTING "${PORT_NAME}")
       install(FILES "${exported}"
               DESTINATION "${CME_EXPORT_DESTINATION}/${PORT_NAME}")
+      # The install rule is made now, when the path is known. What goes in
+      # the file is finished at the end of the configuration, when what this
+      # project actually asked for is known.
+      get_property(scheduled GLOBAL PROPERTY CME_EXPORT_SCHEDULED)
+      if(NOT scheduled)
+        set_property(GLOBAL PROPERTY CME_EXPORT_SCHEDULED TRUE)
+        cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+                       CALL cme_finish_exports)
+      endif()
     endif()
   endif()
 
+  get_property(fixed GLOBAL PROPERTY CME_PORT_${PORT_NAME}_FIXED)
   foreach(field IN LISTS one many)
+    # Not what cme_port_source already said, and not what an earlier
+    # declaration said either.
+    if(field IN_LIST fixed)
+      continue()
+    endif()
+    if(merging)
+      get_property(said GLOBAL PROPERTY CME_PORT_${PORT_NAME}_${field})
+      if(NOT "${said}" STREQUAL "" OR "${PORT_${field}}" STREQUAL "")
+        continue()
+      endif()
+    endif()
     set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_${field}
       "${PORT_${field}}")
   endforeach()
-  set_property(GLOBAL APPEND PROPERTY CME_PORTS "${PORT_NAME}")
+  if(NOT merging)
+    set_property(GLOBAL APPEND PROPERTY CME_PORTS "${PORT_NAME}")
+  endif()
   # The name a project writes in find_package() is not the name the library
   # calls itself: FLAC, Ogg and SndFile are all spelled several ways.
   foreach(name IN LISTS PORT_PROVIDES)
     set_property(GLOBAL PROPERTY CME_PROVIDER_${name} "${PORT_NAME}")
   endforeach()
+
+  # More declarations, attached to a library by whoever declared it -- for a
+  # library that needs libraries nobody has ported and has never heard of any
+  # of this. The path is the declaring side's own, because that is whose file
+  # it is: a library that wants to carry its own puts it in the tree under
+  # the name cmake/source-ports.cmake looks for, and says nothing.
+  if(PORT_PORTS_FROM)
+    set(attached "${PORT_PORTS_FROM}")
+    if(NOT IS_ABSOLUTE "${attached}")
+      set(attached "${CMAKE_CURRENT_SOURCE_DIR}/${attached}")
+    endif()
+    if(NOT EXISTS "${attached}")
+      message(FATAL_ERROR
+        "cmake-everywhere: the ${PORT_NAME} port says its other declarations "
+        "are in ${PORT_PORTS_FROM}, and there is no such file at ${attached}.")
+    endif()
+    include("${attached}")
+  endif()
 endfunction()
 
 # What a library can optionally be. A feature is not a group of libraries --
@@ -1208,49 +1334,6 @@ function(cme_include_ports where origin)
   set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
 endfunction()
 
-# The declarations a library carries, read after it is fetched and before it
-# is configured.
-#
-# A library that uses this needs no file: its own cme_declare_port calls run
-# when its CMakeLists is added, which is before its own find_package calls,
-# which is exactly when they are needed. This is for the ones that do not,
-# and for whoever wants to attach declarations to a library they do not
-# control: PORTS_FROM names a file, relative to the fetched tree, or an
-# absolute path anywhere.
-function(cme_source_ports port source)
-  if(NOT CME_SOURCE_PORTS)
-    return()
-  endif()
-  cme_port_field(from ${port} PORTS_FROM)
-  set(files "")
-  if(from)
-    if(NOT IS_ABSOLUTE "${from}")
-      set(from "${source}/${from}")
-    endif()
-    if(NOT EXISTS "${from}")
-      message(FATAL_ERROR
-        "cmake-everywhere: the ${port} port says its declarations are in "
-        "${from}, and there is no such file.")
-    endif()
-    list(APPEND files "${from}")
-  else()
-    foreach(name "cme-ports.cmake" ".cme/ports.cmake")
-      if(EXISTS "${source}/${name}")
-        list(APPEND files "${source}/${name}")
-      endif()
-    endforeach()
-  endif()
-  foreach(file IN LISTS files)
-    get_filename_component(directory "${file}" DIRECTORY)
-    set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "the ${port} source")
-    set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "${directory}")
-    include("${file}")
-    set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "")
-    set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
-    message(STATUS "cmake-everywhere: ${port} carries ${file}")
-  endforeach()
-endfunction()
-
 # Every prefix this configuration would look in, that has ports in it.
 function(cme_system_port_directories out)
   set(prefixes "")
@@ -1272,6 +1355,58 @@ function(cme_system_port_directories out)
     list(REMOVE_DUPLICATES found)
   endif()
   set(${out} "${found}" PARENT_SCOPE)
+endfunction()
+
+# Every find_package this build answered, and the directory it was asked
+# from. A library's dependencies are what it asked for while it was built,
+# which is a truer list than one kept by hand in a port.
+function(cme_note_ask port)
+  if(NOT CME_EXPORT_PORTS)
+    return()
+  endif()
+  set_property(GLOBAL APPEND PROPERTY CME_ASK_DIRS
+               "${CMAKE_CURRENT_SOURCE_DIR}")
+  set_property(GLOBAL APPEND PROPERTY CME_ASK_PORTS "${port}")
+endfunction()
+
+# Called at the end of the top-level directory, when everything that was
+# going to ask has asked.
+function(cme_finish_exports)
+  get_property(names GLOBAL PROPERTY CME_EXPORTING)
+  get_property(dirs GLOBAL PROPERTY CME_ASK_DIRS)
+  get_property(asked GLOBAL PROPERTY CME_ASK_PORTS)
+  foreach(name IN LISTS names)
+    if(name STREQUAL PROJECT_NAME)
+      set(home "${CMAKE_SOURCE_DIR}")
+    else()
+      get_property(home GLOBAL PROPERTY CME_TREE_${name})
+    endif()
+    if(NOT home)
+      continue()
+    endif()
+    set(needs "")
+    set(index 0)
+    foreach(directory IN LISTS dirs)
+      list(GET asked ${index} port)
+      math(EXPR index "${index} + 1")
+      cmake_path(IS_PREFIX home "${directory}" NORMALIZE inside)
+      if(inside AND NOT port STREQUAL name AND NOT port IN_LIST needs)
+        list(APPEND needs "${port}")
+      endif()
+    endforeach()
+    if(NOT needs)
+      continue()
+    endif()
+    set(said "cme_port_needs(${name}")
+    foreach(item IN LISTS needs)
+      cme_quote(value "${item}")
+      string(APPEND said " \"${value}\"")
+    endforeach()
+    cme_export_line(${name} "${said})")
+    list(JOIN needs " " listed)
+    message(STATUS "cmake-everywhere: ${name} needs ${listed}, and its "
+                   "exported port now says so")
+  endforeach()
 endfunction()
 
 function(cme_load_registry)
@@ -1844,6 +1979,84 @@ function(cme_try_pkgconfig found port package version exact)
   set(${found} TRUE PARENT_SCOPE)
 endfunction()
 
+# What a library says about itself, out of its own tree.
+#
+# This is the port, as far as the library is concerned: its version, its
+# licence, its features, what it needs. Read after fetching and before
+# anything is decided, because a consumer is only expected to know two things
+# about a library nobody has ported -- its name, and where it is.
+function(cme_source_ports port source)
+  if(NOT CME_SOURCE_PORTS OR NOT source)
+    return()
+  endif()
+  foreach(name "cme-port.cmake" "cme-ports.cmake" ".cme/port.cmake"
+               ".cme/ports.cmake")
+    set(file "${source}/${name}")
+    if(NOT EXISTS "${file}")
+      continue()
+    endif()
+    get_property(read GLOBAL PROPERTY CME_READ_PORTS)
+    if("${file}" IN_LIST read)
+      continue()
+    endif()
+    set_property(GLOBAL APPEND PROPERTY CME_READ_PORTS "${file}")
+    get_filename_component(directory "${file}" DIRECTORY)
+    set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "the ${port} library itself")
+    set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "${directory}")
+    include("${file}")
+    set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "")
+    set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
+    message(STATUS "cmake-everywhere: ${port} describes itself in ${name}")
+  endforeach()
+endfunction()
+
+# Everything a port says it needs, asked for. Asked again once a library has
+# described itself, because that is when a library nobody had ported says
+# what it needs.
+function(cme_resolve_depends port)
+  cme_enabled_features(${port} features)
+  cme_port_field(depends ${port} DEPENDS)
+  foreach(feature IN LISTS features)
+    cme_feature_field(extra ${port} ${feature} DEPENDS)
+    list(APPEND depends ${extra})
+  endforeach()
+  foreach(spec IN LISTS depends)
+    cme_split_requirement("${spec}" dep wanted wanted_features)
+    cme_port_field(names ${dep} PROVIDES)
+    if(NOT names)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} needs ${dep}, and nothing has declared a "
+        "port called that.")
+    endif()
+    list(GET names 0 first)
+    if(wanted_features)
+      find_package(${first} ${wanted} QUIET REQUIRED
+                   COMPONENTS ${wanted_features})
+    else()
+      find_package(${first} ${wanted} QUIET REQUIRED)
+    endif()
+  endforeach()
+endfunction()
+
+function(cme_store_hit out port package version features)
+  set(${out} FALSE PARENT_SCOPE)
+  if(CME_FETCH_ONLY)
+    return()
+  endif()
+  cme_store_entry(entry ${port} "${version}")
+  if(NOT entry OR NOT EXISTS "${entry}/complete"
+     OR NOT EXISTS "${entry}/use.cmake")
+    return()
+  endif()
+  message(STATUS "cmake-everywhere: ${port} ${version} is already built")
+  cme_store_differences("${entry}")
+  include("${entry}/use.cmake")
+  set_property(GLOBAL PROPERTY CME_BUILT_FEATURES_${port} "${features}")
+  set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package} "${version}")
+  cme_note_decision("${port}" "store" "${version}")
+  set(${out} TRUE PARENT_SCOPE)
+endfunction()
+
 # Builds one port and everything it needs. Called from the provider, so the
 # nested find_package() calls the port's own CMakeLists makes come back
 # through the provider and are answered from what is already here.
@@ -1863,22 +2076,7 @@ function(cme_build_port port package version exact)
     message(STATUS "cmake-everywhere: ${port} with ${listed}")
   endif()
 
-  cme_port_field(depends ${port} DEPENDS)
-  foreach(feature IN LISTS features)
-    cme_feature_field(extra ${port} ${feature} DEPENDS)
-    list(APPEND depends ${extra})
-  endforeach()
-  foreach(spec IN LISTS depends)
-    cme_split_requirement("${spec}" dep wanted wanted_features)
-    cme_port_field(names ${dep} PROVIDES)
-    list(GET names 0 first)
-    if(wanted_features)
-      find_package(${first} ${wanted} QUIET REQUIRED
-                   COMPONENTS ${wanted_features})
-    else()
-      find_package(${first} ${wanted} QUIET REQUIRED)
-    endif()
-  endforeach()
+  cme_resolve_depends(${port})
 
   cme_port_field(source_subdir ${port} SOURCE_SUBDIR)
   cme_port_field(overlay ${port} OVERLAY)
@@ -2030,30 +2228,95 @@ function(cme_build_port port package version exact)
 
   # Built before, with everything the same: no fetch, no configure, no
   # compiling. The entry says what the library is and where its archives are.
-  cme_store_entry(entry ${port} "${port_version}")
-  if(entry AND EXISTS "${entry}/complete" AND EXISTS "${entry}/use.cmake"
-     AND NOT CME_FETCH_ONLY)
-    message(STATUS "cmake-everywhere: ${port} ${port_version} is already built")
-    cme_store_differences("${entry}")
-    include("${entry}/use.cmake")
-    set_property(GLOBAL PROPERTY CME_BUILT_FEATURES_${port} "${features}")
-    set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
-                 "${port_version}")
-    cme_note_decision("${port}" "store" "${port_version}")
+  #
+  # Asked twice, because a library that describes itself is described after
+  # it has been fetched, and what it says is part of what it is. The first
+  # ask is what keeps a build with a warm store from downloading anything at
+  # all; the second is for a port that was only a name and a URL until the
+  # tree arrived.
+  cme_store_hit(hit ${port} "${package}" "${port_version}" "${features}")
+  if(hit)
     return()
   endif()
 
   cme_port_field(external ${port} EXTERNAL)
   cme_port_field(imported ${port} IMPORT)
-  if(CME_FETCH_ONLY OR external OR imported)
-    list(APPEND arguments DOWNLOAD_ONLY YES)
+  # Fetched and no more. What a library says about itself is in the tree, and
+  # nothing can be decided about the library before it has been read -- which
+  # means the tree cannot be configured by the same call that brings it.
+  list(APPEND arguments DOWNLOAD_ONLY YES)
+
+  # Asked here rather than earlier: a port with nowhere to fetch from is
+  # a perfectly good port for a library the system has, or one that is
+  # already in the store. It is a problem at the moment of fetching.
+  #
+  # A port can describe a library without saying where it is -- a library
+  # describing itself has no business claiming a URL. That is fine until
+  # something has to fetch it, which is here.
+  if(NOT listed)
+    set(coordinates FALSE)
+    foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY URL)
+      cme_port_field(value ${port} ${field})
+      if(value)
+        set(coordinates TRUE)
+      endif()
+    endforeach()
+    if(NOT coordinates)
+      get_property(origin GLOBAL PROPERTY CME_PORT_${port}_ORIGIN)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${package} has to be built, and nothing says "
+        "where ${port} comes from. The port was declared by ${origin}, which "
+        "described the library without claiming to know where it is -- that "
+        "is the right thing for a library to do about itself. Whoever wants "
+        "it from source says where:\n"
+        "  cme_port_source(${port} GIT_REPOSITORY <url> GIT_TAG <tag>)")
+    endif()
   endif()
-
   CPMAddPackage(${arguments})
+  set_property(GLOBAL PROPERTY CME_TREE_${port} "${${port}_SOURCE_DIR}")
 
-  # Before anything in the tree is configured, and so before anything in it
-  # calls find_package.
+  # And now the library speaks for itself.
+  #
+  # A consumer is expected to know two things about a library nobody has
+  # ported: its name, and where it is. Everything else -- what version this
+  # is, what it is licensed under, what it can optionally be, what it needs
+  # -- the library knows, and says here. What the consumer already said
+  # stands: it chose the library, so it decides which one.
+  get_property(before GLOBAL PROPERTY CME_PORT_${port}_RECIPE)
   cme_source_ports(${port} "${${port}_SOURCE_DIR}")
+  get_property(after GLOBAL PROPERTY CME_PORT_${port}_RECIPE)
+  if(NOT "${before}" STREQUAL "${after}")
+    # Decided again, against a description that did not exist a moment ago.
+    cme_check_closed_rules(${port})
+    cme_check_licence(${port} "${port}")
+    # A version the consumer did not state, because a consumer that names a
+    # library and where it is has not said which version this is. The library
+    # has.
+    cme_port_field(said_version ${port} VERSION)
+    if(said_version AND NOT port_version)
+      set(port_version "${said_version}")
+      set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
+                   "${port_version}")
+    endif()
+    cme_resolve_depends(${port})
+    cme_enabled_features(${port} features)
+    cme_port_field(options ${port} OPTIONS)
+    foreach(feature IN LISTS features)
+      cme_feature_field(extra ${port} ${feature} OPTIONS)
+      list(APPEND options ${extra})
+    endforeach()
+    if(CME_OPTIONS_${port})
+      list(APPEND options ${CME_OPTIONS_${port}})
+    endif()
+    if(features)
+      list(JOIN features ", " listed_features)
+      message(STATUS "cmake-everywhere: ${port} with ${listed_features}")
+    endif()
+    cme_store_hit(hit ${port} "${package}" "${port_version}" "${features}")
+    if(hit)
+      return()
+    endif()
+  endif()
 
   if(CME_FETCH_ONLY)
     message(STATUS "cmake-everywhere: fetched ${port} ${port_version}")
@@ -2096,6 +2359,33 @@ function(cme_build_port port package version exact)
     endif()
     add_subdirectory("${port_dir}/${overlay}"
                      "${CMAKE_BINARY_DIR}/_cme/${port}")
+  else()
+    # The tree, added the way CPM would have added it if it had been allowed
+    # to do both at once.
+    #
+    # EXCLUDE_FROM_ALL: "Any install rules defined in the subdirectory or
+    # below will be ignored when installing the parent directory." A
+    # dependency this built is part of the consumer's build, not part of what
+    # the consumer installs. SYSTEM: their headers are not yours, so their
+    # warnings are not yours.
+    foreach(option IN LISTS options)
+      string(REGEX REPLACE "^([^ ]+) +(.*)$" "\\1" name "${option}")
+      string(REGEX REPLACE "^([^ ]+) +(.*)$" "\\2" value "${option}")
+      set(${name} "${value}")
+    endforeach()
+    set(tree "${${port}_SOURCE_DIR}")
+    if(source_subdir)
+      set(tree "${tree}/${source_subdir}")
+    endif()
+    set(built "${${port}_BINARY_DIR}")
+    if(NOT built)
+      set(built "${CMAKE_BINARY_DIR}/_cme/${port}")
+    endif()
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.25)
+      add_subdirectory("${tree}" "${built}" EXCLUDE_FROM_ALL SYSTEM)
+    else()
+      add_subdirectory("${tree}" "${built}" EXCLUDE_FROM_ALL)
+    endif()
   endif()
 
   # The port says what the result has to look like. Everything upstream calls
@@ -2321,6 +2611,7 @@ macro(cme_provider cme_method cme_package)
         endif()
       endforeach()
 
+      cme_note_ask("${cme_port}")
       get_property(cme_answered GLOBAL PROPERTY CME_ANSWERED_${cme_package})
       if(NOT cme_answered)
         cme_resolve("${cme_package}" "${cme_port}" "${cme_wanted}"

@@ -42,6 +42,11 @@ cat >"$work/upstream/include/hello/hello.h" <<'EOF'
 #pragma once
 int hello_answer();
 EOF
+# What the library says about itself: everything except where it is, which
+# it is in no position to know.
+cat >"$work/upstream/cme-port.cmake" <<'EOF'
+cme_declare_port(NAME hello PROVIDES Hello VERSION 1.0.0 LICENSE MIT)
+EOF
 (
   cd "$work/upstream"
   git init -q .
@@ -184,7 +189,7 @@ configure carried \
 check "a library carrying the ports for what it needs" "$code" \
   "$work/carried.log"
 
-if grep -qF "carries" "$work/carried.log"; then
+if grep -qF "cme-ports.cmake carried by" "$work/carried.log"; then
   printf '  ok    %s\n' "and it says which file it read"
 else
   printf '  FAIL  %s  (see %s)\n' "and it says which file it read" \
@@ -211,5 +216,62 @@ fi
 configure from-the-system -DCMAKE_PREFIX_PATH="$work/prefix" && code=0 || code=1
 check "a port read from a prefix, by a project that declares nothing" \
   "$code" "$work/from-the-system.log"
+
+# What the world port learned while it was built. Nobody wrote down that
+# world needs hello: world asked for it, and the exported port says so.
+learned="$work/carried/cme-ports/world/port.cmake"
+if [ -f "$learned" ] && grep -qF 'cme_port_needs(world "hello")' "$learned"; then
+  printf '  ok    %s\n' "an exported port learns what was asked for"
+else
+  printf '  FAIL  %s  (see %s)\n' "an exported port learns what was asked for" \
+    "$learned"
+  failed=$((failed + 1))
+fi
+
+# Six: a library that describes itself without claiming to know where it is,
+# and a project that says where. The two halves are written by the two sides
+# that know them.
+cat >"$work/declare-split.cmake" <<EOF
+cme_declare_port(NAME hello PROVIDES Hello VERSION 1.0.0)
+cme_port_source(hello GIT_REPOSITORY "file://$work/upstream" GIT_TAG v1.0.0)
+EOF
+configure split -DCME_PORT_DECLARE="$work/declare-split.cmake" && code=0 || code=1
+check "a port described in one place and located in another" "$code" \
+  "$work/split.log"
+
+# And the same without the second half, which has to be refused by name.
+cat >"$work/declare-nowhere.cmake" <<'EOF'
+cme_declare_port(NAME hello PROVIDES Hello VERSION 1.0.0)
+EOF
+if configure nowhere -DCME_PORT_DECLARE="$work/declare-nowhere.cmake"; then
+  printf '  FAIL  %s\n' "a port with nowhere to fetch from was built anyway"
+  failed=$((failed + 1))
+elif grep -qF "nothing says where" "$work/nowhere.log"; then
+  printf '  ok    %s\n' "a port with nowhere to fetch from says so"
+else
+  printf '  FAIL  %s  (see %s)\n' "a port with nowhere to fetch from says so" \
+    "$work/nowhere.log"
+  failed=$((failed + 1))
+fi
+
+# Seven: the whole point. The project says a name and a URL, the library says
+# everything else, and the version in the lock file can only have come from
+# the library, because nothing else in this test knows it.
+cat >"$work/declare-thin.cmake" <<EOF
+cme_declare_port(NAME hello PROVIDES Hello
+  GIT_REPOSITORY "file://$work/upstream" GIT_TAG v1.0.0)
+EOF
+configure thin -DCME_PORT_DECLARE="$work/declare-thin.cmake" && code=0 || code=1
+check "a name and a URL, and the library says the rest" "$code" \
+  "$work/thin.log"
+
+if grep -qF "hello describes itself in cme-port.cmake" "$work/thin.log" &&
+   grep -q "^hello .*1\.0\.0" "$work/thin/cme-lock.txt"; then
+  printf '  ok    %s\n' "and what it said is what was used"
+else
+  printf '  FAIL  %s  (see %s)\n' "and what it said is what was used" \
+    "$work/thin.log"
+  failed=$((failed + 1))
+fi
 
 [ "$failed" = 0 ]

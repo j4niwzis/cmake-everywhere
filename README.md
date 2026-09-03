@@ -60,10 +60,64 @@ reads that before configuring it -- which is before the library's own
 * **a library that has never heard of this** can carry a `cme-ports.cmake`
   (or `.cme/ports.cmake`), which is the same calls and nothing else.
 * **a library you do not control** can have one attached to it by whoever
-  declares it: `PORTS_FROM ports/hello-deps.cmake`, relative to the fetched
-  tree, or an absolute path to a file you keep yourself.
+  declares it: `PORTS_FROM ports/hello-deps.cmake`, a path of yours, because
+  it is your file.
 
 So a project declares what it uses, and what that uses does not leak into it.
+
+### What a consumer has to say, which is two things
+
+A name, and where it is:
+
+```cmake
+cme_declare_port(NAME hello PROVIDES Hello
+                 GIT_REPOSITORY https://example.invalid/hello.git
+                 GIT_TAG v1.4.0)
+
+find_package(Hello REQUIRED)
+```
+
+That is enough for the whole sequence. The name is looked for in the system
+first; if it is not there, or not good enough, the URL is fetched, and the
+port is then taken from the library itself -- its version, its licence, its
+features, what it needs. Only if the library says nothing about itself does
+the consumer have to write a full port, and then it writes one here, in its
+own CMakeLists, for as long as that library has not adopted anything.
+
+What the consumer said stands: it chose the library, so it decides which one
+and where from. Everything it did not say, the library says.
+
+### What a library knows about itself, and what it does not
+
+A library declaring itself declares what it is:
+
+```cmake
+project(hello VERSION 1.4.0 LANGUAGES CXX)
+
+cme_declare_port(NAME hello PROVIDES Hello LICENSE MIT)
+```
+
+That is the whole self-description. The version comes from `project()`; what
+it needs is learned while it is built and written into the exported port, so
+nobody keeps a list by hand and nobody keeps a wrong one.
+
+There is no URL in it, and there should not be. A library's own repository
+address is right until somebody forks it, mirrors it, or builds it from a
+tarball, and then it is a lie that has been committed. Where to get a library
+is whoever wants it from source's to say:
+
+```cmake
+cme_port_source(hello GITHUB_REPOSITORY me/hello GIT_TAG v1.4.0)
+```
+
+Said separately, field by field, first to say wins. A port with nothing to
+say about where it comes from is a perfectly good port for a library that is
+installed or in the store; it becomes a problem only at the moment something
+has to fetch it, and then the message says what to add and where.
+
+`cme_port_needs(<port> <what>...)` is the other half of the same idea: it
+adds to what a port needs without redeclaring it. It is what the exported
+port is written with.
 
 ### Without cloning anything
 
