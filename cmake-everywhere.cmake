@@ -2810,6 +2810,7 @@ function(cme_try_pkgconfig found port package version exact)
   set(index 0)
   set(aliases "")
   set(includes "")
+  set(imported "")
   foreach(pair IN LISTS mapping)
     # "module:Namespace::target", split at the first colon because the
     # target name has two of its own.
@@ -2853,6 +2854,7 @@ function(cme_try_pkgconfig found port package version exact)
       list(APPEND aliases "${alias}")
     endif()
     list(APPEND includes ${${prefix}_INCLUDE_DIRS})
+    list(APPEND imported "PkgConfig::${prefix}")
     math(EXPR index "${index} + 1")
   endforeach()
 
@@ -2868,6 +2870,18 @@ function(cme_try_pkgconfig found port package version exact)
   set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
                "${CME_PC_${port}_0_VERSION}")
   cme_note_decision("${package}" "pkg-config" "${CME_PC_${port}_0_VERSION}")
+
+  # What the port has to say about the machine's copy.
+  #
+  # cme_adapt_<port> is about a tree this build fetched and is not called
+  # for a library that was already there -- there is nothing to adapt. But
+  # an installed library can still be arranged differently from what a
+  # consumer writes, and the port is the only place that knows: an entry
+  # that names several modules means one of them answered, and they do not
+  # all install their headers under the same name.
+  if(COMMAND cme_adapt_${port}_system)
+    cmake_language(CALL cme_adapt_${port}_system "${includes}" "${imported}")
+  endif()
   set(${found} TRUE PARENT_SCOPE)
 endfunction()
 

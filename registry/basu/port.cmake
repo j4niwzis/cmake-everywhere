@@ -57,3 +57,33 @@ function(cme_adapt_basu source binary)
     target_link_libraries(basu_basu INTERFACE m rt)
   endif()
 endfunction()
+
+# When the machine already had one of the three.
+#
+# They do not agree on where the header goes: basu installs it under basu/,
+# libsystemd and libelogind under systemd/. A program that includes one
+# spelling would then build against two of the three and not the other, so
+# whichever answered is also offered under the spelling it does not use.
+function(cme_adapt_basu_system includes targets)
+  set(arranged "")
+  foreach(directory IN LISTS includes)
+    if(EXISTS "${directory}/basu/sd-bus.h"
+       AND NOT EXISTS "${directory}/systemd/sd-bus.h")
+      cme_header_prefix(root systemd "${directory}/basu")
+      set(arranged "${root}")
+    elseif(EXISTS "${directory}/systemd/sd-bus.h"
+           AND NOT EXISTS "${directory}/basu/sd-bus.h")
+      cme_header_prefix(root basu "${directory}/systemd")
+      set(arranged "${root}")
+    endif()
+  endforeach()
+  if(NOT arranged)
+    return()
+  endif()
+  foreach(target IN LISTS targets)
+    if(TARGET ${target})
+      set_property(TARGET ${target} APPEND PROPERTY
+                   INTERFACE_INCLUDE_DIRECTORIES "${arranged}")
+    endif()
+  endforeach()
+endfunction()

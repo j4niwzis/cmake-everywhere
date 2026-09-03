@@ -161,6 +161,50 @@ function(cme_gn_dependency_ports port out)
   set(${out} "${result}" PARENT_SCOPE)
 endfunction()
 
+# Where a port's headers are according to what it built, rather than to what
+# it said.
+#
+# What a port exports is what a Find module would have set, and a library
+# that came from the machine exports nothing here: a distribution's
+# freetype-config.cmake defines a target and no variables at all, and CMake's
+# own FindFreetype sets its variables in the scope of whoever asked. The
+# target is the other place the headers are written down, and it is the same
+# directory the compiler would be given.
+function(cme_gn_target_includes out port)
+  set(found "")
+  cme_port_field(targets ${port} TARGETS)
+  foreach(target IN LISTS targets)
+    if(NOT TARGET ${target})
+      continue()
+    endif()
+    get_target_property(aliased ${target} ALIASED_TARGET)
+    if(aliased)
+      set(target "${aliased}")
+    endif()
+    get_target_property(directories ${target} INTERFACE_INCLUDE_DIRECTORIES)
+    if(NOT directories)
+      continue()
+    endif()
+    foreach(directory IN LISTS directories)
+      # A generator expression is not a directory. The one that carries one
+      # is $<BUILD_INTERFACE:...>, which is the directory to use while
+      # building against the target -- which is what this is.
+      if(directory MATCHES "^\\$<BUILD_INTERFACE:(.+)>$")
+        set(directory "${CMAKE_MATCH_1}")
+      elseif(directory MATCHES "^\\$<")
+        continue()
+      endif()
+      if(IS_DIRECTORY "${directory}")
+        list(APPEND found "${directory}")
+      endif()
+    endforeach()
+  endforeach()
+  if(found)
+    list(REMOVE_DUPLICATES found)
+  endif()
+  set(${out} "${found}" PARENT_SCOPE)
+endfunction()
+
 # Where the libraries this port depends on ended up. A project told to use
 # the system's zlib looks for it on the compiler's search path, and a zlib
 # this registry built for it is on no such path -- so the port asks for these
@@ -174,17 +218,22 @@ function(cme_gn_dependency_flags port out_includes out_libdirs)
     list(GET names 0 package)
     string(TOUPPER "${package}" upper)
     get_property(exported GLOBAL PROPERTY CME_EXPORT_${package})
+    set(said "")
     while(exported)
       list(POP_FRONT exported name value)
       string(REPLACE "@CME@" ";" value "${value}")
       if(name STREQUAL "${upper}_INCLUDE_DIRS" OR
          name STREQUAL "${package}_INCLUDE_DIRS")
-        list(APPEND includes ${value})
+        list(APPEND said ${value})
       elseif(name STREQUAL "${upper}_LIBRARY_DIRS" OR
              name STREQUAL "${package}_LIBRARY_DIRS")
         list(APPEND libdirs ${value})
       endif()
     endwhile()
+    if(NOT said)
+      cme_gn_target_includes(said ${dep})
+    endif()
+    list(APPEND includes ${said})
   endforeach()
   if(includes)
     list(REMOVE_DUPLICATES includes)
@@ -222,14 +271,26 @@ function(cme_gn_include_dir out port)
     list(POP_FRONT exported name value)
     string(REPLACE "@CME@" ";" value "${value}")
     if(NOT found AND (name STREQUAL "${upper}_INCLUDE_DIRS" OR
-                      name STREQUAL "${package}_INCLUDE_DIRS"))
+                      name STREQUAL "${package}_INCLUDE_DIRS" OR
+                      name STREQUAL "${upper}_INCLUDE_DIR" OR
+                      name STREQUAL "${package}_INCLUDE_DIR"))
       list(GET value 0 found)
     endif()
   endwhile()
+
   if(NOT found)
+    cme_gn_target_includes(directories ${port})
+    if(directories)
+      list(GET directories 0 found)
+    endif()
+  endif()
+
+  if(NOT found)
+    cme_port_field(targets ${port} TARGETS)
     message(FATAL_ERROR
-      "cmake-everywhere: @INCLUDE:${port}@ was asked for and ${port} has not "
-      "said where its headers are. It has to export ${upper}_INCLUDE_DIRS.")
+      "cmake-everywhere: @INCLUDE:${port}@ was asked for and ${port} has "
+      "not said where its headers are, in ${upper}_INCLUDE_DIRS or on any "
+      "of its targets (${targets}).")
   endif()
   set(${out} "${found}" PARENT_SCOPE)
 endfunction()
