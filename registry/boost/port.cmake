@@ -674,13 +674,20 @@ function(cme_adapt_boost source binary)
   # linking Boost as shared libraries and one is about MSVC's autolinking;
   # this builds static archives with no autolinking, so they exist, name what
   # they are, and carry nothing.
+  #
+  # Made here only when nothing else made them. Boost::headers is a library
+  # of Boost's own, so when anything asked for it there is already a target
+  # by that name -- an alias to a real one, which nothing may set a property
+  # on, and which needs nothing set on it because it is the real thing.
+  set(made "")
   foreach(name Boost::headers Boost::diagnostic_definitions
                Boost::disable_autolinking Boost::dynamic_linking)
     if(NOT TARGET ${name})
       add_library(${name} INTERFACE IMPORTED GLOBAL)
+      list(APPEND made ${name})
     endif()
   endforeach()
-  if(includes)
+  if(includes AND "Boost::headers" IN_LIST made)
     set_property(TARGET Boost::headers PROPERTY
                  INTERFACE_INCLUDE_DIRECTORIES ${includes})
   endif()
