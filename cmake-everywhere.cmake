@@ -1295,7 +1295,7 @@ function(cme_declare_port)
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
           PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
           CHECK_HEADER ARRANGEMENT SYSTEM_HEADER_TARGET CONFIGURE
-          INSTALLED_INCLUDE)
+          INSTALLED_INCLUDE SYSTEM_CODE)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG PKGCONFIG_NAMES
            EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
@@ -2625,6 +2625,23 @@ function(cme_note_decision package how detail)
 endfunction()
 
 function(cme_system_allowed out package)
+  # A library nobody else has.
+  #
+  # A port may say SOURCE_ONLY, and what it means is that there is no
+  # installed copy to find: the library is this project's own, or it is
+  # published nowhere a machine would have it from. Looking for one wastes a
+  # find_package, and -- worse -- CME_SYSTEM=ALWAYS would demand one and stop
+  # a build over a library that no system was ever going to carry.
+  #
+  # The field was parsed and never read, so it said nothing until now.
+  get_property(port GLOBAL PROPERTY CME_PROVIDER_${package})
+  if(port)
+    cme_port_field(only ${port} SOURCE_ONLY)
+    if(only)
+      set(${out} OFF PARENT_SCOPE)
+      return()
+    endif()
+  endif()
   string(TOUPPER "${package}" upper)
   if(DEFINED CME_SYSTEM_${upper})
     set(${out} "${CME_SYSTEM_${upper}}" PARENT_SCOPE)
@@ -3347,6 +3364,49 @@ function(cme_system_has_features out package port features)
   set(CMAKE_REQUIRED_INCLUDES "${includes}")
   set(CMAKE_REQUIRED_LIBRARIES "${libraries}")
   set(CMAKE_REQUIRED_QUIET TRUE)
+  # Whether this copy can be linked against at all, before asking what it was
+  # built with.
+  #
+  # A C++ library is compiled against one standard library, and the names it
+  # exports carry that: libc++ writes std::__1 into every signature that
+  # mentions a std type, libstdc++ does not. A program built the other way
+  # links against the entry points whose signatures happen to mention none --
+  # which is most of what a feature probe names -- and fails on the rest, at
+  # the end, in the consumer's own link.
+  #
+  # So a port may state a program that uses a std type, and a copy that
+  # cannot link it is not a copy this build can use whatever else it has.
+  cme_port_field(whole ${port} SYSTEM_CODE)
+  if(whole)
+    # try_compile rather than check_cxx_source_compiles, for one reason: the
+    # output. A program that does not build says why, and the reason is not
+    # always the one that was expected -- a missing header reads nothing like
+    # an undefined symbol, and a message that names a cause it did not
+    # observe is worse than no message.
+    try_compile(cme_usable
+      SOURCE_FROM_VAR "cme_${port}_usable.cc" whole
+      LINK_LIBRARIES ${libraries}
+      CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${includes}"
+      OUTPUT_VARIABLE cme_usable_output)
+    if(NOT cme_usable)
+      message(STATUS
+        "cmake-everywhere: a program of this build's own does not build "
+        "against the ${package} installed here, so it is built here instead")
+      string(REPLACE "\n" ";" cme_usable_lines "${cme_usable_output}")
+      set(cme_shown 0)
+      foreach(cme_line IN LISTS cme_usable_lines)
+        if(cme_line MATCHES "(error|Error|undefined reference)")
+          message(STATUS "    ${cme_line}")
+          math(EXPR cme_shown "${cme_shown} + 1")
+          if(cme_shown GREATER_EQUAL 4)
+            break()
+          endif()
+        endif()
+      endforeach()
+      set(${out} FALSE PARENT_SCOPE)
+      return()
+    endif()
+  endif()
   set(present "")
   set(absent "")
   foreach(feature IN LISTS features)
@@ -4566,7 +4626,13 @@ is being built at" FORCE)
     return()
   endif()
 
-  if(CME_SYSTEM STREQUAL "ALWAYS")
+  # ALWAYS is about libraries a machine could have. A port that says
+  # SOURCE_ONLY is not one of those -- it is this project's own library, or
+  # one published nowhere a system would carry it from -- and demanding it of
+  # the system would stop every strict build over something no machine was
+  # ever going to have.
+  cme_port_field(source_only ${port} SOURCE_ONLY)
+  if(CME_SYSTEM STREQUAL "ALWAYS" AND NOT source_only)
     message(FATAL_ERROR
       "cmake-everywhere: CME_SYSTEM is ALWAYS and the system has no "
       "${package}")

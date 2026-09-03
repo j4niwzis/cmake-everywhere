@@ -141,6 +141,21 @@ cme_declare_port(
   # human can check that the port still produces it.
   TARGETS Skia::skia
   CHECK_HEADER skia/core/SkCanvas.h
+  # Whether an installed Skia can be linked against by this build at all.
+  #
+  # findUniform takes a std::string_view, so its name says which standard
+  # library the library was compiled against: libc++ writes std::__1 into it
+  # and libstdc++ does not. Debian builds its libskia with g++, and a build
+  # using libc++ resolves everything whose signature mentions no std type --
+  # which is most of what a feature probe names -- and then fails on this
+  # one, in the consumer's own link, after everything else has succeeded.
+  SYSTEM_CODE "#include <skia/effects/SkRuntimeEffect.h>
+#include <string_view>
+int main() {
+  const SkRuntimeEffect::Uniform *(SkRuntimeEffect::*fn)(std::string_view)
+      const = &SkRuntimeEffect::findUniform;
+  return fn == nullptr;
+}"
 )
 
 # The names below are ours. Skia has no find_package convention to obey
