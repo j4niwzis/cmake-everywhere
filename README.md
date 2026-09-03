@@ -666,12 +666,21 @@ store/skia/153-4f2b9c1ea3d07e58/
 ```
 
 Static archives, not object files -- but *all* of the archives. A static
-library does not contain the other static libraries it links and a group
-contains nothing at all, so what is kept is worked out by walking what the
-exported target links: every archive from this port is copied, and anything
-from outside it is written down by name and resolved again by whoever reads
-the entry. Object files are the exception and are not kept, because they are
-already inside the archive of whatever linked them.
+library does not contain the other static libraries it links and an interface
+library contains nothing at all, so what is kept is worked out by walking
+what the exported target links: every archive from this port is copied, and
+anything from outside it is written down by name and resolved again by
+whoever reads the entry. Object files are the exception and are not kept,
+because they are already inside the archive of whatever linked them.
+
+This works for a library built by GN and for one added as a subdirectory
+alike: what is kept is the port's targets, whatever made them. Two things
+have to travel with the archives for that to be true. The headers a library
+generates while configuring -- `zconf.h`, `pnglibconf.h` -- live in a build
+directory the next build will not have, so they are copied beside the
+archives and the paths rewritten. And the variables a consumer reads are
+written into the entry as well, because the adapter that set them does not
+run on a hit.
 
 A later configure that computes the same name reads `use.cmake` and has its
 targets in a second: no fetch, no `gn gen`, no five hundred compiles.

@@ -654,6 +654,234 @@ function(cme_installed_library alias prefix library)
     INTERFACE_INCLUDE_DIRECTORIES "${prefix}/include")
 endfunction()
 
+# ------------------------------------------------------------------ store
+
+# Whether a target was made by this port, and so has to be kept, or comes
+# from somewhere else and only has to be named.
+#
+# Two shapes of port produce targets two ways. A GN project is imported under
+# names that begin with the port; a CMake project is added as a subdirectory,
+# and its targets are the ones whose source directory is inside its checkout.
+function(cme_store_owns out port target)
+  set(${out} FALSE PARENT_SCOPE)
+  if(target MATCHES "^${port}_")
+    set(${out} TRUE PARENT_SCOPE)
+    return()
+  endif()
+  get_target_property(where ${target} SOURCE_DIR)
+  if(where AND ${port}_SOURCE_DIR AND
+     where MATCHES "^${${port}_SOURCE_DIR}")
+    set(${out} TRUE PARENT_SCOPE)
+  endif()
+endfunction()
+
+# Everything an exported target actually needs, by walking what it links.
+#
+# A static library does not contain the other static libraries it links, and
+# an interface library contains nothing at all. Keeping only the archive with
+# the name on it keeps a piece, and the entry then fails either with a target
+# that is not there or, later and worse, with undefined symbols.
+#
+# Object libraries are not collected: their objects are already inside the
+# archive of whatever linked them.
+function(cme_store_flatten port target out_archives out_links)
+  set(archives "${${out_archives}}")
+  set(links "${${out_links}}")
+  get_target_property(public_linked ${target} INTERFACE_LINK_LIBRARIES)
+  get_target_property(private_linked ${target} LINK_LIBRARIES)
+  foreach(name public_linked private_linked)
+    if("${${name}}" STREQUAL "${name}-NOTFOUND")
+      set(${name} "")
+    endif()
+  endforeach()
+  foreach(item IN LISTS public_linked private_linked)
+    string(REGEX REPLACE "^\\$<LINK_ONLY:(.*)>$" "\\1" item "${item}")
+    if(NOT item)
+      continue()
+    endif()
+    if(NOT TARGET ${item})
+      if(NOT item IN_LIST links)
+        list(APPEND links "${item}")
+      endif()
+      continue()
+    endif()
+    get_target_property(aliased ${item} ALIASED_TARGET)
+    if(aliased)
+      set(item "${aliased}")
+    endif()
+    cme_store_owns(mine ${port} ${item})
+    if(NOT mine)
+      # Another library in the registry, or something the consumer has.
+      # Named rather than kept, and resolved again by whoever reads this.
+      if(NOT item IN_LIST links)
+        list(APPEND links "${item}")
+      endif()
+      continue()
+    endif()
+    if(item IN_LIST archives)
+      continue()
+    endif()
+    get_target_property(kind ${item} TYPE)
+    if(kind STREQUAL "STATIC_LIBRARY")
+      list(APPEND archives "${item}")
+    endif()
+    if(kind STREQUAL "STATIC_LIBRARY" OR kind STREQUAL "OBJECT_LIBRARY"
+       OR kind STREQUAL "INTERFACE_LIBRARY")
+      set(${out_archives} "${archives}" PARENT_SCOPE)
+      set(${out_links} "${links}" PARENT_SCOPE)
+      cme_store_flatten(${port} ${item} ${out_archives} ${out_links})
+      set(archives "${${out_archives}}")
+      set(links "${${out_links}}")
+    endif()
+  endforeach()
+  set(${out_archives} "${archives}" PARENT_SCOPE)
+  set(${out_links} "${links}" PARENT_SCOPE)
+endfunction()
+
+# An include directory that is inside this build is a directory the next
+# build will not have: it is where a library's configure step wrote the
+# header it generated -- zconf.h, pnglibconf.h. The headers are copied beside
+# the archives and the path is rewritten to point there.
+#
+# Only what exists now is copied. A header a library generates while building
+# rather than while configuring is not here yet, and a port whose library
+# does that cannot be kept this way; it says so rather than keeping half.
+function(cme_store_keep_headers out port entry directories)
+  set(result "")
+  set(index 0)
+  foreach(directory IN LISTS directories)
+    string(REGEX REPLACE "^\\$<BUILD_INTERFACE:(.*)>$" "\\1" directory
+           "${directory}")
+    if(NOT directory MATCHES "^${CMAKE_BINARY_DIR}")
+      list(APPEND result "${directory}")
+      continue()
+    endif()
+    file(GLOB_RECURSE headers "${directory}/*.h" "${directory}/*.hpp"
+                              "${directory}/*.hh" "${directory}/*.inc")
+    if(NOT headers)
+      continue()
+    endif()
+    set(kept "${entry}/generated/${index}")
+    file(COPY "${directory}/" DESTINATION "${kept}"
+         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.hh"
+                        PATTERN "*.inc")
+    list(APPEND result "\${CMAKE_CURRENT_LIST_DIR}/generated/${index}")
+    math(EXPR index "${index} + 1")
+  endforeach()
+  set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
+# What a built library looks like in the store: its archives, and a file
+# saying what it is. Written while the real targets exist, because that is
+# when what to say is known. The archives are copied when the build has made
+# them and the stamp is written last, so an interrupted build leaves an entry
+# that is ignored rather than one that is half true.
+function(cme_store_write port package entry)
+  cme_port_field(aliases ${port} TARGETS)
+  if(NOT aliases)
+    return()
+  endif()
+  file(MAKE_DIRECTORY "${entry}/lib")
+  set(text "# Written by cmake-everywhere. Do not edit; the name is a hash.\n")
+  set(main "")
+  set(everything "")
+  foreach(alias IN LISTS aliases)
+    if(NOT TARGET ${alias})
+      return()
+    endif()
+    get_target_property(target ${alias} ALIASED_TARGET)
+    if(NOT target)
+      set(target "${alias}")
+    endif()
+    get_target_property(kind ${target} TYPE)
+    if(NOT kind STREQUAL "STATIC_LIBRARY")
+      # Only an archive can be kept and used again. Anything else -- an
+      # interface library, a shared object -- is left to be built.
+      return()
+    endif()
+    if(NOT main)
+      set(main "${target}")
+    endif()
+
+    get_target_property(includes ${target} INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(defines ${target} INTERFACE_COMPILE_DEFINITIONS)
+    get_target_property(options ${target} INTERFACE_COMPILE_OPTIONS)
+    foreach(name includes defines options)
+      if("${${name}}" STREQUAL "${name}-NOTFOUND")
+        set(${name} "")
+      endif()
+    endforeach()
+    cme_store_keep_headers(includes ${port} "${entry}" "${includes}")
+
+    set(archives "${target}")
+    set(links "")
+    cme_store_flatten(${port} ${target} archives links)
+    set(rest "")
+    foreach(archive IN LISTS archives)
+      if(NOT archive STREQUAL target)
+        list(APPEND rest "\${CMAKE_CURRENT_LIST_DIR}/lib/lib${archive}.a")
+      endif()
+    endforeach()
+    list(APPEND rest ${links})
+    list(JOIN rest ";" rest)
+    list(JOIN includes ";" includes)
+    list(JOIN defines ";" defines)
+    list(JOIN options ";" options)
+
+    string(APPEND text
+      "add_library(${alias} STATIC IMPORTED GLOBAL)\n"
+      "set_target_properties(${alias} PROPERTIES\n"
+      "  IMPORTED_LOCATION \"\${CMAKE_CURRENT_LIST_DIR}/lib/lib${target}.a\"\n"
+      "  INTERFACE_INCLUDE_DIRECTORIES \"${includes}\"\n"
+      "  INTERFACE_LINK_LIBRARIES \"${rest}\"\n"
+      "  INTERFACE_COMPILE_OPTIONS \"${options}\"\n"
+      "  INTERFACE_COMPILE_DEFINITIONS \"${defines}\")\n")
+
+    list(APPEND everything ${archives})
+  endforeach()
+
+  # The variables a consumer reads are part of what the library is, and the
+  # adapter that made them will not run next time.
+  get_property(exported GLOBAL PROPERTY CME_EXPORT_${package})
+  string(APPEND text "\nset(CME_STORED_EXPORT \"\")\n")
+  while(exported)
+    list(POP_FRONT exported name value)
+    string(REPLACE "@CME@" ";" value "${value}")
+    cme_store_keep_headers(value ${port} "${entry}" "${value}")
+    list(JOIN value ";" value)
+    string(REPLACE ";" "@CME@" value "${value}")
+    string(APPEND text
+      "list(APPEND CME_STORED_EXPORT \"${name}\" \"${value}\")\n")
+  endwhile()
+  string(APPEND text
+    "set_property(GLOBAL PROPERTY CME_EXPORT_${package} \"\${CME_STORED_EXPORT}\")\n")
+
+  # A target of our own rather than a step after theirs: a POST_BUILD command
+  # may only be attached to a target created in the same directory, and a
+  # library added as a subdirectory is not.
+  #
+  # The copying is one command list ending in the stamp, so the stamp cannot
+  # appear before the archives it claims are there.
+  set(keeping "")
+  if(everything)
+    list(REMOVE_DUPLICATES everything)
+  endif()
+  foreach(archive IN LISTS everything)
+    list(APPEND keeping COMMAND ${CMAKE_COMMAND} -E copy_if_different
+         "$<TARGET_FILE:${archive}>" "${entry}/lib/lib${archive}.a")
+  endforeach()
+  add_custom_target(cme_store_${port} ALL
+    ${keeping}
+    COMMAND ${CMAKE_COMMAND} -E touch "${entry}/complete"
+    COMMENT "cmake-everywhere: keeping ${port} in the store"
+    VERBATIM)
+  add_dependencies(cme_store_${port} ${everything})
+  file(WRITE "${entry}/use.cmake" "${text}")
+  cme_environment_pairs(pairs)
+  list(JOIN pairs "\n" recorded)
+  file(WRITE "${entry}/environment.txt" "${recorded}\n")
+endfunction()
+
 # Headers under a name they are not under in the source tree.
 #
 # A library's include directory in its own checkout and the same directory
@@ -1416,6 +1644,21 @@ function(cme_build_port port package version exact)
     set(CMAKE_POLICY_VERSION_MINIMUM "${policy}")
   endif()
 
+  # Built before, with everything the same: no fetch, no configure, no
+  # compiling. The entry says what the library is and where its archives are.
+  cme_store_entry(entry ${port} "${port_version}")
+  if(entry AND EXISTS "${entry}/complete" AND EXISTS "${entry}/use.cmake"
+     AND NOT CME_FETCH_ONLY)
+    message(STATUS "cmake-everywhere: ${port} ${port_version} is already built")
+    cme_store_differences("${entry}")
+    include("${entry}/use.cmake")
+    set_property(GLOBAL PROPERTY CME_BUILT_FEATURES_${port} "${features}")
+    set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
+                 "${port_version}")
+    cme_note_decision("${port}" "store" "${port_version}")
+    return()
+  endif()
+
   cme_port_field(external ${port} EXTERNAL)
   if(CME_FETCH_ONLY OR external)
     list(APPEND arguments DOWNLOAD_ONLY YES)
@@ -1464,6 +1707,9 @@ function(cme_build_port port package version exact)
   cme_export_variable(${package} ${package}_VERSION "${port_version}")
   cme_export_variable(${package} ${upper}_VERSION "${port_version}")
   set_property(GLOBAL PROPERTY CME_BUILT_FEATURES_${port} "${features}")
+  if(entry AND NOT external)
+    cme_store_write(${port} "${package}" "${entry}")
+  endif()
   list(JOIN features "," listed)
   cme_note_decision("${port}" "built" "${port_version} [${listed}]")
 endfunction()
