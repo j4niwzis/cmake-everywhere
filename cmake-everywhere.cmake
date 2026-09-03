@@ -395,7 +395,7 @@ set(CME_EXPORT_DESTINATION "share/cmake-everywhere/ports" CACHE STRING
 #
 # Ports the project itself declares are not in it: they are in the project,
 # and the project is what the lock is for.
-set(CME_LOCK "${CMAKE_SOURCE_DIR}/cme.lock" CACHE FILEPATH
+set(CME_LOCK "${CMAKE_SOURCE_DIR}/cme-lock.json" CACHE FILEPATH
   "Where the resolved commits and digests are kept, or empty for none")
 set(CME_LOCK_UPDATE OFF CACHE BOOL
   "Take what this build resolved to as the new lock")
@@ -422,8 +422,8 @@ set(CME_SYSTEM "AUTO" CACHE STRING
 ALWAYS: refuse to build anything, the system must have it. \
 NEVER: build everything from source.")
 set_property(CACHE CME_SYSTEM PROPERTY STRINGS AUTO ALWAYS NEVER)
-set(CME_LOCK_FILE "${CMAKE_BINARY_DIR}/cme-lock.txt" CACHE FILEPATH
-  "Where the resolved decisions are written")
+set(CME_LOCK_FILE "${CMAKE_BINARY_DIR}/cme-report.txt" CACHE FILEPATH
+  "Where the report of what this build decided is written")
 set(CME_DEFAULT_FEATURES "" CACHE STRING
   "Features to turn on wherever a library has one by that name, and -name to \
 refuse one wherever it appears")
@@ -507,6 +507,28 @@ function(cme_port_unlocked port)
   set_property(GLOBAL PROPERTY CME_PORT_${port}_UNLOCKED TRUE)
 endfunction()
 
+# What a copy that is installed on this machine was built with.
+#
+# Written into the port that is installed beside a library, by the build that
+# installed it. A copy is one version built one way, and the one thing that
+# was always guesswork -- whether it has the feature this build needs -- is
+# not a guess when the copy says so.
+#
+# It is honoured only from a port that was read out of a prefix. In a source
+# tree the same line is a statement about somebody else's machine.
+function(cme_installed_with port)
+  cmake_parse_arguments(COPY "" "VERSION" "FEATURES;NEEDED" ${ARGN})
+  get_property(origin GLOBAL PROPERTY CME_PORT_ORIGIN)
+  if(NOT origin MATCHES "^the system")
+    return()
+  endif()
+  set_property(GLOBAL PROPERTY CME_INSTALLED_FEATURES_${port}
+               "${COPY_FEATURES}")
+  set_property(GLOBAL PROPERTY CME_INSTALLED_SAID_${port} TRUE)
+  set_property(GLOBAL PROPERTY CME_INSTALLED_VERSION_${port} "${COPY_VERSION}")
+  set_property(GLOBAL PROPERTY CME_INSTALLED_NEEDED_${port} "${COPY_NEEDED}")
+endfunction()
+
 function(cme_lock_read)
   get_property(done GLOBAL PROPERTY CME_LOCK_READ)
   if(done)
@@ -516,12 +538,46 @@ function(cme_lock_read)
   if(NOT CME_LOCK OR NOT EXISTS "${CME_LOCK}")
     return()
   endif()
-  file(STRINGS "${CME_LOCK}" lines)
-  foreach(line IN LISTS lines)
-    if(line MATCHES "^#" OR line STREQUAL "")
+  file(READ "${CME_LOCK}" text)
+  string(JSON count ERROR_VARIABLE bad LENGTH "${text}" ports)
+  if(bad)
+    message(FATAL_ERROR
+      "cmake-everywhere: cannot read ${CME_LOCK}: ${bad}. It is written by "
+      "this and meant to be committed; if it has been damaged, delete it and "
+      "configure once with -DCME_LOCK_ALL=ON.")
+  endif()
+  if(count EQUAL 0)
+    return()
+  endif()
+  math(EXPR last "${count} - 1")
+  foreach(index RANGE 0 ${last})
+    string(JSON port MEMBER "${text}" ports ${index})
+    string(JSON entry GET "${text}" ports "${port}")
+    string(JSON kinds LENGTH "${entry}")
+    if(kinds EQUAL 0)
       continue()
     endif()
-    set_property(GLOBAL APPEND PROPERTY CME_LOCKED "${line}")
+    math(EXPR kind_last "${kinds} - 1")
+    foreach(at RANGE 0 ${kind_last})
+      string(JSON kind MEMBER "${entry}" ${at})
+      string(JSON what TYPE "${entry}" "${kind}")
+      if(what STREQUAL "ARRAY")
+        string(JSON many LENGTH "${entry}" "${kind}")
+        if(many EQUAL 0)
+          continue()
+        endif()
+        math(EXPR many_last "${many} - 1")
+        foreach(one RANGE 0 ${many_last})
+          string(JSON value GET "${entry}" "${kind}" ${one})
+          set_property(GLOBAL APPEND PROPERTY CME_LOCKED
+                       "${port} ${kind} ${value}")
+        endforeach()
+      else()
+        string(JSON value GET "${entry}" "${kind}")
+        set_property(GLOBAL APPEND PROPERTY CME_LOCKED
+                     "${port} ${kind} ${value}")
+      endif()
+    endforeach()
   endforeach()
 endfunction()
 
@@ -643,15 +699,63 @@ function(cme_lock_write)
   endif()
   list(REMOVE_DUPLICATES all)
   list(SORT all)
-  list(JOIN all "\n" text)
-  set(header "# cmake-everywhere. Commit this file.\n")
-  string(APPEND header
-    "#\n# Every line is a fact about something outside this project that has "
-    "to stay\n# true: the commit a library was fetched at, the digest of an "
-    "archive, and the\n# digest of a port file that was read from somewhere "
-    "else. Configure with\n# -DCME_LOCK_UPDATE=ON to take what a build "
-    "resolved to as the new answer.\n\n")
-  set(whole "${header}${text}\n")
+
+  # Written as JSON, sorted, one object per port: a lock is read by people
+  # reviewing a change to it and by whatever a project already has for
+  # reading files, and neither of those should have to learn a format that
+  # exists only here.
+  set(ports "")
+  foreach(line IN LISTS all)
+    string(REGEX REPLACE "^([^ ]+) .*$" "\\1" port "${line}")
+    list(APPEND ports "${port}")
+  endforeach()
+  list(REMOVE_DUPLICATES ports)
+  list(SORT ports)
+  set(objects "")
+  foreach(port IN LISTS ports)
+    set(kinds "")
+    foreach(line IN LISTS all)
+      if(line MATCHES "^${port} ([^ ]+) ")
+        list(APPEND kinds "${CMAKE_MATCH_1}")
+      endif()
+    endforeach()
+    list(REMOVE_DUPLICATES kinds)
+    list(SORT kinds)
+    set(fields "")
+    foreach(kind IN LISTS kinds)
+      set(values "")
+      foreach(line IN LISTS all)
+        if(line MATCHES "^${port} ${kind} (.+)$")
+          list(APPEND values "${CMAKE_MATCH_1}")
+        endif()
+      endforeach()
+      # A kind that can have several values is always an array, whether it
+      # has one this time or four. Something reading this should not have to
+      # ask what shape a field turned out to be.
+      list(LENGTH values many)
+      if(kind STREQUAL "port" OR many GREATER 1)
+        set(quoted "")
+        foreach(value IN LISTS values)
+          list(APPEND quoted "        \"${value}\"")
+        endforeach()
+        list(JOIN quoted ",\n" listed)
+        list(APPEND fields "      \"${kind}\": [\n${listed}\n      ]")
+      else()
+        list(APPEND fields "      \"${kind}\": \"${values}\"")
+      endif()
+    endforeach()
+    list(JOIN fields ",\n" listed)
+    list(APPEND objects "    \"${port}\": {\n${listed}\n    }")
+  endforeach()
+  list(JOIN objects ",\n" listed)
+  set(whole "{\n")
+  string(APPEND whole
+    "  \"about\": \"Written by cmake-everywhere. Commit this file. Every "
+    "value is a fact about something outside this project that has to stay "
+    "true: the commit a library was fetched at, the digest of an archive, "
+    "and the digest of a port file read from somewhere else. Configure with "
+    "-DCME_LOCK_ALL=ON to write it again.\",\n")
+  string(APPEND whole "  \"lock\": 1,\n  \"ports\": {\n${listed}\n  }\n}\n")
   set(before "")
   if(EXISTS "${CME_LOCK}")
     file(READ "${CME_LOCK}" before)
@@ -1712,43 +1816,69 @@ function(cme_finish_exports)
   get_property(dirs GLOBAL PROPERTY CME_ASK_DIRS)
   get_property(asked GLOBAL PROPERTY CME_ASK_PORTS)
   foreach(name IN LISTS names)
+    # What was needed here, which is only knowable for something this build
+    # actually configured.
     if(name STREQUAL PROJECT_NAME)
       set(home "${CMAKE_SOURCE_DIR}")
     else()
       get_property(home GLOBAL PROPERTY CME_TREE_${name})
     endif()
-    if(NOT home)
-      continue()
-    endif()
     set(needs "")
-    set(index 0)
-    foreach(directory IN LISTS dirs)
-      list(GET asked ${index} port)
-      math(EXPR index "${index} + 1")
-      cmake_path(IS_PREFIX home "${directory}" NORMALIZE inside)
-      if(inside AND NOT port STREQUAL name AND NOT port IN_LIST needs)
-        list(APPEND needs "${port}")
+    if(home)
+      set(index 0)
+      foreach(directory IN LISTS dirs)
+        list(GET asked ${index} port)
+        math(EXPR index "${index} + 1")
+        cmake_path(IS_PREFIX home "${directory}" NORMALIZE inside)
+        if(inside AND NOT port STREQUAL name AND NOT port IN_LIST needs)
+          list(APPEND needs "${port}")
+        endif()
+      endforeach()
+    endif()
+
+    # Every exported port says what the copy beside it is: the version that
+    # was built, the features it was built with, and what it needed to be
+    # built that way. A machine that has the library then knows whether it
+    # has the library this build needs, instead of a build looking for a
+    # symbol and hoping the feature adds one.
+    cme_enabled_features(${name} built_with)
+    cme_port_field(built_version ${name} VERSION)
+    set(copy "cme_installed_with(${name}")
+    if(built_version)
+      cme_quote(value "${built_version}")
+      string(APPEND copy " VERSION \"${value}\"")
+    endif()
+    foreach(kind FEATURES NEEDED)
+      if(kind STREQUAL "FEATURES")
+        set(items "${built_with}")
+      else()
+        set(items "${needs}")
       endif()
+      if(NOT items)
+        continue()
+      endif()
+      string(APPEND copy " ${kind}")
+      foreach(item IN LISTS items)
+        cme_quote(value "${item}")
+        string(APPEND copy " \"${value}\"")
+      endforeach()
     endforeach()
+    cme_export_line(${name} "${copy})")
+
+    # And what the library needs, which is a different statement and a
+    # narrower one. What it needed here is what it needed with these features
+    # on; declaring that as what the library needs would make the next
+    # project build a dependency it never asked for. So it is declared only
+    # when nothing was on, and otherwise it stays where it belongs, in the
+    # line above, as a fact about this copy.
     if(NOT needs)
       continue()
     endif()
-    # What a library needed is only what the library needs when it was built
-    # with nothing turned on. A build with a feature on needed what that
-    # feature needs, and writing that down as what the library needs would
-    # make the next project build a dependency it never asked for. So when
-    # anything was on, what was needed is said and not declared.
-    cme_enabled_features(${name} switched_on)
-    if(switched_on)
-      list(JOIN switched_on ", " listed_on)
-      list(JOIN needs " " listed_needs)
-      cme_export_line(${name}
-        "# Built here with ${listed_on}, and it needed ${listed_needs}. That "
-        "is a fact\n# about that build rather than about this library, so it "
-        "is not declared.")
+    if(built_with)
+      list(JOIN built_with ", " listed_on)
       message(STATUS
         "cmake-everywhere: ${name} was built with ${listed_on}, so what it "
-        "needed is not written into its exported port")
+        "needed is written as this copy's rather than as the library's")
       continue()
     endif()
     set(said "cme_port_needs(${name}")
@@ -1757,9 +1887,10 @@ function(cme_finish_exports)
       string(APPEND said " \"${value}\"")
     endforeach()
     cme_export_line(${name} "${said})")
-    list(JOIN needs " " listed)
-    message(STATUS "cmake-everywhere: ${name} needs ${listed}, and its "
-                   "exported port now says so")
+    list(JOIN needs " " listed_needs)
+    message(STATUS
+      "cmake-everywhere: ${name} needs ${listed_needs}, and its exported port "
+      "now says so")
   endforeach()
 endfunction()
 
@@ -2226,6 +2357,29 @@ endfunction()
 # simply is not the copy this build can use, and the port is built instead.
 function(cme_system_has_features out package port features)
   set(${out} TRUE PARENT_SCOPE)
+  # If the copy says what it was built with, that is the answer. Looking for
+  # a symbol is what you do when nobody will tell you: it can only find what
+  # a feature happens to add to the interface, and a feature that changes
+  # behaviour without adding a symbol is invisible to it.
+  get_property(said GLOBAL PROPERTY CME_INSTALLED_SAID_${port})
+  if(said)
+    get_property(has GLOBAL PROPERTY CME_INSTALLED_FEATURES_${port})
+    foreach(feature IN LISTS features)
+      if(NOT feature IN_LIST has)
+        list(JOIN has ", " listed)
+        if(NOT listed)
+          set(listed "nothing")
+        endif()
+        message(STATUS
+          "cmake-everywhere: the ${package} installed here was built with "
+          "${listed}, and this build needs ${feature}, so it is built here "
+          "instead")
+        set(${out} FALSE PARENT_SCOPE)
+        return()
+      endif()
+    endforeach()
+    return()
+  endif()
   set(includes "${${package}_INCLUDE_DIRS}")
   if(NOT includes)
     set(includes "${${package}_INCLUDE_DIR}")
@@ -2672,7 +2826,6 @@ function(cme_build_port port package version exact)
   # What was actually fetched, rather than what was asked for. A tag moves,
   # a branch certainly moves, and an archive at a URL can be replaced; the
   # commit and the digest are what a build can be held to.
-  cme_lock_fact("${port}" "version" "${port_version}")
   if(listed)
     get_property(hash GLOBAL PROPERTY CME_SOURCE_${port}_${port_version}_HASH)
     cme_lock_fact("${port}" "archive" "${hash}")
@@ -2748,6 +2901,11 @@ function(cme_build_port port package version exact)
       return()
     endif()
   endif()
+
+  # Written down after the library has spoken and not before: a project that
+  # says a name and a URL has not said which version this is, and the answer
+  # arrives with the tree.
+  cme_lock_fact("${port}" "version" "${port_version}")
 
   # The name the result is kept under, worked out here rather than before the
   # fetch: what a library said about itself is part of what it is, and what a

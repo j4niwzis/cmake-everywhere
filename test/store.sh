@@ -22,7 +22,7 @@ targets=ZLIB::ZLIB
 # Where the build says a library came from. "built" the first time, "store"
 # once there is something to find.
 came_from() {
-  awk -v port="$1" '$1 == port { how = $2 } END { print how }' "$2/cme-lock.txt"
+  awk -v port="$1" '$1 == port { how = $2 } END { print how }' "$2/cme-report.txt"
 }
 
 configure() {

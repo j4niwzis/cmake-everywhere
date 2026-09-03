@@ -105,6 +105,50 @@ fetch it, and then the message says what to add.
 `cme_port_needs(<port> <what>...)` adds to what a port needs without
 redeclaring it. It is what an exported port is written with.
 
+### A library's own features
+
+A library declares what it can optionally be in its own CMakeLists, in the
+same call it would use anywhere:
+
+```cmake
+cme_port_feature(hello vorbis
+  SUMMARY "reads Ogg Vorbis"
+  DEPENDS "vorbis>=1.3"
+  OPTIONS "HELLO_VORBIS ON")
+
+option(HELLO_VORBIS "read Ogg Vorbis" OFF)
+if(HELLO_VORBIS)
+  target_sources(hello PRIVATE src/vorbis.cc)
+endif()
+```
+
+Nothing is repeated between the two. When a consumer asks for
+`find_package(Hello COMPONENTS vorbis)`, or when something deeper in the
+graph asks for `hello[vorbis]`, the feature's `OPTIONS` are set before the
+library's own CMakeLists is added -- so the library reads its own option, the
+way it does when somebody builds it by hand. The feature is what other
+projects say; the option is what the library reads. `cme_features(hello
+vorbis)` in the library's own CMakeLists turns one on for the library's own
+build.
+
+**What it was built with is baked into the install.** Every exported port
+carries a line about the copy it was installed beside:
+
+```cmake
+cme_installed_with(hello VERSION "1.4.0" FEATURES "vorbis" NEEDED "vorbis")
+```
+
+So the one question that used to be guesswork -- does the copy on this
+machine have the feature this build needs -- is answered by the copy. Without
+it, all a build can do is look for a symbol the feature is assumed to add
+(`SYSTEM_SYMBOLS`, below), which can only find a feature that changes the
+interface and is blind to one that changes behaviour. With it, a copy built
+without `vorbis` is passed over and the port is built, and the build says
+which feature was missing.
+
+That line is honoured only from a port read out of a prefix. In a source tree
+it is a statement about somebody else's machine.
+
 ### Two declarations of the same port fill each other in
 
 A second declaration of a port fills in what the first did not say and
@@ -202,13 +246,20 @@ A port that came from somewhere else is two things this project does not
 contain: code the build reads, and a library the build fetches. Both can
 change without a line of this project changing -- a tag moves, a branch
 certainly moves, an archive is replaced, a port file is edited in the overlay
-it lives in. So both are written into `cme.lock` beside your CMakeLists:
+it lives in. So both are written into `cme-lock.json` beside your CMakeLists:
 
-```
-hello commit 6f1c0e5a2b...          what was fetched, rather than the tag
-hello port 3f2a9c...                a port file that came from elsewhere
-hello version 1.0.0
-zlib archive SHA256=...
+```json
+{
+  "lock": 1,
+  "ports": {
+    "hello": {
+      "commit": "6f1c0e5a2b...",       // what was fetched, not the tag
+      "port": [ "3f2a9c..." ],         // a port file that came from elsewhere
+      "version": "1.0.0"
+    },
+    "zlib": { "archive": "SHA256=...", "version": "1.3.1" }
+  }
+}
 ```
 
 On the next build every one of those has to still be true, and if one is not
@@ -290,9 +341,9 @@ coming straight back.
 | `NEVER` | build everything, ignore whatever is installed |
 
 Per package: `-DCME_SYSTEM_ZLIB=OFF` builds that one and leaves the rest
-alone. Every decision is written to `cme-lock.txt` in the build directory --
+alone. Every decision is written to `cme-report.txt` in the build directory --
 which package came from where, at what version, and who ported it. That file
-is a report of one build; `cme.lock`, above, is the pinning you commit.
+is a report of one build; `cme-lock.json`, above, is the pinning you commit.
 
 ### Why it built something you have installed
 
@@ -610,7 +661,7 @@ cme_report()
 at the end of the top-level `CMakeLists.txt` prints every library that was
 reached: where it came from, at what version, who asked for it, who ported
 it, and each of its features with whether it is on, who wanted it, and what
-it is for. The same text is written to `cme-lock.txt` in the build directory.
+it is for. The same text is written to `cme-report.txt` in the build directory.
 
 ## Options for a library being built
 

@@ -152,6 +152,8 @@ cme_declare_port(
   GIT_REPOSITORY "file://$work/upstream"
   GIT_TAG v1.0.0
 )
+cme_port_feature(hello loud SUMMARY "says it twice")
+cme_features(hello loud)
 EOF
 
 check() {
@@ -221,6 +223,18 @@ else
   failed=$((failed + 1))
 fi
 
+if grep -qF 'cme_port_feature(hello loud' \
+     "$work/prefix/share/cmake-everywhere/ports/hello/port.cmake" &&
+   grep -qF 'cme_installed_with(hello VERSION "1.0.0" FEATURES "loud")' \
+     "$work/prefix/share/cmake-everywhere/ports/hello/port.cmake"; then
+  printf '  ok    %s\n' "an installed port says what it can be and what it is"
+else
+  printf '  FAIL  %s  (see %s)\n' \
+    "an installed port says what it can be and what it is" \
+    "$work/prefix/share/cmake-everywhere/ports/hello/port.cmake"
+  failed=$((failed + 1))
+fi
+
 configure from-the-system -DCMAKE_PREFIX_PATH="$work/prefix" && code=0 || code=1
 check "a port read from a prefix, by a project that declares nothing" \
   "$code" "$work/from-the-system.log"
@@ -274,7 +288,7 @@ check "a name and a URL, and the library says the rest" "$code" \
   "$work/thin.log"
 
 if grep -qF "hello carries cme-port.cmake" "$work/thin.log" &&
-   grep -q "^hello .*1\.0\.0" "$work/thin/cme-lock.txt"; then
+   grep -q "^hello .*1\.0\.0" "$work/thin/cme-report.txt"; then
   printf '  ok    %s\n' "and what it said is what was used"
 else
   printf '  FAIL  %s  (see %s)\n' "and what it said is what was used" \
@@ -289,8 +303,15 @@ configure locked -DCME_PORT_DECLARE="$work/declare-thin.cmake" \
   -DCME_LOCK_ALL=ON && code=0 || code=1
 check "a run that reaches everything writes a lock" "$code" "$work/locked.log"
 
-if grep -qE "^hello commit [0-9a-f]{40}$" "$work/locked.lock" &&
-   grep -qE "^hello port [0-9a-f]{64}$" "$work/locked.lock"; then
+if grep -qE '"commit": "[0-9a-f]{40}"' "$work/locked.lock" &&
+   grep -qE '"[0-9a-f]{64}"' "$work/locked.lock" &&
+   python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+h = d["ports"]["hello"]
+assert len(h["commit"]) == 40, h
+assert h["version"] == "1.0.0", h
+assert isinstance(h["port"], list) and len(h["port"][0]) == 64, h' \
+     "$work/locked.lock"; then
   printf '  ok    %s\n' "and it has the commit and the port's digest in it"
 else
   printf '  FAIL  %s  (see %s)\n' \
@@ -309,7 +330,7 @@ fi
 
 # And then it is a lock: something outside the project moved, and the build
 # stops rather than building something else.
-sed 's/^hello commit .*/hello commit 0000000000000000000000000000000000000000/' \
+sed -E 's/"commit": "[0-9a-f]{40}"/"commit": "0000000000000000000000000000000000000000"/' \
   "$work/locked.lock" >"$work/moved.lock"
 rm -rf "$work/moved"
 if cmake -S "$here/port" -B "$work/moved" -G Ninja \
