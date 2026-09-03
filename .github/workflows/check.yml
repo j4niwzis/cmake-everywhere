@@ -122,6 +122,14 @@ jobs:
             echo "${{ matrix.port.port }} is for $systems; this is Linux"
           fi
       - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - name: what this port needs to be built at all
+        run: |
+          case "${{ matrix.port.port }}" in
+            # A window library needs the headers of the windowing systems it
+            # is a window library for.
+            glfw) sudo apt-get install -y xorg-dev libwayland-dev \
+                    libxkbcommon-dev wayland-protocols ;;
+          esac
       - uses: actions/cache@v4
         with:
           path: .cache/sources
@@ -176,6 +184,14 @@ jobs:
             echo "${{ matrix.port.port }} is for $systems; this is Linux"
           fi
       - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - name: what this port needs to be built at all
+        run: |
+          case "${{ matrix.port.port }}" in
+            # A window library needs the headers of the windowing systems it
+            # is a window library for.
+            glfw) sudo apt-get install -y xorg-dev libwayland-dev \
+                    libxkbcommon-dev wayland-protocols ;;
+          esac
       - uses: actions/cache@v4
         with:
           path: .cache/sources

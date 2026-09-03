@@ -1061,13 +1061,28 @@ they describe rather than here.
 ## What is here
 
 zlib, libpng, libjpeg-turbo, libwebp, freetype, expat, xz, libzip, ogg,
-vorbis, FLAC, opus, libsndfile, minimp3, openal-soft, oboe, Skia.
+vorbis, FLAC, opus, libsndfile, minimp3, mpg123, openal-soft, oboe, glfw,
+Skia.
 
 That is not a registry yet, and it is not trying to become one. It is enough
 to show the shapes -- a library with CMake, a library without one, a library
-that refuses to be a subdirectory, and a library with a different build
-system entirely -- and enough to prove the interesting case:
-`find_package(SndFile)` alone brings four more.
+that refuses to be a subdirectory, an autotools library that carries a CMake
+build of its own, and a library with a different build system entirely --
+and enough to prove the interesting case: `find_package(SndFile)` alone
+brings four more.
+
+`mpg123` is the autotools one, and it is worth reading as a port because
+what it needed was not an overlay. mpg123 carries a CMake build under
+`ports/cmake` that upstream maintains, so the library is built in your graph
+by your compiler; what the port supplies is the release archive with a
+digest, a namespaced target, and one line of adapter, because that CMake
+build puts only its binary directory on the interface and the header a
+consumer includes is a file in the source tree it installs from there.
+
+`glfw` is the one to read for features that are not about codecs: `x11` and
+`wayland` are what a window library is built for, both on by default the way
+glfw's own build has them, and a machine with one set of headers and not the
+other can turn the other off and still have the library it can use.
 
 ## Not building the same thing twice
 
