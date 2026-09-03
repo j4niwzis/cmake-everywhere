@@ -34,9 +34,29 @@ if(NOT CME_VERSION MATCHES "^[0-9a-f]${40}$" AND NOT CME_SHA256)
     "while everything it resolves is pinned. Set CME_VERSION to a commit.")
 endif()
 
-if(NOT EXISTS "${CME_SOURCE_DIR}/cmake-everywhere.cmake")
+# What is unpacked there already, if anything.
+#
+# Which revision a directory holds is not readable from the directory, so it
+# is written down beside it. Without that, a build that changed CME_VERSION
+# went on using what it had: the same directory, the same files, and a
+# number in the log that no longer described them. Even --fresh does not
+# help, because it removes the cache and not the tree.
+set(cme_stamp "${CME_SOURCE_DIR}/.cme-revision")
+set(cme_have "")
+if(EXISTS "${cme_stamp}")
+  file(READ "${cme_stamp}" cme_have)
+  string(STRIP "${cme_have}" cme_have)
+endif()
+
+if(NOT EXISTS "${CME_SOURCE_DIR}/cmake-everywhere.cmake"
+   OR NOT cme_have STREQUAL "${CME_VERSION}")
   set(archive "${CMAKE_BINARY_DIR}/cme-${CME_VERSION}.tar.gz")
-  message(STATUS "cmake-everywhere: fetching ${CME_VERSION}")
+  if(cme_have)
+    message(STATUS
+      "cmake-everywhere: fetching ${CME_VERSION}, replacing ${cme_have}")
+  else()
+    message(STATUS "cmake-everywhere: fetching ${CME_VERSION}")
+  endif()
   if(CME_SHA256)
     file(DOWNLOAD
       "https://github.com/j4niwzis/cmake-everywhere/archive/${CME_VERSION}.tar.gz"
@@ -58,6 +78,7 @@ if(NOT EXISTS "${CME_SOURCE_DIR}/cmake-everywhere.cmake")
   list(GET unpacked 0 root)
   file(REMOVE_RECURSE "${CME_SOURCE_DIR}")
   file(RENAME "${root}" "${CME_SOURCE_DIR}")
+  file(WRITE "${cme_stamp}" "${CME_VERSION}\n")
   set(CME_FETCHED_SHA256 "${CME_FETCHED_SHA256}" CACHE INTERNAL
       "The digest of the archive this build took")
 endif()
