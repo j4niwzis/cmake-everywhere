@@ -1357,7 +1357,7 @@ function(cme_declare_port)
            EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS
-           CONFIGURE_ARGS CONFIGURE_CROSS INSTALLED_TARGETS PATCHES)
+           CONFIGURE_ARGS CONFIGURE_CROSS INSTALLED_TARGETS PATCHES TREES)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
     message(FATAL_ERROR "cmake-everywhere: a port with no NAME")
@@ -1570,7 +1570,7 @@ endfunction()
 # in the build has Vulkan.
 function(cme_port_feature port feature)
   cmake_parse_arguments(FEATURE "" "SUMMARY"
-    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;PATCHES;TARGETS;DEFAULT"
+    "GN_ARGS;GN_CONFIRM;GN_TARGETS;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;PATCHES;TARGETS;TREES;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
   set_property(GLOBAL APPEND_STRING PROPERTY CME_PORT_${port}_RECIPE
@@ -1581,9 +1581,10 @@ function(cme_port_feature port feature)
     string(APPEND said " \"${value}\"")
   endforeach()
   cme_export_line(${port} "${said})")
-  foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY IMPLIES CONFLICTS
+  foreach(field GN_ARGS GN_CONFIRM GN_TARGETS OPTIONS DEPENDS SUMMARY IMPLIES
+                CONFLICTS
                 EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_CODE SYSTEM_COMPONENT
-                CONFIGURE_ARGS PATCHES TARGETS
+                CONFIGURE_ARGS PATCHES TARGETS TREES
                 DEFAULT)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
@@ -4516,6 +4517,7 @@ function(cme_build_port port package version exact)
   cme_port_field(external ${port} EXTERNAL)
   cme_port_field(imported ${port} IMPORT)
   cme_port_field(configure ${port} CONFIGURE)
+  cme_port_field(source_only ${port} SOURCE_ONLY)
   # Fetched and no more. What a library says about itself is in the tree, and
   # nothing can be decided about the library before it has been read -- which
   # means the tree cannot be configured by the same call that brings it.
@@ -4688,6 +4690,10 @@ function(cme_build_port port package version exact)
     return()
   endif()
 
+  # What the port said it reads out of another port's tree, put there before
+  # anything is asked to compile it.
+  cme_place_trees(${port} "${${port}_SOURCE_DIR}")
+
   if(imported)
     if(imported STREQUAL "cmake")
       cme_cmake_build(${port} "${${port}_SOURCE_DIR}")
@@ -4721,6 +4727,15 @@ function(cme_build_port port package version exact)
     set(CME_INSTALLED_${port} "${entry}" CACHE INTERNAL "" FORCE)
   elseif(gn_targets)
     cme_gn_build(${port} "${${port}_SOURCE_DIR}")
+  elseif(source_only AND NOT overlay)
+    # A port whose result is its source tree, and nothing else.
+    #
+    # There is no CMakeLists here to add and nothing to import: what asked
+    # for this compiles it as part of its own build, which is what TREES is
+    # for. The tree was fetched and checked, and the tree is the answer.
+    message(STATUS
+      "cmake-everywhere: ${port} ${port_version} is sources, and they are "
+      "fetched")
   elseif(overlay)
     set(CME_UPSTREAM_SOURCE_DIR "${${port}_SOURCE_DIR}")
     set(CME_UPSTREAM_VERSION "${port_version}")
@@ -4788,6 +4803,79 @@ function(cme_build_port port package version exact)
   endif()
   list(JOIN features "," listed)
   cme_note_decision("${port}" "built" "${port_version} [${listed}]")
+endfunction()
+
+# Sources another port carries, put where this one looks for them.
+#
+# Skia compiles fifteen files of ICU's bidirectional algorithm out of
+# third_party/externals/icu -- a directory its own dependency sync fills and
+# this build never runs. What fills it here is a port: the tree that port
+# fetched is linked in, so those sources arrive the way every other source
+# in this registry arrives, as an archive with a digest of it, and the build
+# that compiles them is still this one.
+#
+# A link rather than a copy, for the same reason gn is linked into a tree
+# that runs it from bin/gn: it is plainly the same sources, and a copy of a
+# tree that is already content-addressed is a second name for bytes that
+# already have one.
+#
+#   TREES "third_party/externals/icu=icu-sources"
+#
+# The port on the right is fetched because the port on the left depends on
+# it. Saying TREES without saying DEPENDS is a port asking for a tree nobody
+# was asked to fetch, and that stops here rather than at a missing header.
+function(cme_place_trees port source)
+  cme_port_field(entries ${port} TREES)
+  cme_enabled_features(${port} features)
+  foreach(feature IN LISTS features)
+    cme_feature_field(extra ${port} ${feature} TREES)
+    list(APPEND entries ${extra})
+  endforeach()
+  foreach(entry IN LISTS entries)
+    if(NOT entry MATCHES "^([^=]+)=(.+)$")
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} says TREES ${entry}, and what that is "
+        "written as is <path inside this tree>=<port>")
+    endif()
+    set(where "${CMAKE_MATCH_1}")
+    set(other "${CMAKE_MATCH_2}")
+    get_property(tree GLOBAL PROPERTY CME_TREE_${other})
+    if(NOT tree)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} expects the sources of ${other} at "
+        "${where}, and nothing fetched them. A port that says TREES has to "
+        "depend on what it names.")
+    endif()
+    set(placed "${source}/${where}")
+    if(EXISTS "${placed}")
+      # The same tree from a build before this one, or a different one: a
+      # store entry is reused and what was linked into it last time may have
+      # been another version of this port.
+      get_filename_component(there "${placed}" REALPATH)
+      get_filename_component(here "${tree}" REALPATH)
+      if(there STREQUAL here)
+        continue()
+      endif()
+      if(IS_SYMLINK "${placed}")
+        file(REMOVE "${placed}")
+      else()
+        message(FATAL_ERROR
+          "cmake-everywhere: ${port} expects the sources of ${other} at "
+          "${where}, and there is something else there that this build did "
+          "not put there.")
+      endif()
+    endif()
+    get_filename_component(directory "${placed}" DIRECTORY)
+    file(MAKE_DIRECTORY "${directory}")
+    file(CREATE_LINK "${tree}" "${placed}" SYMBOLIC RESULT status)
+    if(NOT status STREQUAL "0")
+      message(FATAL_ERROR
+        "cmake-everywhere: the sources of ${other} could not be put at "
+        "${where} inside ${port}: ${status}")
+    endif()
+    message(STATUS
+      "cmake-everywhere: ${port} reads ${other} at ${where}")
+  endforeach()
 endfunction()
 
 # ---------------------------------------------------------------- provider

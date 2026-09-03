@@ -720,8 +720,18 @@ function(cme_gn_import port description)
 endfunction()
 
 # What the port promises its consumers: "//:skia=Skia::skia".
+#
+# A feature may add one. Skia's modules are targets of their own -- //:skia
+# is the library and //modules/skunicode is not in it -- so a feature that
+# turns a module on is the thing that knows the module is now there to be
+# named.
 function(cme_gn_export port)
   cme_port_field(exports ${port} GN_TARGETS)
+  cme_enabled_features(${port} features)
+  foreach(feature IN LISTS features)
+    cme_feature_field(extra ${port} ${feature} GN_TARGETS)
+    list(APPEND exports ${extra})
+  endforeach()
   foreach(pair IN LISTS exports)
     if(NOT pair MATCHES "^([^=]+)=(.+)$")
       message(FATAL_ERROR

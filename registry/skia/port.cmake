@@ -419,9 +419,9 @@ cme_port_feature(skia fontmgr-embedded
 # the platform to do it is a program that does not carry three decoders. It
 # needs the NDK's imagedecoder, which is API 30 and later.
 # It means something on Android and nowhere else, and it is a feature rather
-# than part of the android one because a build may want the system'''s font
+# than part of the android one because a build may want the system's font
 # configuration without handing it the decoding as well: the platform
-# decoders are API 30, and this project'''s floor is lower.
+# decoders are API 30, and this project's floor is lower.
 cme_port_feature(skia ndk-images
   SUMMARY "decoding images through Android's own decoders"
   GN_ARGS "skia_use_ndk_images=true"
@@ -431,7 +431,26 @@ int main() {
   return fn == nullptr;
 }")
 
-# Skia'''s own answer to "make it smaller".
+# GIF, which Skia decodes through Wuffs.
+#
+# Wuffs is one C file compiled with macros saying which codecs to keep, and
+# Skia keeps three: BASE, GIF and LZW. There is no installed library that was
+# compiled that way, so the sources come from a port and are compiled here,
+# with Skia's own defines, as part of this build.
+cme_port_feature(skia gif
+  SUMMARY "GIF, through Wuffs"
+  DEPENDS wuffs-sources
+  TREES "third_party/externals/wuffs=wuffs-sources"
+  GN_ARGS "skia_use_wuffs=true"
+  GN_CONFIRM "skia_use_wuffs=true"
+  SYSTEM_CODE "#include <skia/codec/SkGifDecoder.h>
+int main() {
+  std::unique_ptr<SkCodec> (*fn)(sk_sp<const SkData>, SkCodec::Result*,
+                                 SkCodecs::DecodeContext) = &SkGifDecoder::Decode;
+  return fn == nullptr;
+}")
+
+# Skia's own answer to "make it smaller".
 #
 # It is not a compiler flag: it turns off code paths Skia keeps for speed --
 # specialisations, unrolled loops, a raster pipeline stage per format -- and
@@ -458,10 +477,53 @@ cme_port_feature(skia optimize-size
 # runs alone.
 cme_port_feature(skia harfbuzz
   SUMMARY "SkShaper, which turns characters into positioned glyphs"
-  IMPLIES freetype
+  # Not a preference: Skia compiles its HarfBuzz shaper only where SkUnicode
+  # is compiled too --
+  #
+  #   if (skia_use_harfbuzz && skia_enable_skunicode) {
+  #     sources += skia_shaper_harfbuzz_sources
+  #
+  # -- because shaping a run means knowing where the run ends and which way
+  # it goes, and that is the other module's question. Asking for HarfBuzz
+  # without it would build a shaper that does not shape.
+  IMPLIES freetype unicode
   DEPENDS harfbuzz
   GN_ARGS "skia_use_harfbuzz=true" "skia_use_system_harfbuzz=true"
-  GN_CONFIRM "skia_use_system_harfbuzz=true")
+  GN_CONFIRM "skia_use_system_harfbuzz=true"
+  GN_TARGETS "//modules/skshaper:skshaper=Skia::skshaper"
+  TARGETS Skia::skshaper)
+
+# Where a line may break, where a word ends, which direction a run goes.
+#
+# SkShaper above turns characters into glyphs; this is the other half of
+# laying out text, and Skia calls it SkUnicode. Four sources are offered
+# upstream and they are not interchangeable: ICU is tens of megabytes of
+# tables, ICU4X is Rust, a client ICU is a promise the program will supply
+# one, and libgrapheme is a few hundred kilobytes of exactly these
+# algorithms. This port takes libgrapheme, from the port beside it, at the
+# commit Skia itself builds.
+#
+# Two things come with that. Skia has no skia_use_system_libgrapheme, so
+# there is a patch that adds one -- the same switch its six other system
+# libraries have, spelled the same way -- and without it the library would
+# be compiled out of an externals directory this build leaves empty. And
+# SkUnicode_libgrapheme is not libgrapheme alone: the bidirectional part is
+# fifteen files of ICU compiled into Skia with its own symbol suffix, out of
+# third_party/externals/icu. That tree comes from a port too, and it is
+# linked into place rather than fetched by Skia's own dependency sync.
+cme_port_feature(skia unicode
+  SUMMARY "SkUnicode: line breaking, word boundaries and direction"
+  DEPENDS libgrapheme icu-sources
+  PATCHES patches/0001-take-libgrapheme-from-outside-skia.patch
+  TREES "third_party/externals/icu=icu-sources"
+  GN_ARGS "skia_enable_skunicode=true" "skia_use_libgrapheme=true"
+          "skia_use_system_libgrapheme=true"
+  GN_CONFIRM "skia_enable_skunicode=true" "skia_use_libgrapheme=true"
+             "skia_use_system_libgrapheme=true"
+  # A module of its own, not a part of //:skia: a program that asks SkUnicode
+  # a question links this beside the library.
+  GN_TARGETS "//modules/skunicode:skunicode=Skia::skunicode"
+  TARGETS Skia::skunicode)
 
 # What this port does not offer, and what each would take.
 #
@@ -470,26 +532,28 @@ cme_port_feature(skia harfbuzz
 # twenty-eight options; these are the ones a consumer might reasonably look
 # for here and not find, with the reason.
 #
-#   avif, jxl, gif, raw    Skia decodes these through libavif, libjxl, wuffs
-#                          and dng_sdk with piex. Each is a library this
-#                          registry has no port for, and a feature that
-#                          cannot be built is worse than a feature that is
-#                          named as absent.
-#   unicode properties     SkUnicode needs one of icu, client icu, libgrapheme
-#                          or icu4x. Shaping is offered above; what is not
-#                          here yet is a port for any of those four, and they
-#                          differ by two orders of magnitude in size, so the
-#                          one this registry should prefer is a decision
-#                          worth making deliberately.
+#   avif, jxl, raw         Skia decodes these through libavif, libjxl, and
+#                          dng_sdk with piex. Each is a library this registry
+#                          has no port for, and a feature that cannot be
+#                          built is worse than a feature that is named as
+#                          absent. GIF is offered above: Wuffs is one file
+#                          and its sources are a port.
+#   icu, client icu,       The other three sources SkUnicode can be built on.
+#   icu4x                  The unicode feature above takes libgrapheme, which
+#                          is the small one; ICU would be tens of megabytes
+#                          of tables for the same three questions, a client
+#                          ICU is a promise this port cannot keep on a
+#                          program's behalf, and ICU4X is a Rust crate Skia
+#                          builds with Bazel.
 #   fontations             A font backend written in Rust, built with cargo.
 #                          Nothing else here needs a Rust toolchain.
 #   dawn, angle            Each is a graphics stack of its own, vendored into
-#                          Skia'''s externals. Ganesh with GL or Vulkan, and
+#                          Skia's externals. Ganesh with GL or Vulkan, and
 #                          Graphite, are what this port offers instead.
 #   metal, direct3d, xps   The backends and the document format of systems
 #   fontmgr-win, mac       nothing here builds for. They are not refused on
 #                          principle -- there is simply no machine in this
-#                          registry'''s checks that could say whether they
+#                          registry's checks that could say whether they
 #                          work, and an untested feature is a promise nobody
 #                          has kept.
 #   ffmpeg, lua            Skottie can read video through ffmpeg and Skia has

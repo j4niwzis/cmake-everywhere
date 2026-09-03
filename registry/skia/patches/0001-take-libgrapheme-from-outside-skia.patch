@@ -1,0 +1,102 @@
+Let a build say that libgrapheme comes from outside Skia.
+
+Skia has a skia_use_system_ switch for harfbuzz, icu, expat, png, jpeg and
+webp, and for nothing else: every other third_party target compiles the copy
+in third_party/externals. This build has no externals, so libgrapheme -- the
+small answer to SkUnicode, a few hundred kilobytes where ICU is tens of
+megabytes -- could not be asked for at all.
+
+What that target does is build six programs for the host, run them over the
+Unicode data to print six tables, and compile eight C files against them.
+The data it reads is a second tree, third_party/externals/unicodetools, and
+the library is a port beside this one whose own build writes those tables
+from the data it ships. So the switch here is the same one the six libraries
+above have, spelled the same way, and it does the same thing: a system()
+target that links what the port produced, with the generation skipped rather
+than done a second time.
+
+--- a/third_party/libgrapheme/BUILD.gn
++++ b/third_party/libgrapheme/BUILD.gn
+@@ -4,6 +4,12 @@
+ # found in the LICENSE file.
+ 
+ import("../third_party.gni")
++
++declare_args() {
++  # Link libgrapheme rather than compile the copy in third_party/externals,
++  # the same choice skia_use_system_harfbuzz and the five beside it offer.
++  skia_use_system_libgrapheme = false
++}
+ 
+ declare_args() {
+   UNICODE_VERSION = "15.0.0"
+@@ -20,7 +26,8 @@
+ 
+ # Header generation only happens on the host.
+ # Ensure it will not be built for non-host even when implicitly building all targets.
+-if (current_toolchain == "//gn/toolchain:$host_toolchain") {
++if (!skia_use_system_libgrapheme &&
++    current_toolchain == "//gn/toolchain:$host_toolchain") {
+   copy("copy_unicode_data") {
+     unicode_tools_dir =
+         "../externals/unicodetools/unicodetools/data/ucd/$UNICODE_VERSION"
+@@ -125,7 +132,8 @@
+ }
+ 
+ source_set("headers") {
+-  if (current_toolchain == "//gn/toolchain:$host_toolchain") {
++  if (!skia_use_system_libgrapheme &&
++      current_toolchain == "//gn/toolchain:$host_toolchain") {
+     # Prevent :generate_headers from being run when building all targets.
+     sources = get_target_outputs(":generate_headers")
+ 
+@@ -134,25 +142,31 @@
+   }
+ }
+ 
+-third_party("libgrapheme") {
+-  public_include_dirs = [ "../externals/libgrapheme" ]
+-  _src = "../externals/libgrapheme/src"
++if (skia_use_system_libgrapheme) {
++  system("libgrapheme") {
++    libs = [ "grapheme" ]
++  }
++} else {
++  third_party("libgrapheme") {
++    public_include_dirs = [ "../externals/libgrapheme" ]
++    _src = "../externals/libgrapheme/src"
+ 
+-  configs = [
+-    ":c99",
+-    ":headers_config(//gn/toolchain:$host_toolchain)",
+-  ]
++    configs = [
++      ":c99",
++      ":headers_config(//gn/toolchain:$host_toolchain)",
++    ]
+ 
+-  sources = [
+-    "$_src/bidirectional.c",
+-    "$_src/case.c",
+-    "$_src/character.c",
+-    "$_src/line.c",
+-    "$_src/sentence.c",
+-    "$_src/utf8.c",
+-    "$_src/util.c",
+-    "$_src/word.c",
+-  ]
++    sources = [
++      "$_src/bidirectional.c",
++      "$_src/case.c",
++      "$_src/character.c",
++      "$_src/line.c",
++      "$_src/sentence.c",
++      "$_src/utf8.c",
++      "$_src/util.c",
++      "$_src/word.c",
++    ]
+ 
+-  deps = [ ":headers(//gn/toolchain:$host_toolchain)" ]
++    deps = [ ":headers(//gn/toolchain:$host_toolchain)" ]
++  }
+ }
