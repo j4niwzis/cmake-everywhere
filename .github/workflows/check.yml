@@ -567,7 +567,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .cache/sources
-          key: sources-${{ matrix.port.port }}-${{ hashFiles(format('registry/{0}/*.cmake', matrix.port.port)) }}
+          key: sources-${{ matrix.port.port }}-${{ hashFiles(format('registry/{0}/**', matrix.port.port)) }}
           restore-keys: sources-${{ matrix.port.port }}-
       - uses: actions/cache@v4
         with:
@@ -646,7 +646,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .cache/sources
-          key: sources-${{ matrix.port.port }}-${{ hashFiles(format('registry/{0}/*.cmake', matrix.port.port)) }}
+          key: sources-${{ matrix.port.port }}-${{ hashFiles(format('registry/{0}/**', matrix.port.port)) }}
           restore-keys: sources-${{ matrix.port.port }}-
       - uses: actions/cache@v4
         with:
@@ -691,7 +691,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .cache/sources
-          key: sources-openal-external-fmt-${{ hashFiles('registry/openal-soft/*', 'registry/fmt/*') }}
+          key: sources-openal-external-fmt-${{ hashFiles('registry/openal-soft/**', 'registry/fmt/**') }}
           restore-keys: sources-openal-external-fmt-
       - uses: actions/cache@v4
         with:
@@ -726,7 +726,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .cache/sources
-          key: sources-skia-${{ hashFiles('registry/*/*.cmake') }}
+          key: sources-skia-${{ hashFiles('registry/**') }}
           restore-keys: sources-skia-
       - uses: actions/cache@v4
         with:

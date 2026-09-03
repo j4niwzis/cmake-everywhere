@@ -22,6 +22,9 @@ cme_declare_port(
   GIT_TAG 1.25.2
   GIT_TAG_TEMPLATE "@VERSION@"
   LICENSE LGPL-2.0-or-later
+  PATCHES
+    patches/0001-include-the-header-that-formats-a-byte.patch
+    patches/0002-nonblocking-is-a-claim-about-the-standard-library-too.patch
   SYSTEM_PKGCONFIG "openal:OpenAL::OpenAL"
   LINK_NAMES "openal=OpenAL::OpenAL"
   TARGETS OpenAL::OpenAL

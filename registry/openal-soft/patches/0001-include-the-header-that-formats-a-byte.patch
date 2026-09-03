@@ -1,0 +1,33 @@
+Include the header that knows how to format a byte.
+
+hrtf_loader.cpp prints the four bytes of an unrecognised HRTF header as
+"{::#04X}" over std::as_bytes(...), and includes fmt/core.h and
+fmt/ranges.h. That was enough while the std::byte formatter lived in
+fmt/format.h. fmt 12.2.0 moved it to fmt/std.h -- "Moved the std::byte
+formatter from fmt/format.h to fmt/std.h" -- and without it the format
+string check fails at compile time, on a message about a specifier:
+
+    error: 'unknown format specifier'
+      in constexpr expansion of fstring<span<const byte, 8>>("{::#04X}")
+
+So the header that has the formatter is included. fmt/core.h becomes
+fmt/format.h in the same file, which is what upstream did on master and
+what fmt 12.2 requires of anyone calling fmt::format: core.h now includes
+base.h alone.
+
+Both headers exist in every fmt this can be built against, so the file
+compiles the same way against the copy in the tree.
+
+--- a/core/hrtf_loader.cpp
++++ b/core/hrtf_loader.cpp
+@@ -13,8 +13,9 @@
+ 
+ #include "alformat.hpp"
+ #include "alnumeric.h"
+-#include "fmt/core.h"
++#include "fmt/format.h"
+ #include "fmt/ranges.h"
++#include "fmt/std.h"
+ #include "gsl/gsl"
+ #include "hrtf.h"
+ 

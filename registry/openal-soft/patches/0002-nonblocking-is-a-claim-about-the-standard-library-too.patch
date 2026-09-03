@@ -1,0 +1,31 @@
+Claim nothing about blocking that the standard library will not support.
+
+The mixer is annotated [[clang::nonblocking]] and the project turns the
+check into an error of its own accord: -Werror=function-effects is on its
+own command line. Clang then verifies the claim through every call, and
+against libstdc++ it fails --
+
+    alc/alu.cpp:262:9: error: function with 'nonblocking' attribute must not
+    call non-'nonblocking' function 'std::variant<...>::...'
+
+-- because libstdc++'s std::variant throws and holds function-local statics,
+neither of which clang can see past. libc++ is the standard library this
+annotation was written against, and there it holds.
+
+So the attribute is applied when compiling against libc++ and not
+otherwise. <memory> and <type_traits> are included above this line, so
+_LIBCPP_VERSION is defined by the time it is read if it is going to be.
+Nothing about the mixer changes; what changes is whether a claim about it is
+made to a compiler that cannot check it here.
+
+--- a/common/opthelpers.h
++++ b/common/opthelpers.h
+@@ -62,7 +62,7 @@
+ #define LIFETIMEBOUND
+ #endif
+ 
+-#if HAS_ATTRIBUTE(clang::nonblocking)
++#if HAS_ATTRIBUTE(clang::nonblocking) && defined(_LIBCPP_VERSION)
+ #define NONBLOCKING [[clang::nonblocking]]
+ #else
+ #define NONBLOCKING
