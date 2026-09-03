@@ -1295,8 +1295,14 @@ function(cme_declare_port)
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
           PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
           CHECK_HEADER ARRANGEMENT SYSTEM_HEADER_TARGET CONFIGURE
-          INSTALLED_INCLUDE SYSTEM_CODE)
+          INSTALLED_INCLUDE)
+  # SYSTEM_CODE is a program, and a program has semicolons in it.
+  # cmake_parse_arguments splits every argument on semicolons, so a
+  # one-value keyword would keep the text up to the first statement and drop
+  # the rest -- which is what happened, and what the compiler then reported
+  # as a missing brace on the last line it was given.
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG PKGCONFIG_NAMES
+           SYSTEM_CODE
            EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS
@@ -3378,14 +3384,31 @@ function(cme_system_has_features out package port features)
   # cannot link it is not a copy this build can use whatever else it has.
   cme_port_field(whole ${port} SYSTEM_CODE)
   if(whole)
-    include(CheckCXXSourceCompiles)
-    string(MAKE_C_IDENTIFIER "cme_${package}_usable" variable)
-    check_cxx_source_compiles("${whole}" ${variable})
-    if(NOT ${variable})
+    # try_compile rather than check_cxx_source_compiles, for one reason: the
+    # output. A program that does not build says why, and the reason is not
+    # always the one that was expected -- a missing header reads nothing like
+    # an undefined symbol, and a message that names a cause it did not
+    # observe is worse than no message.
+    try_compile(cme_usable
+      SOURCE_FROM_VAR "cme_${port}_usable.cc" whole
+      LINK_LIBRARIES ${libraries}
+      CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${includes}"
+      OUTPUT_VARIABLE cme_usable_output)
+    if(NOT cme_usable)
       message(STATUS
-        "cmake-everywhere: the ${package} installed here cannot be linked "
-        "against by this build -- a different C++ standard library, or a "
-        "different ABI -- so it is built here instead")
+        "cmake-everywhere: a program of this build's own does not build "
+        "against the ${package} installed here, so it is built here instead")
+      string(REPLACE "\n" ";" cme_usable_lines "${cme_usable_output}")
+      set(cme_shown 0)
+      foreach(cme_line IN LISTS cme_usable_lines)
+        if(cme_line MATCHES "(error|Error|undefined reference)")
+          message(STATUS "    ${cme_line}")
+          math(EXPR cme_shown "${cme_shown} + 1")
+          if(cme_shown GREATER_EQUAL 4)
+            break()
+          endif()
+        endif()
+      endforeach()
       set(${out} FALSE PARENT_SCOPE)
       return()
     endif()
