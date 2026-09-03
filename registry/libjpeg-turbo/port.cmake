@@ -14,6 +14,12 @@ cme_declare_port(
     "ENABLE_STATIC ON"
     "WITH_JAVA OFF"
     "WITH_TURBOJPEG ON"
+  # What this library answers to when something asks the linker for it by
+  # name. A bare -l finds whatever is installed; a target is an archive
+  # with a path.
+  LINK_NAMES
+    "jpeg=JPEG::JPEG"
+    "turbojpeg=JPEG::JPEG"
 )
 
 function(cme_adapt_libjpeg-turbo source binary)

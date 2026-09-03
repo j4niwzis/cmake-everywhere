@@ -169,6 +169,11 @@ cme_port_feature(skia freetype
   DEPENDS freetype
   GN_ARGS "skia_use_freetype=true" "skia_use_system_freetype2=true"
           "skia_use_freetype_zlib_bundled=false"
+          # Skia takes the system FreeType's headers as a path, and its
+          # default for that path is /usr/include/freetype2. Left alone, a
+          # machine that has FreeType installed would be compiled against
+          # those headers and linked against the one built here.
+          "skia_system_freetype2_include_path=\"@INCLUDE:freetype@\""
   GN_CONFIRM "skia_use_system_freetype2=true")
 
 # A font database is not a font rasteriser: fontconfig says which file, and

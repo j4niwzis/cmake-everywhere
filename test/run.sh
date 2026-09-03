@@ -57,6 +57,17 @@ expect_refusal() {
 }
 
 mkdir -p "$out"
+
+# Before anything is fetched or configured: a command that is called and
+# never defined is a mistake that would otherwise be found after a download
+# and a gn run.
+if python3 "$root/check.py" >"$out/check.log" 2>&1; then
+  report 0 "commands"
+else
+  report 1 "commands"
+  cat "$out/check.log"
+fi
+
 echo "refusals -- nothing is fetched, these are decided before that"
 expect_refusal unknown-feature       "has none by that name"
 expect_refusal conflicting-features  "can have at most one of"
@@ -70,9 +81,19 @@ expect_build features-from-source "$here/features" -DCME_SYSTEM=NEVER
 expect_build consumer "$here"
 expect_build consumer-from-source "$here" -DCME_SYSTEM=NEVER
 
-if [ "$1" = "--with-skia" ]; then
+# Skia twice, and the second one is the one that means something. With the
+# system's libraries available, Skia is handed those and nothing this
+# registry built is ever reached; from source, zlib, libpng and freetype are
+# built here and Skia has to be made to use them rather than whatever the
+# linker finds.
+if [ "$1" = "--with-skia" ] || [ "$1" = "--with-skia-features" ]; then
   echo "skia -- needs gn, and takes a while"
   expect_build skia "$here/skia"
+fi
+if [ "$1" = "--with-skia-features" ]; then
+  echo "skia with features, from source -- takes longer still"
+  expect_build skia-features "$here/skia" \
+    -DCME_SYSTEM=NEVER -DCME_FEATURES_skia="gl;png;freetype"
 fi
 
 echo

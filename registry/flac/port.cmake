@@ -17,6 +17,11 @@ cme_declare_port(
   SYSTEM_PKGCONFIG "flac:FLAC::FLAC"
   GIT_TAG_TEMPLATE "@VERSION@"
   LICENSE BSD-3-Clause
+  # What this library answers to when something asks the linker for it by
+  # name. A bare -l finds whatever is installed; a target is an archive
+  # with a path.
+  LINK_NAMES
+    "FLAC=FLAC::FLAC"
 )
 
 # libFLAC can be built with or without Ogg, and which one a system copy is

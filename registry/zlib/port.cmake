@@ -12,6 +12,11 @@ cme_declare_port(
   SYSTEM_PKGCONFIG "zlib:ZLIB::ZLIB"
   GIT_TAG_TEMPLATE "v@VERSION@"
   LICENSE Zlib
+  # What this library answers to when something asks the linker for it by
+  # name. A bare -l finds whatever is installed; a target is an archive
+  # with a path.
+  LINK_NAMES
+    "z=ZLIB::ZLIB"
 )
 
 # zlib's own CMake builds targets called zlib and zlibstatic and offers no

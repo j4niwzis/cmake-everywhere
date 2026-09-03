@@ -19,6 +19,11 @@ cme_declare_port(
     "WEBP_BUILD_WEBPINFO OFF"
     "WEBP_BUILD_WEBPMUX OFF"
     "WEBP_BUILD_EXTRAS OFF"
+  # What this library answers to when something asks the linker for it by
+  # name. A bare -l finds whatever is installed; a target is an archive
+  # with a path.
+  LINK_NAMES
+    "webp=WebP::webp"
 )
 
 function(cme_adapt_libwebp source binary)

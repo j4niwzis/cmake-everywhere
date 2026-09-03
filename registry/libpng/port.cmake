@@ -18,6 +18,12 @@ cme_declare_port(
   SYSTEM_PKGCONFIG "libpng:PNG::PNG"
   GIT_TAG_TEMPLATE "v@VERSION@"
   LICENSE libpng-2.0
+  # What this library answers to when something asks the linker for it by
+  # name. A bare -l finds whatever is installed; a target is an archive
+  # with a path.
+  LINK_NAMES
+    "png=PNG::PNG"
+    "png16=PNG::PNG"
 )
 
 # libpng looks for zlib with find_package(ZLIB) inside its own CMakeLists,

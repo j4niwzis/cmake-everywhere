@@ -19,6 +19,11 @@ cme_declare_port(
   SYSTEM_PKGCONFIG "sndfile:SndFile::sndfile"
   GIT_TAG_TEMPLATE "@VERSION@"
   LICENSE LGPL-2.1-or-later
+  # What this library answers to when something asks the linker for it by
+  # name. A bare -l finds whatever is installed; a target is an archive
+  # with a path.
+  LINK_NAMES
+    "sndfile=SndFile::sndfile"
 )
 
 # One find_package(SndFile) brings ogg, vorbis, FLAC and opus with it,

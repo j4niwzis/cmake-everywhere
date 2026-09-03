@@ -18,6 +18,11 @@ cme_declare_port(
     "EXPAT_BUILD_DOCS OFF"
     "EXPAT_SHARED_LIBS OFF"
   LICENSE MIT
+  # What this library answers to when something asks the linker for it by
+  # name. A bare -l finds whatever is installed; a target is an archive
+  # with a path.
+  LINK_NAMES
+    "expat=EXPAT::EXPAT"
 )
 
 function(cme_adapt_expat source binary)
