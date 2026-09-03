@@ -555,6 +555,10 @@ jobs:
             # A port that is imported from meson needs meson to read it,
             # and basu generates part of itself with gperf.
             basu) sudo apt-get install -y meson gperf ;;
+            # Wayland is meson too, and what it is built against -- libffi
+            # for the connection, expat for the scanner -- it resolves
+            # itself, through pkg-config, because meson does.
+            wayland) sudo apt-get install -y meson libffi-dev libexpat1-dev ;;
           esac
       - uses: actions/cache@v4
         with:
@@ -628,6 +632,10 @@ jobs:
             # A port that is imported from meson needs meson to read it,
             # and basu generates part of itself with gperf.
             basu) sudo apt-get install -y meson gperf ;;
+            # Wayland is meson too, and what it is built against -- libffi
+            # for the connection, expat for the scanner -- it resolves
+            # itself, through pkg-config, because meson does.
+            wayland) sudo apt-get install -y meson libffi-dev libexpat1-dev ;;
           esac
       - uses: actions/cache@v4
         with:

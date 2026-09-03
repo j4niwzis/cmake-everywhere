@@ -102,15 +102,11 @@ function(cme_cmake_import port description)
   include("${description}")
   cme_gn_link_map(${port} link_map)
 
-  # A command that runs a tool the project builds itself runs it from the
-  # directory the description came from, where nothing was built. Nothing
-  # here can fix that, so it is said before the build says something else.
   if(CMAKE_IMPORT_GENERATED_BY_TOOLS)
     list(JOIN CMAKE_IMPORT_GENERATED_BY_TOOLS ", " tools)
-    message(WARNING
-      "cmake-everywhere: ${port} generates sources with tools it builds "
-      "itself (${tools}), and those commands name them in "
-      "${CMAKE_IMPORT_BUILD}, where they are not built")
+    message(STATUS
+      "cmake-everywhere: ${port} generates part of itself with ${tools}, "
+      "which is built here and run from where this build puts it")
   endif()
 
   # The commands first: a source that is generated has to have something
@@ -131,10 +127,53 @@ function(cme_cmake_import port description)
       if(NOT comment)
         set(comment "${port}: generating")
       endif()
+
+      # A command that runs a tool the project builds itself.
+      #
+      # wayland generates its protocol headers with wayland-scanner, which
+      # is a target in the same project; Skia and half the world do the
+      # same. The command names that tool by the path it would have had in
+      # the build directory the description came from, where nothing is
+      # built -- so the command as written runs a file that does not exist.
+      # The tool is built here, under a name of this build's choosing, and
+      # where that lands is only known when the build files are written:
+      # which is what $<TARGET_FILE:...> is for.
+      set(needs "")
+      foreach(artifact IN LISTS CMAKE_IMPORT_ARTIFACT_PATHS)
+        # Looked for as text rather than as a pattern: a path is not a
+        # regular expression, and one with a + or a . in it is a different
+        # one once it is read as one. What follows the match has to end it,
+        # so that a target called foo does not match the path of foobar.
+        string(FIND "${line}" "${artifact}" at_pos)
+        if(at_pos LESS 0)
+          continue()
+        endif()
+        string(LENGTH "${artifact}" artifact_length)
+        string(LENGTH "${line}" line_length)
+        math(EXPR after "${at_pos} + ${artifact_length}")
+        if(after LESS line_length)
+          string(SUBSTRING "${line}" ${after} 1 next)
+          if(NOT next MATCHES "[ '\"]")
+            continue()
+          endif()
+        endif()
+        list(FIND CMAKE_IMPORT_ARTIFACT_PATHS "${artifact}" at)
+        list(GET CMAKE_IMPORT_ARTIFACT_OWNERS ${at} owner)
+        if(NOT TARGET ${port}_${owner})
+          continue()
+        endif()
+        string(REPLACE "${artifact}" "$<TARGET_FILE:${port}_${owner}>"
+               line "${line}")
+        list(APPEND needs "${port}_${owner}")
+      endforeach()
+      if(needs)
+        list(REMOVE_DUPLICATES needs)
+      endif()
+
       add_custom_command(
         OUTPUT ${outputs}
         COMMAND /bin/sh -c "${line}"
-        DEPENDS ${CMAKE_IMPORT_COMMAND${index}_INPUTS}
+        DEPENDS ${CMAKE_IMPORT_COMMAND${index}_INPUTS} ${needs}
         WORKING_DIRECTORY "${CMAKE_IMPORT_BUILD}"
         COMMENT "${comment}"
         VERBATIM)

@@ -2148,6 +2148,15 @@ function(cme_alias alias target)
     message(FATAL_ERROR
       "cmake-everywhere: ${target} was not built, so ${alias} cannot exist")
   endif()
+  # An executable is aliased with add_executable and a library with
+  # add_library, and using the wrong one is an error rather than a
+  # conversion. A port can produce either: wayland's scanner is a program
+  # its consumers run to generate their own protocol bindings.
+  get_target_property(kind ${target} TYPE)
+  if(kind STREQUAL "EXECUTABLE")
+    add_executable(${alias} ALIAS ${target})
+    return()
+  endif()
   add_library(${alias} ALIAS ${target})
 endfunction()
 
