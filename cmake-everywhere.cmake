@@ -668,6 +668,30 @@ function(cme_lock_fact port kind value)
     return()
   endif()
   list(JOIN said " or " expected)
+
+  # A port file that came with the registry changed because the registry
+  # did. The lock says which revision of cmake-everywhere wrote it, so that
+  # is a fact rather than a guess, and it is a different thing from a port
+  # file somebody edited: every port in the registry changed with it.
+  if(kind STREQUAL "port" AND CME_VERSION)
+    set(was "")
+    foreach(other IN LISTS locked)
+      if(other MATCHES "^cmake-everywhere version (.+)$")
+        set(was "${CMAKE_MATCH_1}")
+      endif()
+    endforeach()
+    if(was AND NOT was STREQUAL "${CME_VERSION}")
+      message(FATAL_ERROR
+        "cmake-everywhere: ${CME_LOCK} was written against cmake-everywhere "
+        "${was}, and this build takes ${CME_VERSION}. Its ports are not the "
+        "same files -- ${port} is the first one this build reached.\n"
+        "Configure once with -DCME_LOCK_UPDATE=ON to write down what this "
+        "revision says, or with -DCME_RELOCK=${port} for that one port. "
+        "Nothing else in the lock changes either way: a library is still "
+        "held to the commit it is pinned at.")
+    endif()
+  endif()
+
   message(FATAL_ERROR
     "cmake-everywhere: ${CME_LOCK} says ${port} ${kind} is ${expected}, and "
     "this build has ${value}.\n"
