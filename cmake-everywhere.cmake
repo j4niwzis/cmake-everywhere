@@ -456,6 +456,57 @@ function(cme_schedule_finish)
   cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL cme_finish)
 endfunction()
 
+# Whether a port is being followed rather than pinned.
+#
+# The project may say so, on the command line or in the declaration it wrote.
+# An overlay it named may say so, because naming the overlay was the
+# project's decision too. A library may not say it about itself, and a
+# library may not say it about another one: a thing that is being pinned does
+# not get to ask not to be. When one tries, it is said out loud rather than
+# ignored quietly, and it is pinned anyway.
+function(cme_lock_ignored out port)
+  if("${port}" IN_LIST CME_UNLOCKED)
+    set(${out} TRUE PARENT_SCOPE)
+    return()
+  endif()
+  get_property(said GLOBAL PROPERTY CME_PORT_${port}_UNLOCKED)
+  set(${out} "${said}" PARENT_SCOPE)
+endfunction()
+
+# Said where a port is declared, or afterwards about one declared in the same
+# breath.
+#
+# The rule is the same for everyone, a project and a library alike: you may
+# say it about yourself, and about a port you declared. You may not say it
+# about a port somebody else declared -- a library cannot unpin the registry's
+# zlib because it happens to use it, and neither can a library it pulled in.
+# Anything wider than that is the project's to say on the command line, which
+# is where CME_UNLOCKED is.
+function(cme_port_unlocked port)
+  get_property(origin GLOBAL PROPERTY CME_PORT_ORIGIN)
+  if(NOT origin)
+    set(origin "the project")
+  endif()
+  get_property(declared_by GLOBAL PROPERTY CME_PORT_${port}_ORIGIN)
+  get_property(speaking_for GLOBAL PROPERTY CME_READING_FOR)
+  if(NOT declared_by)
+    # Said before the declaration it goes with. Kept, and applied if the same
+    # voice does declare it; a file that only asks and never declares has
+    # asked about somebody else's port.
+    set_property(GLOBAL PROPERTY CME_UNLOCK_ASKED_${port} "${origin}")
+    return()
+  endif()
+  if(NOT declared_by STREQUAL origin AND NOT port STREQUAL speaking_for)
+    message(WARNING
+      "cmake-everywhere: ${origin} says ${port} should not be pinned, and "
+      "${port} was declared by ${declared_by}. A port can be unpinned by "
+      "whoever declared it and by the library it is, and by nobody else. "
+      "${port} stays pinned; -DCME_UNLOCKED=${port} is this project's to say.")
+    return()
+  endif()
+  set_property(GLOBAL PROPERTY CME_PORT_${port}_UNLOCKED TRUE)
+endfunction()
+
 function(cme_lock_read)
   get_property(done GLOBAL PROPERTY CME_LOCK_READ)
   if(done)
@@ -480,7 +531,8 @@ function(cme_lock_fact port kind value)
   if(NOT CME_LOCK OR NOT value)
     return()
   endif()
-  if("${port}" IN_LIST CME_UNLOCKED)
+  cme_lock_ignored(followed "${port}")
+  if(followed)
     return()
   endif()
   cme_lock_read()
@@ -542,7 +594,8 @@ function(cme_lock_write)
   foreach(line IN LISTS locked)
     string(REGEX REPLACE "^([^ ]+) .*$" "\\1" port "${line}")
     string(REGEX REPLACE "^([^ ]+ [^ ]+) .*$" "\\1" subject "${line}")
-    if(port IN_LIST CME_UNLOCKED)
+    cme_lock_ignored(followed "${port}")
+    if(followed)
       continue()
     endif()
     # A port file is one of several a port can have, so those are added to
@@ -563,7 +616,8 @@ function(cme_lock_write)
   get_property(used GLOBAL PROPERTY CME_TOUCHED)
   set(missing "")
   foreach(port IN LISTS used)
-    if(port IN_LIST reached OR port IN_LIST CME_UNLOCKED)
+    cme_lock_ignored(followed "${port}")
+    if(port IN_LIST reached OR followed)
       continue()
     endif()
     set(covered FALSE)
@@ -809,7 +863,7 @@ function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
-          PORTS_FROM)
+          PORTS_FROM UNLOCKED)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS)
@@ -856,6 +910,10 @@ function(cme_declare_port)
   # be edited where it lives without a line of this project changing.
   if(NOT origin STREQUAL "the project")
     cme_lock_port_file("${PORT_NAME}")
+  endif()
+  get_property(asked GLOBAL PROPERTY CME_UNLOCK_ASKED_${PORT_NAME})
+  if(PORT_UNLOCKED OR (asked AND asked STREQUAL origin))
+    set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_UNLOCKED TRUE)
   endif()
   get_property(known_directory GLOBAL PROPERTY CME_PORT_${PORT_NAME}_DIR)
   if(directory AND NOT known_directory)
@@ -2308,7 +2366,9 @@ function(cme_source_ports port source)
     set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "the ${port} library itself")
     set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "${directory}")
     set_property(GLOBAL PROPERTY CME_PORT_FILE "${file}")
+    set_property(GLOBAL PROPERTY CME_READING_FOR "${port}")
     include("${file}")
+    set_property(GLOBAL PROPERTY CME_READING_FOR "")
     set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "")
     set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
     set_property(GLOBAL PROPERTY CME_PORT_FILE "")

@@ -204,7 +204,24 @@ On the next build every one of those has to still be true, and if one is not
 the build stops and names it. `-DCME_LOCK_UPDATE=ON` takes what a build
 resolved to as the new answer; `-DCME_UNLOCKED=hello;wibble` says those two
 are being followed rather than pinned, which is what you want for a library
-you are working on at the same time.
+you are working on at the same time. The same thing said where the port is
+written, which is usually the better place for it:
+
+```cmake
+cme_declare_port(NAME hello PROVIDES Hello UNLOCKED YES
+                 GIT_REPOSITORY https://example.invalid/hello.git
+                 GIT_TAG main)
+```
+
+The rule is the same for everyone, a project and a library alike: **you may
+say it about yourself, and about a port you declared.** A library that
+declares where its own unported dependency comes from may say that one is
+followed rather than pinned, because it is the one saying where it comes
+from. It may not say it about a port somebody else declared -- it cannot
+unpin the registry's zlib because it happens to use it. Anything wider than
+that is the project's to say, on the command line, which is what
+`CME_UNLOCKED` is for. A port that is asked about by someone with no standing
+to ask stays pinned, and the build says so rather than quietly obeying.
 
 **Writing it is its own run.** An ordinary build does not fetch what it does
 not need: a library the system has is never downloaded, one in the store is

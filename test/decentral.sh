@@ -115,6 +115,13 @@ cat >"$work/world/world.cc" <<'EOF'
 int world_answer() { return hello_answer(); }
 EOF
 port_text >"$work/world/cme-ports.cmake"
+# world declares hello, so it may say hello is followed rather than pinned.
+# beta is the registry's, and world saying it about beta is world saying it
+# about somebody else's port.
+cat >>"$work/world/cme-ports.cmake" <<'EOF'
+cme_port_unlocked(hello)
+cme_port_unlocked(beta)
+EOF
 (
   cd "$work/world"
   git init -q .
@@ -291,6 +298,15 @@ else
   failed=$((failed + 1))
 fi
 
+if grep -qF "says beta should not be pinned" "$work/carried.log" &&
+   ! grep -qF "says hello should not be pinned" "$work/carried.log"; then
+  printf '  ok    %s\n' "a library unpins what it declared and nothing else"
+else
+  printf '  FAIL  %s  (see %s)\n' \
+    "a library unpins what it declared and nothing else" "$work/carried.log"
+  failed=$((failed + 1))
+fi
+
 # And then it is a lock: something outside the project moved, and the build
 # stops rather than building something else.
 sed 's/^hello commit .*/hello commit 0000000000000000000000000000000000000000/' \
@@ -310,6 +326,27 @@ elif grep -qF "says hello commit is" "$work/moved.log"; then
 else
   printf '  FAIL  %s  (see %s)\n' "a commit that moved stops the build" \
     "$work/moved.log"
+  failed=$((failed + 1))
+fi
+
+# Said in the declaration rather than on the command line.
+cat >"$work/declare-following.cmake" <<EOF
+cme_declare_port(NAME hello PROVIDES Hello UNLOCKED YES
+  GIT_REPOSITORY "file://$work/upstream" GIT_TAG v1.0.0)
+EOF
+rm -rf "$work/following"
+if cmake -S "$here/port" -B "$work/following" -G Ninja \
+     -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$provider" \
+     -DCME_REGISTRY="$here/registry" -DCME_SYSTEM=NEVER \
+     -DCME_STORE="$work/store" -DCME_PORT_PACKAGE=Hello \
+     -DCME_PORT_TARGETS=Hello::Hello \
+     -DCME_PORT_DECLARE="$work/declare-following.cmake" \
+     -DCME_LOCK="$work/moved.lock" >"$work/following.log" 2>&1; then
+  printf '  ok    %s\n' "UNLOCKED in the declaration is the same as the flag"
+else
+  printf '  FAIL  %s  (see %s)\n' \
+    "UNLOCKED in the declaration is the same as the flag" \
+    "$work/following.log"
   failed=$((failed + 1))
 fi
 
