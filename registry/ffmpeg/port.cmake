@@ -50,6 +50,13 @@ cme_declare_port(
     # Its configure reads no CC from the environment; it is told.
     "--cc=@CC@"
     "--cxx=@CXX@"
+    # And no flags from the environment either -- it says so itself, and
+    # what is in them is not decoration in a cross build: the target and the
+    # sysroot are there, and without them its first test program does not
+    # link and it reports a compiler that cannot make an executable.
+    "--extra-cflags=@CFLAGS@"
+    "--extra-cxxflags=@CXXFLAGS@"
+    "--extra-ldflags=@LDFLAGS@"
     "--disable-shared"
     "--enable-static"
     "--enable-pic"
@@ -72,6 +79,13 @@ cme_declare_port(
     "--cross-prefix=@CROSS_PREFIX@"
     "--arch=@TARGET_CPU@"
     "--target-os=@TARGET_OS_LOWER@"
+    # The tools that belong to that compiler rather than to this machine: a
+    # host ar will put another architecture's objects in an archive and a
+    # host strip will not read one.
+    "--ar=@AR@"
+    "--ranlib=@RANLIB@"
+    "--nm=@NM@"
+    "--strip=@STRIP@"
 )
 
 # What can be written without anything else being installed, and what a

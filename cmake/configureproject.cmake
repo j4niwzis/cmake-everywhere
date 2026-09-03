@@ -25,7 +25,28 @@ function(cme_configure_environment out)
   endif()
   set(c_flags "${CMAKE_C_FLAGS}")
   set(cxx_flags "${CMAKE_CXX_FLAGS}")
-  set(link_flags "")
+  # What linking here takes, which is the compile flags as well as the link
+  # ones: a toolchain says where its runtime is with -resource-dir and hands
+  # the linker its builtins by path, and both of those are compiler driver
+  # flags that a link needs as much as a compile. Without them the first
+  # program a configure script builds does not link, and what it reports is
+  # a compiler that cannot create an executable.
+  set(link_flags "${CMAKE_C_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
+  # Which machine this compiler is aimed at.
+  #
+  # CMake keeps that in CMAKE_C_COMPILER_TARGET and puts --target= on every
+  # command line it writes itself. A script that is handed a compiler and a
+  # set of flags writes its own command lines, so a triple that is not in
+  # the flags is a triple that project never hears about: its first test
+  # program is built for this machine, against a sysroot for another, and
+  # what it reports is a compiler that cannot create an executable.
+  if(CMAKE_C_COMPILER_TARGET)
+    string(APPEND c_flags " --target=${CMAKE_C_COMPILER_TARGET}")
+    string(APPEND link_flags " --target=${CMAKE_C_COMPILER_TARGET}")
+  endif()
+  if(CMAKE_CXX_COMPILER_TARGET)
+    string(APPEND cxx_flags " --target=${CMAKE_CXX_COMPILER_TARGET}")
+  endif()
   if(CMAKE_POSITION_INDEPENDENT_CODE)
     string(APPEND c_flags " -fPIC")
     string(APPEND cxx_flags " -fPIC")
@@ -55,6 +76,34 @@ function(cme_configure_substitute out port value)
   if(NOT triple)
     set(triple "${CMAKE_C_COMPILER_TARGET}")
   endif()
+  # The flags this build compiles with, for a script that does not read
+  # them from the environment. FFmpeg's configure says so outright: what is
+  # in CFLAGS is ignored and --extra-cflags is where flags go. In a cross
+  # build those flags are not decoration -- the target and the sysroot are
+  # in them -- so without this its first test program does not link and the
+  # script reports a compiler that cannot make an executable.
+  cme_configure_environment(cme_said)
+  set(cme_c_flags "")
+  set(cme_cxx_flags "")
+  set(cme_link_flags "")
+  foreach(cme_pair IN LISTS cme_said)
+    if(cme_pair MATCHES "^CFLAGS=(.*)$")
+      set(cme_c_flags "${CMAKE_MATCH_1}")
+    elseif(cme_pair MATCHES "^CXXFLAGS=(.*)$")
+      set(cme_cxx_flags "${CMAKE_MATCH_1}")
+    elseif(cme_pair MATCHES "^LDFLAGS=(.*)$")
+      set(cme_link_flags "${CMAKE_MATCH_1}")
+    endif()
+  endforeach()
+  string(REPLACE "@CFLAGS@" "${cme_c_flags}" value "${value}")
+  string(REPLACE "@CXXFLAGS@" "${cme_cxx_flags}" value "${value}")
+  string(REPLACE "@LDFLAGS@" "${cme_link_flags}" value "${value}")
+  # And the tools that go with that compiler. A host ar can put aarch64
+  # objects in an archive and a host strip cannot read one.
+  string(REPLACE "@AR@" "${CMAKE_AR}" value "${value}")
+  string(REPLACE "@RANLIB@" "${CMAKE_RANLIB}" value "${value}")
+  string(REPLACE "@NM@" "${CMAKE_NM}" value "${value}")
+  string(REPLACE "@STRIP@" "${CMAKE_STRIP}" value "${value}")
   string(REPLACE "@CC@" "${CMAKE_C_COMPILER}" value "${value}")
   string(REPLACE "@CXX@" "${CMAKE_CXX_COMPILER}" value "${value}")
   string(REPLACE "@SYSROOT@" "${CMAKE_SYSROOT}" value "${value}")
@@ -197,8 +246,36 @@ function(cme_configure_configure port source build prefix)
     WORKING_DIRECTORY "${build}"
     RESULT_VARIABLE code OUTPUT_VARIABLE output ERROR_VARIABLE output)
   if(NOT code EQUAL 0)
+    # What the script wrote down, which is where the reason is. "unable to
+    # create an executable file" is the summary; the command it ran and what
+    # the compiler said about it are in the log.
+    set(cme_said "")
+    foreach(cme_log "${build}/config.log" "${build}/ffbuild/config.log")
+      if(EXISTS "${cme_log}")
+        # The beginning and the end of it. Autotools puts what failed at
+        # the end of its log; FFmpeg puts the command it ran and what the
+        # compiler said at the beginning and then dumps every variable it
+        # knows, so the end of that one is an alphabet of settings.
+        file(STRINGS "${cme_log}" cme_lines)
+        list(LENGTH cme_lines cme_count)
+        set(cme_head "${cme_lines}")
+        if(cme_count GREATER 40)
+          list(SUBLIST cme_lines 0 40 cme_head)
+        endif()
+        list(JOIN cme_head "\n" cme_head)
+        math(EXPR cme_from "${cme_count} - 20")
+        if(cme_from LESS 0)
+          set(cme_from 0)
+        endif()
+        list(SUBLIST cme_lines ${cme_from} -1 cme_lines)
+        list(JOIN cme_lines "\n" cme_tail)
+        string(APPEND cme_said
+               "\nthe first of ${cme_log}:\n${cme_head}"
+               "\nand the last of it:\n${cme_tail}")
+      endif()
+    endforeach()
     message(FATAL_ERROR
-      "cmake-everywhere: ${port}'s configure failed\n${output}")
+      "cmake-everywhere: ${port}'s configure failed\n${output}${cme_said}")
   endif()
 endfunction()
 
