@@ -157,6 +157,25 @@ for path in files:
         print(f"  unbalanced parentheses: {path}")
         problems += 1
 
+# A match read in the same if() that made it.
+#
+# The arguments of a command are expanded before it runs, so ${CMAKE_MATCH_1}
+# written beside the MATCHES that sets it holds the match from the last time
+# something matched -- usually the previous iteration of the loop it is in.
+# It reads exactly like the thing it is not, and what it does is answer with
+# the neighbour of the right answer: a library resolved to the target of the
+# entry after the one that named it, for a year, in a repository whose whole
+# point is that nothing is decided silently.
+for path in files:
+    for number, line in enumerate(open(path).read().splitlines(), 1):
+        stripped = line.strip()
+        if not stripped.startswith(("if(", "elseif(")):
+            continue
+        if "MATCHES" in stripped and "CMAKE_MATCH_" in stripped:
+            print(f"  {path}:{number}: a match is read in the if() that makes "
+                  f"it, where it is still the previous one")
+            problems += 1
+
 # A port that says nothing about what it produces cannot be checked by
 # anything but a person reading it.
 for entry in ports():

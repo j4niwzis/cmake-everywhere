@@ -343,11 +343,22 @@ endfunction()
 
 function(cme_gn_resolve_lib out name map)
   foreach(pair IN LISTS map)
-    if(pair MATCHES "^([^=]+)=(.+)$" AND "${CMAKE_MATCH_1}" STREQUAL "${name}")
-      if(TARGET ${CMAKE_MATCH_2})
-        set(${out} "${CMAKE_MATCH_2}" PARENT_SCOPE)
-        return()
-      endif()
+    if(NOT pair MATCHES "^([^=]+)=(.+)$")
+      continue()
+    endif()
+    # Read out of the match before anything else is asked. A command's
+    # arguments are expanded before it runs, so ${CMAKE_MATCH_1} written
+    # inside the same if() as the MATCHES that sets it is the match from the
+    # iteration before -- which is how every library name here resolved to
+    # the target of the pair after the one that named it. png and jpeg
+    # survived that: their ports name two spellings each, both meaning the
+    # same target, so the pair after "png=PNG::PNG" is "png16=PNG::PNG".
+    # freetype names one, so it resolved to whatever port came next.
+    set(key "${CMAKE_MATCH_1}")
+    set(value "${CMAKE_MATCH_2}")
+    if(key STREQUAL name AND TARGET ${value})
+      set(${out} "${value}" PARENT_SCOPE)
+      return()
     endif()
   endforeach()
   set(${out} "${name}" PARENT_SCOPE)

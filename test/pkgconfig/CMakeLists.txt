@@ -12,6 +12,15 @@ project(cme-pkgconfig LANGUAGES C CXX)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
 
+# What came back, not whether it links. The runner has zlib, so a call that
+# reached pkg-config would link too -- which is how this test passed while
+# the answer it is about was never given.
+if(NOT "ZLIB::ZLIB" IN_LIST ZLIB_LIBRARIES)
+  message(FATAL_ERROR
+    "pkg_check_modules was answered by pkg-config: ZLIB_LIBRARIES is "
+    "`${ZLIB_LIBRARIES}` rather than the port's target")
+endif()
+
 add_executable(cme-pkgconfig main.cc)
 target_link_libraries(cme-pkgconfig PRIVATE PkgConfig::ZLIB)
 

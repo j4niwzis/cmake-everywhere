@@ -2300,6 +2300,14 @@ endfunction()
 # first without the second.
 function(cme_pkgconfig_port out module)
   set(${out} "" PARENT_SCOPE)
+  # The ports have to be read before they can be asked, and nothing has
+  # necessarily read them yet: they are loaded by the first find_package
+  # that reaches the provider, and find_package(PkgConfig) is answered
+  # before that -- it is the call that installs this. A project whose first
+  # question is a pkg-config one therefore asked an empty registry, was told
+  # no port answers for zlib, and went to pkg-config. It linked, because the
+  # machine has zlib, which is why this stood.
+  cme_load_registry()
   get_property(names GLOBAL PROPERTY CME_PORTS)
   foreach(port IN LISTS names)
     cme_port_field(named ${port} PKGCONFIG_NAMES)
