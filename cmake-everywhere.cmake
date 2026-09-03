@@ -384,6 +384,7 @@ include("${CME_DIR}/cmake/CPM.cmake")
 include("${CME_DIR}/cmake/gn.cmake")
 include("${CME_DIR}/cmake/cmakeproject.cmake")
 include("${CME_DIR}/cmake/mesonproject.cmake")
+include("${CME_DIR}/cmake/configureproject.cmake")
 
 set(CME_REGISTRY "${CME_DIR}/registry" CACHE PATH
   "The ports that come with this. Overlays are searched before it.")
@@ -1252,11 +1253,13 @@ function(cme_declare_port)
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
           PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
-          CHECK_HEADER ARRANGEMENT SYSTEM_HEADER_TARGET)
+          CHECK_HEADER ARRANGEMENT SYSTEM_HEADER_TARGET CONFIGURE
+          INSTALLED_INCLUDE)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG PKGCONFIG_NAMES
            EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
-           GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS)
+           GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS
+           CONFIGURE_ARGS CONFIGURE_CROSS INSTALLED_TARGETS)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
     message(FATAL_ERROR "cmake-everywhere: a port with no NAME")
@@ -1455,7 +1458,7 @@ endfunction()
 # in the build has Vulkan.
 function(cme_port_feature port feature)
   cmake_parse_arguments(FEATURE "" "SUMMARY"
-    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_COMPONENT;DEFAULT"
+    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_COMPONENT;CONFIGURE_ARGS;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
   set_property(GLOBAL APPEND_STRING PROPERTY CME_PORT_${port}_RECIPE
@@ -1468,6 +1471,7 @@ function(cme_port_feature port feature)
   cme_export_line(${port} "${said})")
   foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY IMPLIES CONFLICTS
                 EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_COMPONENT
+                CONFIGURE_ARGS
                 DEFAULT)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
@@ -3510,6 +3514,7 @@ function(cme_build_port port package version exact)
   endif()
   cme_port_field(external ${port} EXTERNAL)
   cme_port_field(imported ${port} IMPORT)
+  cme_port_field(configure ${port} CONFIGURE)
   # Fetched and no more. What a library says about itself is in the tree, and
   # nothing can be decided about the library before it has been read -- which
   # means the tree cannot be configured by the same call that brings it.
@@ -3672,10 +3677,12 @@ function(cme_build_port port package version exact)
       cme_cmake_build(${port} "${${port}_SOURCE_DIR}")
     elseif(imported STREQUAL "meson")
       cme_meson_build(${port} "${${port}_SOURCE_DIR}")
+    elseif(imported STREQUAL "make")
+      cme_configure_make_build(${port} "${${port}_SOURCE_DIR}")
     else()
       message(FATAL_ERROR
         "cmake-everywhere: ${port} says IMPORT ${imported}, and what can be "
-        "imported that way is cmake or meson")
+        "imported that way is cmake, meson or make")
     endif()
   elseif(external)
     cme_store_entry(entry ${port} "${port_version}")
@@ -3683,6 +3690,16 @@ function(cme_build_port port package version exact)
       set(entry "${CMAKE_BINARY_DIR}/_cme/${port}-installed")
     endif()
     cme_build_external(${port} "${package}" "${port_version}" "${entry}")
+    set(CME_INSTALLED_${port} "${entry}" CACHE INTERNAL "" FORCE)
+  elseif(configure)
+    # A project with a configure script of its own cannot be asked what it
+    # would build, so it is built its own way into a prefix and what comes
+    # out is what the port says comes out.
+    cme_store_entry(entry ${port} "${port_version}")
+    if(NOT entry)
+      set(entry "${CMAKE_BINARY_DIR}/_cme/${port}-installed")
+    endif()
+    cme_configure_build(${port} "${${port}_SOURCE_DIR}" "${entry}")
     set(CME_INSTALLED_${port} "${entry}" CACHE INTERNAL "" FORCE)
   elseif(gn_targets)
     cme_gn_build(${port} "${${port}_SOURCE_DIR}")

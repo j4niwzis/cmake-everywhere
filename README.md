@@ -1071,6 +1071,34 @@ Its port asks the system for `basu`, `libelogind` and `libsystemd` in that
 order first -- an installed one answers, and only a machine with none of
 the three builds anything.
 
+### A library with a configure script of its own
+
+```cmake
+CONFIGURE YES
+CONFIGURE_ARGS "--disable-shared" "--disable-programs"
+INSTALLED_TARGETS "lib/libavcodec.a=FFmpeg::avcodec"
+```
+
+The third kind, and the least of them. FFmpeg's configure is a shell script
+it wrote itself; libffi has autotools. Neither can be asked what it would
+build -- there is no File API, no introspection, no JSON, and what gets
+compiled is decided by a `config.h` the script writes as it goes. What there
+is, is an install prefix.
+
+So the project is built the way it builds, into a directory of this build's
+choosing, with the compiler and flags this build uses, and what comes out is
+stated by the port: a path in the prefix and the target it becomes. A path
+the port names and the build did not produce is an error rather than a
+target pointing at nothing.
+
+Nothing here compiles in your graph, nothing takes your per-file flags, and
+a rebuild is the project's own idea of one. It is used where the alternative
+is not using the library. A cross build has to be told which machine it is
+building for, and every script is told differently, so the port says that
+too -- `CONFIGURE_CROSS "--host=@TRIPLE@"` for autotools, four other
+arguments for FFmpeg -- and a placeholder nothing can answer stops the build
+rather than reaching a shell script as an empty argument.
+
 ### A GN project
 
 ```cmake

@@ -16,10 +16,10 @@ cme_declare_port(
   GIT_TAG_TEMPLATE "@VERSION@"
   LICENSE MIT
   IMPORT meson
-  # The scanner reads the protocol XML with expat. What the libraries are
-  # built against -- libffi, for the connection -- has no port here yet, and
-  # meson finds that one on the machine.
-  DEPENDS expat
+  # The scanner reads the protocol XML with expat, and the connection
+  # marshals its arguments with libffi. Both are ports, and meson is handed
+  # them before it looks at the machine.
+  DEPENDS expat libffi
   IMPORT_TARGETS
     "wayland-client=Wayland::client"
     "wayland-server=Wayland::server"
