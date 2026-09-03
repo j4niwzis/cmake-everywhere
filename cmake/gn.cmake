@@ -128,7 +128,15 @@ function(cme_gn_substitute out text)
   endwhile()
   string(REPLACE "@DEP_LIBDIRS@" "${CME_GN_DEP_LIBDIRS}" value "${value}")
   # GN spells architectures its own way and so does everyone else.
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+  #
+  # WebAssembly first, because there the processor CMake reports is the one
+  # the compiler runs on: Emscripten leaves CMAKE_SYSTEM_PROCESSOR as the
+  # host's, so a GN project is told to build for x86 and reaches for the
+  # instruction sets that go with it -- "unknown FP unit 'sse'", from a
+  # compiler targeting a virtual machine that has no SSE and never will.
+  if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(cpu "wasm")
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
     set(cpu "arm64")
   elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     set(cpu "x64")
@@ -140,7 +148,9 @@ function(cme_gn_substitute out text)
     string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" cpu)
   endif()
   string(REPLACE "@TARGET_CPU@" "${cpu}" value "${value}")
-  if(ANDROID)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(os "wasm")
+  elseif(ANDROID)
     set(os "android")
   elseif(APPLE)
     set(os "mac")
