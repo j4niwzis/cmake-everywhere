@@ -12,7 +12,7 @@ cme_declare_port(
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_xpressive
   TARGETS Boost::xpressive
-  DEPENDS boost-assert boost-config boost-core boost-exception boost-fusion boost-integer boost-iterator boost-lexical-cast boost-mpl boost-numeric-conversion boost-optional boost-preprocessor boost-proto boost-range boost-smart-ptr boost-throw-exception boost-type-traits boost-typeof boost-utility
+  DEPENDS boost-assert boost-config boost-conversion boost-core boost-exception boost-fusion boost-integer boost-iterator boost-lexical-cast boost-mpl boost-numeric-conversion boost-optional boost-preprocessor boost-proto boost-range boost-smart-ptr boost-throw-exception boost-type-traits boost-typeof boost-utility
 )
 
 # Where the sources come from, which is the one thing about a Boost library

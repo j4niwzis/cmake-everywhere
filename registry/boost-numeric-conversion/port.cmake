@@ -1,4 +1,4 @@
-# Written by tools/boost-ports.py from what boostorg/conversion
+# Written by tools/boost-ports.py from what boostorg/numeric_conversion
 # declares. Do not edit: run the script again.
 #
 # One library out of Boost, on its own. FAMILY is what keeps it from being
@@ -11,8 +11,8 @@ cme_declare_port(
   FAMILY boost
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_numeric_conversion
-  TARGETS Boost::conversion
-  DEPENDS boost-assert boost-config boost-smart-ptr boost-throw-exception
+  TARGETS Boost::numeric_conversion
+  DEPENDS boost-config boost-conversion boost-core boost-mpl boost-preprocessor boost-throw-exception boost-type-traits
 )
 
 # Where the sources come from, which is the one thing about a Boost library
@@ -25,7 +25,7 @@ if(CME_BOOST_ARCHIVE)
     SOURCE_FROM boost-archive SOURCE_SUBDIR libs/numeric/conversion)
 else()
   cme_port_source(boost-numeric-conversion
-    GITHUB_REPOSITORY boostorg/conversion
+    GITHUB_REPOSITORY boostorg/numeric_conversion
     GIT_TAG boost-1.92.0
     GIT_TAG_TEMPLATE "boost-@VERSION@")
 endif()

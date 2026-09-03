@@ -48,15 +48,25 @@ def archive(version):
 
 
 def libraries(version):
+    """Each library, and the repository it is in.
+
+    The two are not always the same word: libs/numeric/conversion is
+    boostorg/numeric_conversion, and taking the last part of the path would
+    have cloned boostorg/conversion, which is a different repository that
+    defines a differently named target. The .gitmodules file says which is
+    which, so it is read rather than guessed at.
+    """
     text = fetch(f"{RAW}/boost/boost-{version}/.gitmodules")
-    return re.findall(r"path = libs/(\S+)", text)
+    found = {}
+    for path, url in re.findall(r"path = libs/(\S+)\s+url = (\S+)", text):
+        found[path] = url.rstrip("/").split("/")[-1].removesuffix(".git")
+    return found
 
 
 def cmakelists(version, modules):
     def one(module):
-        leaf = module.split("/")[-1]
         try:
-            return module, fetch(f"{RAW}/{leaf}/boost-{version}/CMakeLists.txt")
+            return module, fetch(f"{RAW}/{modules[module]}/boost-{version}/CMakeLists.txt")
         except Exception as trouble:            # noqa: BLE001
             return module, f"# unreadable: {trouble}"
     with futures.ThreadPoolExecutor(16) as pool:
@@ -189,7 +199,7 @@ def main(version):
             continue
         name = target(module, defines)
         depends = " ".join(port(other) for other in edges[module])
-        text = f"""# Written by tools/boost-ports.py from what boostorg/{module.split("/")[-1]}
+        text = f"""# Written by tools/boost-ports.py from what boostorg/{modules[module]}
 # declares. Do not edit: run the script again.
 #
 # One library out of Boost, on its own. FAMILY is what keeps it from being
@@ -215,7 +225,7 @@ if(CME_BOOST_ARCHIVE)
     SOURCE_FROM boost-archive SOURCE_SUBDIR libs/{module})
 else()
   cme_port_source({port(module)}
-    GITHUB_REPOSITORY boostorg/{module.split("/")[-1]}
+    GITHUB_REPOSITORY boostorg/{modules[module]}
     GIT_TAG boost-{version}
     GIT_TAG_TEMPLATE "boost-@VERSION@")
 endif()

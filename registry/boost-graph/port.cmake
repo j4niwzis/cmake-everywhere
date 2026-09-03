@@ -12,7 +12,7 @@ cme_declare_port(
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_graph
   TARGETS Boost::graph
-  DEPENDS boost-algorithm boost-any boost-array boost-assert boost-bimap boost-concept-check boost-config boost-container-hash boost-core boost-detail boost-foreach boost-function boost-integer boost-iterator boost-lexical-cast boost-math boost-move boost-mpl boost-multi-index boost-multiprecision boost-numeric-conversion boost-optional boost-parameter boost-preprocessor boost-property-map boost-property-tree boost-random boost-range boost-regex boost-serialization boost-smart-ptr boost-spirit boost-throw-exception boost-tti boost-tuple boost-type-traits boost-typeof boost-unordered boost-utility boost-xpressive
+  DEPENDS boost-algorithm boost-any boost-array boost-assert boost-bimap boost-concept-check boost-config boost-container-hash boost-conversion boost-core boost-detail boost-foreach boost-function boost-integer boost-iterator boost-lexical-cast boost-math boost-move boost-mpl boost-multi-index boost-multiprecision boost-optional boost-parameter boost-preprocessor boost-property-map boost-property-tree boost-random boost-range boost-regex boost-serialization boost-smart-ptr boost-spirit boost-throw-exception boost-tti boost-tuple boost-type-traits boost-typeof boost-unordered boost-utility boost-xpressive
 )
 
 # Where the sources come from, which is the one thing about a Boost library

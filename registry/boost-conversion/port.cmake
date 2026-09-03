@@ -12,7 +12,7 @@ cme_declare_port(
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_conversion
   TARGETS Boost::conversion
-  DEPENDS boost-assert boost-config boost-numeric-conversion boost-smart-ptr boost-throw-exception
+  DEPENDS boost-assert boost-config boost-smart-ptr boost-throw-exception
 )
 
 # Where the sources come from, which is the one thing about a Boost library

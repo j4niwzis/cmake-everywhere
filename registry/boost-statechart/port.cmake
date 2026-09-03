@@ -12,7 +12,7 @@ cme_declare_port(
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_statechart
   TARGETS Boost::statechart
-  DEPENDS boost-assert boost-bind boost-config boost-core boost-detail boost-function boost-mpl boost-numeric-conversion boost-smart-ptr boost-thread boost-type-traits
+  DEPENDS boost-assert boost-bind boost-config boost-conversion boost-core boost-detail boost-function boost-mpl boost-smart-ptr boost-thread boost-type-traits
 )
 
 # Where the sources come from, which is the one thing about a Boost library

@@ -12,7 +12,7 @@ cme_declare_port(
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_range
   TARGETS Boost::range
-  DEPENDS boost-array boost-assert boost-concept-check boost-config boost-container-hash boost-core boost-detail boost-iterator boost-mpl boost-numeric-conversion boost-optional boost-preprocessor boost-regex boost-tuple boost-type-traits boost-utility
+  DEPENDS boost-array boost-assert boost-concept-check boost-config boost-container-hash boost-conversion boost-core boost-detail boost-iterator boost-mpl boost-optional boost-preprocessor boost-regex boost-tuple boost-type-traits boost-utility
 )
 
 # Where the sources come from, which is the one thing about a Boost library

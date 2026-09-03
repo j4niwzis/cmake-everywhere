@@ -60,7 +60,7 @@ cme_port_feature(boost concept_check
   DEPENDS boost-concept-check)
 cme_port_feature(boost python
   SUMMARY "Boost.python"
-  IMPLIES align bind config core detail foreach function graph integer iterator lexical_cast mpl conversion preprocessor property_map smart_ptr tuple type_traits utility
+  IMPLIES align bind config conversion core detail foreach function graph integer iterator lexical_cast mpl numeric_conversion preprocessor property_map smart_ptr tuple type_traits utility
   DEPENDS boost-python)
 cme_port_feature(boost tti
   SUMMARY "Boost.tti"
@@ -110,7 +110,7 @@ cme_port_feature(boost format
   DEPENDS boost-format)
 cme_port_feature(boost xpressive
   SUMMARY "Boost.xpressive"
-  IMPLIES assert config core exception fusion integer iterator lexical_cast mpl conversion optional preprocessor proto range smart_ptr throw_exception type_traits typeof utility
+  IMPLIES assert config conversion core exception fusion integer iterator lexical_cast mpl numeric_conversion optional preprocessor proto range smart_ptr throw_exception type_traits typeof utility
   DEPENDS boost-xpressive)
 cme_port_feature(boost integer
   SUMMARY "Boost.integer"
@@ -145,19 +145,19 @@ cme_port_feature(boost serialization
   DEPENDS boost-serialization)
 cme_port_feature(boost unit_test_framework
   SUMMARY "Boost.unit test framework"
-  IMPLIES algorithm assert bind config core describe detail exception function io iterator mpl conversion optional preprocessor smart_ptr type_traits utility
+  IMPLIES algorithm assert bind config core describe detail exception function io iterator mpl numeric_conversion optional preprocessor smart_ptr type_traits utility
   DEPENDS boost-test)
 cme_port_feature(boost prg_exec_monitor
   SUMMARY "Boost.prg exec monitor"
-  IMPLIES algorithm assert bind config core describe detail exception function io iterator mpl conversion optional preprocessor smart_ptr type_traits utility
+  IMPLIES algorithm assert bind config core describe detail exception function io iterator mpl numeric_conversion optional preprocessor smart_ptr type_traits utility
   DEPENDS boost-test)
 cme_port_feature(boost test_exec_monitor
   SUMMARY "Boost.test exec monitor"
-  IMPLIES algorithm assert bind config core describe detail exception function io iterator mpl conversion optional preprocessor smart_ptr type_traits utility
+  IMPLIES algorithm assert bind config core describe detail exception function io iterator mpl numeric_conversion optional preprocessor smart_ptr type_traits utility
   DEPENDS boost-test)
 cme_port_feature(boost date_time
   SUMMARY "Boost.date time"
-  IMPLIES algorithm assert config core io lexical_cast conversion range smart_ptr throw_exception tokenizer type_traits utility winapi
+  IMPLIES algorithm assert config core io lexical_cast numeric_conversion range smart_ptr throw_exception tokenizer type_traits utility winapi
   DEPENDS boost-date-time)
 cme_port_feature(boost logic
   SUMMARY "Boost.logic"
@@ -165,11 +165,11 @@ cme_port_feature(boost logic
   DEPENDS boost-logic)
 cme_port_feature(boost graph
   SUMMARY "Boost.graph"
-  IMPLIES algorithm any array assert bimap concept_check config container_hash core detail foreach function integer iterator lexical_cast math move mpl multi_index multiprecision conversion optional parameter preprocessor property_map property_tree random range regex serialization smart_ptr spirit throw_exception tti tuple type_traits typeof unordered utility xpressive
+  IMPLIES algorithm any array assert bimap concept_check config container_hash conversion core detail foreach function integer iterator lexical_cast math move mpl multi_index multiprecision optional parameter preprocessor property_map property_tree random range regex serialization smart_ptr spirit throw_exception tti tuple type_traits typeof unordered utility xpressive
   DEPENDS boost-graph)
-cme_port_feature(boost conversion
-  SUMMARY "Boost.conversion"
-  IMPLIES assert config smart_ptr throw_exception
+cme_port_feature(boost numeric_conversion
+  SUMMARY "Boost.numeric conversion"
+  IMPLIES config conversion core mpl preprocessor throw_exception type_traits
   DEPENDS boost-numeric-conversion)
 cme_port_feature(boost lambda
   SUMMARY "Boost.lambda"
@@ -209,7 +209,7 @@ cme_port_feature(boost function
   DEPENDS boost-function)
 cme_port_feature(boost conversion
   SUMMARY "Boost.conversion"
-  IMPLIES assert config conversion smart_ptr throw_exception
+  IMPLIES assert config smart_ptr throw_exception
   DEPENDS boost-conversion)
 cme_port_feature(boost optional
   SUMMARY "Boost.optional"
@@ -233,7 +233,7 @@ cme_port_feature(boost array
   DEPENDS boost-array)
 cme_port_feature(boost iostreams
   SUMMARY "Boost.iostreams"
-  IMPLIES assert config core detail function integer iterator mpl conversion preprocessor random range regex smart_ptr throw_exception type_traits utility
+  IMPLIES assert config core detail function integer iterator mpl numeric_conversion preprocessor random range regex smart_ptr throw_exception type_traits utility
   DEPENDS boost-iostreams)
 cme_port_feature(boost multi_index
   SUMMARY "Boost.multi index"
@@ -245,7 +245,7 @@ cme_port_feature(boost ptr_container
   DEPENDS boost-ptr-container)
 cme_port_feature(boost statechart
   SUMMARY "Boost.statechart"
-  IMPLIES assert bind config core detail function mpl conversion smart_ptr thread type_traits
+  IMPLIES assert bind config conversion core detail function mpl smart_ptr thread type_traits
   DEPENDS boost-statechart)
 cme_port_feature(boost static_assert
   SUMMARY "Boost.static assert"
@@ -253,7 +253,7 @@ cme_port_feature(boost static_assert
   DEPENDS boost-static-assert)
 cme_port_feature(boost range
   SUMMARY "Boost.range"
-  IMPLIES array assert concept_check config container_hash core detail iterator mpl conversion optional preprocessor regex tuple type_traits utility
+  IMPLIES array assert concept_check config container_hash conversion core detail iterator mpl optional preprocessor regex tuple type_traits utility
   DEPENDS boost-range)
 cme_port_feature(boost rational
   SUMMARY "Boost.rational"
@@ -349,7 +349,7 @@ cme_port_feature(boost signals2
   DEPENDS boost-signals2)
 cme_port_feature(boost accumulators
   SUMMARY "Boost.accumulators"
-  IMPLIES array assert circular_buffer concept_check config core fusion iterator mpl conversion numeric_ublas parameter preprocessor range serialization throw_exception tuple type_traits typeof
+  IMPLIES array assert circular_buffer concept_check config core fusion iterator mpl numeric_conversion numeric_ublas parameter preprocessor range serialization throw_exception tuple type_traits typeof
   DEPENDS boost-accumulators)
 cme_port_feature(boost atomic
   SUMMARY "Boost.atomic"
@@ -403,7 +403,7 @@ cme_port_feature(boost numeric_odeint
   DEPENDS boost-numeric-odeint)
 cme_port_feature(boost geometry
   SUMMARY "Boost.geometry"
-  IMPLIES algorithm any array assert concept_check config container core endian function_types fusion graph headers integer iterator lexical_cast math move mpl multiprecision conversion polygon predef qvm range rational serialization thread throw_exception tokenizer tuple utility variant variant2
+  IMPLIES algorithm any array assert concept_check config container core endian function_types fusion graph headers integer iterator lexical_cast math move mpl multiprecision numeric_conversion polygon predef qvm range rational serialization thread throw_exception tokenizer tuple utility variant variant2
   DEPENDS boost-geometry)
 cme_port_feature(boost phoenix
   SUMMARY "Boost.phoenix"
