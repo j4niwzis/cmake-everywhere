@@ -12,6 +12,7 @@ cme_declare_port(
   SYSTEM_PKGCONFIG "openal:OpenAL::OpenAL"
   LINK_NAMES "openal=OpenAL::OpenAL"
   TARGETS OpenAL::OpenAL
+  CHECK_HEADER AL/al.h
   # A library, and nothing beside it: the examples and the utilities are
   # programs, and the router is a second library nobody asked for.
   OPTIONS

@@ -22,6 +22,7 @@ cme_declare_port(
   # What a consumer links. Said here so that something other than a
   # human can check that the port still produces it.
   TARGETS Opus::opus
+  CHECK_HEADER opus/opus.h
 )
 
 function(cme_adapt_opus source binary)

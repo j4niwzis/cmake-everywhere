@@ -16,6 +16,7 @@ cme_declare_port(
   # What a consumer links. Said here so that something other than a
   # human can check that the port still produces it.
   TARGETS minimp3::minimp3
+  CHECK_HEADER minimp3.h
 )
 
 function(cme_adapt_minimp3 source binary)

@@ -37,7 +37,20 @@ else()
   find_package(${CME_PORT_PACKAGE} REQUIRED)
 endif()
 
-add_executable(cme-port main.cc)
+# A port may name the header its consumers include. Then that is what is
+# compiled, because a library whose headers are on nobody's interface links
+# perfectly well and cannot be used: xz keeps its API directory PRIVATE and
+# hands it out at install time, so a check that only links says yes to a
+# library nothing can include.
+set(cme_port_source "${CMAKE_CURRENT_SOURCE_DIR}/main.cc")
+if(CME_PORT_INCLUDE)
+  set(cme_port_source "${CMAKE_CURRENT_BINARY_DIR}/include-check.cc")
+  file(WRITE "${cme_port_source}"
+    "#include <cstdio>\n#include <${CME_PORT_INCLUDE}>\n"
+    "int main() { std::printf(\"included and linked\\n\"); return 0; }\n")
+endif()
+
+add_executable(cme-port "${cme_port_source}")
 foreach(target IN LISTS CME_PORT_TARGETS)
   if(NOT TARGET ${target})
     message(FATAL_ERROR

@@ -68,6 +68,10 @@ def ports():
             "systems": ";".join(fields.get("SYSTEMS", [])),
             "family": (fields.get("FAMILY") or [""])[0],
             "source_only": bool(fields.get("SOURCE_ONLY")),
+            # The header a consumer includes, when the port names one. A
+            # port that does not is checked by linking alone, which is the
+            # weaker question.
+            "header": (fields.get("CHECK_HEADER") or [""])[0],
         })
     return found
 

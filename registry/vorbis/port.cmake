@@ -23,6 +23,7 @@ cme_declare_port(
   # What a consumer links. Said here so that something other than a
   # human can check that the port still produces it.
   TARGETS Vorbis::vorbis Vorbis::vorbisenc Vorbis::vorbisfile
+  CHECK_HEADER vorbis/codec.h
 )
 
 function(cme_adapt_vorbis source binary)

@@ -20,6 +20,7 @@ cme_declare_port(
   # What a consumer links. Said here so that something other than a
   # human can check that the port still produces it.
   TARGETS ZLIB::ZLIB
+  CHECK_HEADER zlib.h
 )
 
 # zlib's own CMake builds targets called zlib and zlibstatic and offers no

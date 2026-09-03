@@ -110,6 +110,7 @@ cme_declare_port(
   # What a consumer links. Said here so that something other than a
   # human can check that the port still produces it.
   TARGETS Skia::skia
+  CHECK_HEADER skia/core/SkCanvas.h
 )
 
 # The names below are ours. Skia has no find_package convention to obey

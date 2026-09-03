@@ -26,6 +26,7 @@ cme_declare_port(
   # What a consumer links. Said here so that something other than a
   # human can check that the port still produces it.
   TARGETS Freetype::Freetype
+  CHECK_HEADER ft2build.h
 )
 
 # Colour bitmap glyphs are PNGs inside the font file, and reading them is the

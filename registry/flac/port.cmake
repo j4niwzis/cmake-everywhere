@@ -25,6 +25,7 @@ cme_declare_port(
   # What a consumer links. Said here so that something other than a
   # human can check that the port still produces it.
   TARGETS FLAC::FLAC
+  CHECK_HEADER FLAC/stream_decoder.h
 )
 
 # libFLAC can be built with or without Ogg, and which one a system copy is

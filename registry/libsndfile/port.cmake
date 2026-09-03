@@ -27,6 +27,7 @@ cme_declare_port(
   # What a consumer links. Said here so that something other than a
   # human can check that the port still produces it.
   TARGETS SndFile::sndfile
+  CHECK_HEADER sndfile.h
 )
 
 # One find_package(SndFile) brings ogg, vorbis, FLAC and opus with it,

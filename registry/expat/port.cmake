@@ -26,6 +26,7 @@ cme_declare_port(
   # What a consumer links. Said here so that something other than a
   # human can check that the port still produces it.
   TARGETS EXPAT::EXPAT
+  CHECK_HEADER expat.h
 )
 
 function(cme_adapt_expat source binary)

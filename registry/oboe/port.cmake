@@ -16,6 +16,7 @@ cme_declare_port(
   SYSTEMS Android
   LINK_NAMES "oboe=oboe::oboe"
   TARGETS oboe::oboe
+  CHECK_HEADER oboe/Oboe.h
   OPTIONS
     "BUILD_TESTING OFF"
 )

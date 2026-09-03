@@ -18,6 +18,7 @@ cme_declare_port(
   SYSTEM_PKGCONFIG "libmpg123:MPG123::libmpg123"
   LINK_NAMES "mpg123=MPG123::libmpg123"
   TARGETS MPG123::libmpg123
+  CHECK_HEADER mpg123.h
   # The decoder and nothing else. libout123 is an output layer, the programs
   # are programs, and neither is what anything links.
   OPTIONS

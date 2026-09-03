@@ -12,6 +12,7 @@ cme_declare_port(
   SYSTEM_PKGCONFIG "libzip:libzip::zip"
   LINK_NAMES "zip=libzip::zip"
   TARGETS libzip::zip
+  CHECK_HEADER zip.h
   OPTIONS
     "BUILD_TOOLS OFF"
     "BUILD_REGRESS OFF"

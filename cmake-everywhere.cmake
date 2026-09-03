@@ -1024,7 +1024,8 @@ function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
-          PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY)
+          PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
+          CHECK_HEADER)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS)
@@ -2855,6 +2856,17 @@ function(cme_build_port port package version exact)
   # the linker naming a symbol in zlib, which says nothing about any of this.
   set(BUILD_SHARED_LIBS OFF)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+  # A dependency's tests are not the consumer's, and they are not merely
+  # unwanted: a library's test directory is written for the build its authors
+  # run it in, so it reaches for modules that live in that build. Boost.Locale
+  # includes BoostTestJamfile, which is in the superproject nobody added here,
+  # and the error is about a missing CMake module rather than about anything
+  # to do with the library being built.
+  #
+  # A normal variable, so it stands for the trees added below and leaves the
+  # consumer's own testing exactly as the consumer set it.
+  set(BUILD_TESTING OFF)
 
   set(SKIP_INSTALL_ALL ON)
   set(SKIP_INSTALL_HEADERS ON)

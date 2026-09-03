@@ -12,6 +12,7 @@ cme_declare_port(
   SYSTEM_PKGCONFIG "glfw3:glfw::glfw"
   LINK_NAMES "glfw=glfw::glfw" "glfw3=glfw::glfw"
   TARGETS glfw::glfw
+  CHECK_HEADER GLFW/glfw3.h
   # A window library and none of the programs that show it off.
   OPTIONS
     "GLFW_BUILD_EXAMPLES OFF"

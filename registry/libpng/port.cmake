@@ -27,6 +27,7 @@ cme_declare_port(
   # What a consumer links. Said here so that something other than a
   # human can check that the port still produces it.
   TARGETS PNG::PNG
+  CHECK_HEADER png.h
 )
 
 # libpng looks for zlib with find_package(ZLIB) inside its own CMakeLists,

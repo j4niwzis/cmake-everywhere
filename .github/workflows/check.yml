@@ -205,6 +205,7 @@ jobs:
             -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
             -DCME_PORT_PACKAGE="${{ matrix.port.package }}" \
             -DCME_PORT_TARGETS="${{ matrix.port.targets }}" \
+            -DCME_PORT_INCLUDE="${{ matrix.port.header }}" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache $extra
           cmake --build build/port
@@ -268,6 +269,7 @@ jobs:
             -DCME_SYSTEM=NEVER \
             -DCME_PORT_PACKAGE="${{ matrix.port.package }}" \
             -DCME_PORT_TARGETS="${{ matrix.port.targets }}" \
+            -DCME_PORT_INCLUDE="${{ matrix.port.header }}" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build/port

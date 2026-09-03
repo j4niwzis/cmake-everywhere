@@ -11,6 +11,7 @@ cme_declare_port(
   SYSTEM_PKGCONFIG "liblzma:LibLZMA::LibLZMA"
   LINK_NAMES "lzma=LibLZMA::LibLZMA"
   TARGETS LibLZMA::LibLZMA
+  CHECK_HEADER lzma.h
   # Only the library. xz, xzdec, lzmadec and lzmainfo are programs, and a
   # program is not what anything here links.
   OPTIONS
@@ -25,6 +26,12 @@ cme_declare_port(
 
 function(cme_adapt_xz source binary)
   cme_alias(LibLZMA::LibLZMA liblzma)
+  # xz keeps its API directory PRIVATE and hands it to consumers at install
+  # time, through the config file it installs. Nothing here installs, so in
+  # this build lzma.h is on nobody's interface: the target links and cannot
+  # be included, which is what Boost.Iostreams found by compiling lzma.cpp.
+  target_include_directories(liblzma INTERFACE
+    "$<BUILD_INTERFACE:${source}/src/liblzma/api>")
   cme_export_variable(LibLZMA LIBLZMA_FOUND TRUE)
   cme_export_variable(LibLZMA LIBLZMA_LIBRARY LibLZMA::LibLZMA)
   cme_export_variable(LibLZMA LIBLZMA_LIBRARIES LibLZMA::LibLZMA)
