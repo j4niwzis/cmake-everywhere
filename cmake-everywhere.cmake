@@ -3250,6 +3250,11 @@ function(cme_build_virtual port package)
     endif()
   endforeach()
   set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package} "${port_version}")
+  # What it was answered with, which is what a later caller asking for more
+  # is compared against. Without this every caller after the first is told
+  # the components it asked for are not here, and told to run cmake again --
+  # which would not help, because they were here the first time.
+  set_property(GLOBAL PROPERTY CME_BUILT_FEATURES_${port} "${features}")
 
   # What the pieces are and where they came from, for the adapter: a port
   # that builds nothing has no source directory of its own, and everything a

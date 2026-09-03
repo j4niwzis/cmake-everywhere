@@ -22,7 +22,20 @@ if(CME_PORT_DECLARE)
   include("${CME_PORT_DECLARE}")
 endif()
 
-find_package(${CME_PORT_PACKAGE} REQUIRED)
+if(CME_PORT_COMPONENTS)
+  find_package(${CME_PORT_PACKAGE} REQUIRED COMPONENTS ${CME_PORT_COMPONENTS})
+else()
+  find_package(${CME_PORT_PACKAGE} REQUIRED)
+endif()
+
+# Again, the way a second library in a real build would ask. Asking for what
+# is already here has to be silent: a caller that is told to run cmake again
+# for something it was given the first time is a build that never finishes.
+if(CME_PORT_COMPONENTS)
+  find_package(${CME_PORT_PACKAGE} REQUIRED COMPONENTS ${CME_PORT_COMPONENTS})
+else()
+  find_package(${CME_PORT_PACKAGE} REQUIRED)
+endif()
 
 add_executable(cme-port main.cc)
 foreach(target IN LISTS CME_PORT_TARGETS)

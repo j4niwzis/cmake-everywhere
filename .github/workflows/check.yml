@@ -154,7 +154,7 @@ jobs:
           # is the choice a project using a lot of Boost would make.
           extra=""
           if [ "${{ matrix.port.port }}" = "boost" ]; then
-            extra="-DCME_BOOST_ARCHIVE=ON -DCME_FEATURES_boost=filesystem"
+            extra="-DCME_BOOST_ARCHIVE=ON -DCME_PORT_COMPONENTS=filesystem"
           fi
           cmake -S test/port -B build/port -G Ninja \
             -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
