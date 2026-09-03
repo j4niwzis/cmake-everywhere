@@ -1499,7 +1499,7 @@ endfunction()
 # in the build has Vulkan.
 function(cme_port_feature port feature)
   cmake_parse_arguments(FEATURE "" "SUMMARY"
-    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_COMPONENT;CONFIGURE_ARGS;DEFAULT"
+    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
   set_property(GLOBAL APPEND_STRING PROPERTY CME_PORT_${port}_RECIPE
@@ -1511,7 +1511,7 @@ function(cme_port_feature port feature)
   endforeach()
   cme_export_line(${port} "${said})")
   foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY IMPLIES CONFLICTS
-                EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_COMPONENT
+                EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_CODE SYSTEM_COMPONENT
                 CONFIGURE_ARGS
                 DEFAULT)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
@@ -2218,7 +2218,19 @@ endfunction()
 # that link is what goes on the interface. Both spellings then work and the
 # checkout is untouched.
 function(cme_header_prefix out name directory)
-  set(root "${CMAKE_BINARY_DIR}/cme-include")
+  # A directory of its own for every pair, rather than one directory keyed by
+  # the name alone.
+  #
+  # Shared, the first caller to ask for a name kept it and every later one
+  # was handed somebody else's headers -- silently, because a symbolic link
+  # that already exists looks like the one that was wanted. With Skia
+  # installed, "include" and "skia" pointed at two different Skias, one 146
+  # and one 153, and a compile walked between them until it reached a header
+  # that had moved: include/private/SkAssert.h in one, private/base in the
+  # other.
+  string(SHA256 key "${name}|${directory}")
+  string(SUBSTRING "${key}" 0 12 key)
+  set(root "${CMAKE_BINARY_DIR}/cme-include/${key}")
   file(MAKE_DIRECTORY "${root}")
   if(NOT EXISTS "${root}/${name}")
     file(CREATE_LINK "${directory}" "${root}/${name}" SYMBOLIC RESULT status)
@@ -3291,6 +3303,30 @@ function(cme_system_has_features out package port features)
         set(have FALSE)
       endif()
     endforeach()
+    # A program that uses the feature, compiled and linked against what was
+    # found. This is the only question that can be put to a C++ library whose
+    # build settings are not written down anywhere: a header is there whether
+    # or not the feature was built, and a mangled name is not something
+    # check_function_exists can look for, but a program that calls the
+    # entry point either links or does not.
+    cme_feature_field(code ${port} ${feature} SYSTEM_CODE)
+    if(code)
+      include(CheckCXXSourceCompiles)
+      string(MAKE_C_IDENTIFIER "cme_${package}_${feature}_links" variable)
+      check_cxx_source_compiles("${code}" ${variable})
+      if(NOT ${variable})
+        message(STATUS
+          "cmake-everywhere: a program using ${feature} does not link "
+          "against the ${package} installed here, so it was not built with "
+          "it")
+        set(have FALSE)
+      endif()
+    endif()
+    if(NOT headers AND NOT symbols AND NOT code)
+      message(STATUS
+        "cmake-everywhere: nothing says whether the ${package} installed "
+        "here has ${feature}; it is taken at its word")
+    endif()
     if(have)
       list(APPEND present "${feature}")
     elseif(feature IN_LIST asked)
