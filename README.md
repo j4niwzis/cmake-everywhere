@@ -81,6 +81,44 @@ is still being decided, and a port whose pin is lower is built at the version
 that satisfies everyone -- provided it says how a version becomes a tag.
 Nothing is built twice and nothing ends up older than something else needed.
 
+### A GN project
+
+```cmake
+GN_TARGETS "//:skia=Skia::skia"
+GN_ARGS
+  "cc=\"@CC@\"" "cxx=\"@CXX@\""
+  "target_os=\"@TARGET_OS@\"" "target_cpu=\"@TARGET_CPU@\""
+  "skia_use_vulkan=false"
+  "extra_cflags=[@DEP_INCLUDES@]"
+GN_CONFIRM "skia_use_vulkan=false"
+```
+
+GN is run once, at configure time, and only to describe the build:
+`gn gen --ide=json` reports every source, define, include directory and
+per-file compiler flag of every target, with the project's own hundred build
+arguments already evaluated by the thing that understands them. That
+description becomes ordinary CMake targets, compiled by your generator
+alongside everything else. GN is not part of the build; it is part of the
+configure.
+
+`cmake/gn.cmake` knows nothing about any particular project. A port supplies
+its project's own vocabulary -- one calls the compiler `cc`, the next calls
+it `clang_path` -- and asks for the values it cannot know by placeholder:
+`@CC@`, `@CXX@`, `@AR@`, `@SYSROOT@`, `@TARGET_OS@`, `@TARGET_CPU@`, and
+`@DEP_INCLUDES@` / `@DEP_LIBDIRS@` for the libraries the registry built for
+it. `GN_CONFIRM` reads back what GN actually settled on, because an argument
+that is misspelled or overridden still reads correctly in the command line
+that set it.
+
+The alternative -- reading a project's source lists and re-stating its
+conditions in CMake by hand -- is the same work again, done worse, once per
+release. This way a new file arrives on its own and a new condition is
+evaluated by GN.
+
+What is fragile: `action()` steps become `add_custom_command`, and GN rebases
+their script arguments against its build directory, so they are run from
+there. `gn` has to be on `PATH` at configure time, or named with `-DCME_GN=`.
+
 ### A requirement the registry could not have known
 
 What that leaves is a request the consuming project makes itself, after the
@@ -236,6 +274,36 @@ overlay can be read as ordinary CMake.
 its implementation behind a macro, turned into a static library by a
 three-line translation unit that lives in the overlay.
 
+### How good a port is
+
+Not every overlay is a full CMake build, and the ones that are not should say
+so. Three shapes, best first:
+
+**A CMake build.** The library is built by CMake, as targets in your graph,
+with your flags, your toolchain and your generator, in parallel with the rest
+of your project. This is the ideal and the only shape that composes properly.
+
+**A CMake build generated from what upstream already declares.** A large
+project usually keeps its source lists in machine-readable form -- Skia keeps
+its in `gn/*.gni` -- and an overlay for one of those should read them at
+configure time rather than copy them. Copied lists rot at the next release;
+generated ones pick up new files on their own, and only new conditionals need
+attention. The conditionals are the real work: a hundred build flags, the
+per-file compiler flags a project like Skia sets for its SIMD translation
+units, and whatever it generates during its own build. That work is done once
+per configuration you promise to support -- which is why an overlay of this
+kind should promise few.
+
+**A wrapper around upstream's own build.** Its build system is run as a build
+step and the result imported as a target. It is correct, and it is outside
+your graph: it needs its own tools installed, it does not inherit your flags
+or your toolchain, and it cannot be scheduled with the rest of your build as
+one thing. Acceptable as a stage on the way, not as a destination -- and a
+port that is one should say it in its first line, so nobody is surprised.
+
+The same ordering applies to what upstream should do, which is the point of
+the registry: a library that ships its own CMake needs no overlay at all.
+
 ## The point is for this to shrink
 
 A library that ships CMake, resolves its own dependencies instead of calling
@@ -263,12 +331,19 @@ A port deleted because upstream now ships CMake and declares its own
 dependencies is this repository working, not this repository losing. The
 success condition is an empty `registry/`.
 
+Ports themselves have the same ladder: an overlay that wraps another build
+system is worth less than one that builds the library with CMake, and a
+generated CMake build is how a large project gets there without the lists
+rotting. See [how good a port is](#how-good-a-port-is).
+
 ## What is here
 
-zlib, libpng, ogg, vorbis, FLAC, opus, libsndfile, minimp3.
+zlib, libpng, libjpeg-turbo, libwebp, freetype, ogg, vorbis, FLAC,
+opus, libsndfile, minimp3, Skia.
 
-Eight is not a registry yet. It is enough to show the two shapes -- a library
-with CMake and a library without -- and enough to prove the interesting case:
+That is not a registry yet. It is enough to show the three shapes -- a
+library with CMake, a library without one, and a library with a different
+build system entirely -- and enough to prove the interesting case:
 `find_package(SndFile)` alone brings four more.
 
 ## Trying it

@@ -12,6 +12,7 @@ include_guard(GLOBAL)
 
 set(CME_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "cmake-everywhere root")
 include("${CME_DIR}/cmake/CPM.cmake")
+include("${CME_DIR}/cmake/gn.cmake")
 
 set(CME_REGISTRY "${CME_DIR}/registry" CACHE PATH
   "Where the ports are. Point this at your own directory to add ports.")
@@ -40,7 +41,8 @@ function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE)
-  set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG)
+  set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG
+           GN_ARGS GN_TARGETS GN_CONFIRM)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
     message(FATAL_ERROR "cmake-everywhere: a port with no NAME")
@@ -371,10 +373,11 @@ function(cme_build_port port package version exact)
   if(port_version)
     list(APPEND arguments VERSION "${port_version}")
   endif()
-  if(overlay)
-    # The upstream has no CMake of its own, so nothing is configured from its
-    # tree: it is downloaded and the overlay in this registry is the project
-    # that builds it. Nothing is written into the fetched sources.
+  cme_port_field(gn_targets ${port} GN_TARGETS)
+  if(overlay OR gn_targets)
+    # Nothing is configured from the upstream tree. Either it has no CMake at
+    # all and the overlay in this registry is the project that builds it, or
+    # it is a GN project and GN is asked to describe it.
     list(APPEND arguments DOWNLOAD_ONLY YES)
   else()
     if(source_subdir)
@@ -401,7 +404,9 @@ function(cme_build_port port package version exact)
 
   CPMAddPackage(${arguments})
 
-  if(overlay)
+  if(gn_targets)
+    cme_gn_build(${port} "${${port}_SOURCE_DIR}")
+  elseif(overlay)
     set(CME_UPSTREAM_SOURCE_DIR "${${port}_SOURCE_DIR}")
     set(CME_UPSTREAM_VERSION "${port_version}")
     foreach(option IN LISTS options)
