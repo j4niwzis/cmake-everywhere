@@ -1271,13 +1271,19 @@ function(cme_note_name_clash port package)
   endif()
   list(JOIN clashing ", " listed)
   string(TOUPPER "${package}" upper)
-  message(WARNING
+  # Fatal, because what follows is not a build that might work. The library
+  # is about to be added as a subdirectory, its first add_library will be
+  # refused, and every command that would have configured that target then
+  # fails on its own -- thirty errors about IMPORTED targets, none of which
+  # names the copy on this machine or the decision that was made about it.
+  # This says both, once, before any of that.
+  message(FATAL_ERROR
     "cmake-everywhere: ${package} is built here, and ${listed} is already "
     "an imported target -- the copy on this machine was looked at, refused, "
-    "and what it defined cannot be undefined. What comes next is CMake "
-    "refusing to create ${listed}. Configure with -DCME_SYSTEM_${upper}=OFF "
-    "so that copy is not looked at, or with what it is missing installed so "
-    "it can be used.")
+    "and what it defined cannot be undefined. CMake will not create "
+    "${listed} a second time. Configure with -DCME_SYSTEM_${upper}=OFF so "
+    "that copy is not looked at, or with what it is missing installed so it "
+    "can be used.")
 endfunction()
 
 # A port describes one library: where it comes from, what it needs, and what
@@ -3057,6 +3063,72 @@ function(cme_enabled_features port out)
   set(${out} "${result}" PARENT_SCOPE)
 endfunction()
 
+# The features somebody asked for, as opposed to the ones the port has on
+# unless told otherwise.
+#
+# The difference matters for a copy of a library that is already on the
+# machine. A feature that was asked for is a requirement: a copy without it
+# is the wrong copy. A feature that is merely on by default says what to
+# build when there is nothing to take -- glfw builds both backends because
+# both are useful, not because a program needs both -- and judging an
+# installed copy by it rejects every copy a distribution ships.
+function(cme_requested_features port out)
+  get_property(enabled GLOBAL PROPERTY CME_REQUIRED_FEATURES_${port})
+  list(APPEND enabled ${CME_FEATURES_${port}})
+  cme_port_field(declared ${port} FEATURES)
+  foreach(feature IN LISTS declared)
+    if(feature IN_LIST CME_DEFAULT_FEATURES)
+      list(APPEND enabled "${feature}")
+    endif()
+  endforeach()
+  cme_expand_implications(${port} "${enabled}" enabled)
+  set(result "")
+  foreach(feature IN LISTS enabled)
+    if(NOT feature)
+      continue()
+    endif()
+    cme_feature_refused(refused ${port} ${feature})
+    if(NOT refused)
+      list(APPEND result "${feature}")
+    endif()
+  endforeach()
+  if(result)
+    list(REMOVE_DUPLICATES result)
+    list(SORT result)
+  endif()
+  set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
+# Whether a set of features satisfies what the port says a build of it must
+# have. Only the rules that state a minimum: a copy with too few backends is
+# not a copy this build can use, and a copy with more of something than a
+# rule allows is somebody else's build being generous.
+function(cme_rules_allow ok why port present)
+  set(${ok} TRUE PARENT_SCOPE)
+  set(${why} "" PARENT_SCOPE)
+  get_property(rules GLOBAL PROPERTY CME_RULES_${port})
+  set(index 0)
+  foreach(kind IN LISTS rules)
+    get_property(items GLOBAL PROPERTY CME_RULE_${port}_${index})
+    math(EXPR index "${index} + 1")
+    if(NOT kind STREQUAL "AT_LEAST_ONE_OF" AND NOT kind STREQUAL "EXACTLY_ONE_OF")
+      continue()
+    endif()
+    set(count 0)
+    foreach(item IN LISTS items)
+      if(item IN_LIST present)
+        math(EXPR count "${count} + 1")
+      endif()
+    endforeach()
+    if(count EQUAL 0)
+      list(JOIN items ", " listed)
+      set(${ok} FALSE PARENT_SCOPE)
+      set(${why} "it has none of ${listed}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+endfunction()
+
 # The version this port is going to be built at: what it pins, unless
 # something needs more, unless the project said otherwise.
 function(cme_effective_version port out)
@@ -3078,29 +3150,66 @@ endfunction()
 # on, a symbol that is only compiled when it was. A feature says what to look
 # for, and a system copy that does not have it is not rejected loudly -- it
 # simply is not the copy this build can use, and the port is built instead.
+# What to do about the features a system copy turned out not to have, when
+# nobody asked for them. The port's rules are what a build of this library
+# must satisfy, so they are what an installed one is judged by.
+function(cme_system_rules_or_build out package port present absent)
+  cme_rules_allow(ok why ${port} "${present}")
+  if(NOT ok)
+    list(JOIN absent ", " listed)
+    message(STATUS
+      "cmake-everywhere: the ${package} installed here is missing ${listed} "
+      "and ${why}, so it is built here instead")
+    set(${out} FALSE PARENT_SCOPE)
+    return()
+  endif()
+  if(absent)
+    list(JOIN absent ", " listed)
+    list(JOIN present ", " kept)
+    if(NOT kept)
+      set(kept "nothing")
+    endif()
+    message(STATUS
+      "cmake-everywhere: the ${package} installed here has no ${listed}, "
+      "which nothing asked for; it is used with ${kept}")
+  endif()
+  set(${out} TRUE PARENT_SCOPE)
+endfunction()
+
 function(cme_system_has_features out package port features)
   set(${out} TRUE PARENT_SCOPE)
   # If the copy says what it was built with, that is the answer. Looking for
   # a symbol is what you do when nobody will tell you: it can only find what
   # a feature happens to add to the interface, and a feature that changes
   # behaviour without adding a symbol is invisible to it.
+  cme_requested_features(${port} asked)
   get_property(said GLOBAL PROPERTY CME_INSTALLED_SAID_${port})
   if(said)
     get_property(has GLOBAL PROPERTY CME_INSTALLED_FEATURES_${port})
+    set(present "")
+    set(absent "")
     foreach(feature IN LISTS features)
-      if(NOT feature IN_LIST has)
+      if(feature IN_LIST has)
+        list(APPEND present "${feature}")
+      elseif(feature IN_LIST asked)
         list(JOIN has ", " listed)
         if(NOT listed)
           set(listed "nothing")
         endif()
         message(STATUS
           "cmake-everywhere: the ${package} installed here was built with "
-          "${listed}, and this build needs ${feature}, so it is built here "
-          "instead")
+          "${listed}, and this build asked for ${feature}, so it is built "
+          "here instead")
         set(${out} FALSE PARENT_SCOPE)
         return()
+      else()
+        list(APPEND absent "${feature}")
       endif()
     endforeach()
+    cme_system_rules_or_build("${out}" "${package}" ${port} "${present}"
+                              "${absent}")
+    # The helper answered into this scope; the caller is one further out.
+    set(${out} "${${out}}" PARENT_SCOPE)
     return()
   endif()
   set(includes "${${package}_INCLUDE_DIRS}")
@@ -3138,7 +3247,10 @@ function(cme_system_has_features out package port features)
   set(CMAKE_REQUIRED_INCLUDES "${includes}")
   set(CMAKE_REQUIRED_LIBRARIES "${libraries}")
   set(CMAKE_REQUIRED_QUIET TRUE)
+  set(present "")
+  set(absent "")
   foreach(feature IN LISTS features)
+    set(have TRUE)
     cme_feature_field(headers ${port} ${feature} SYSTEM_HEADERS)
     foreach(header IN LISTS headers)
       string(MAKE_C_IDENTIFIER "cme_${package}_${header}" variable)
@@ -3147,8 +3259,7 @@ function(cme_system_has_features out package port features)
         message(STATUS
           "cmake-everywhere: the system ${package} has no ${header}, so it "
           "was not built with ${feature}")
-        set(${out} FALSE PARENT_SCOPE)
-        return()
+        set(have FALSE)
       endif()
     endforeach()
     # "symbol:header" looks for a symbol the way a program would use it,
@@ -3177,11 +3288,25 @@ function(cme_system_has_features out package port features)
         message(STATUS
           "cmake-everywhere: the system ${package} has no ${symbol}, "
           "so it was not built with ${feature}")
-        set(${out} FALSE PARENT_SCOPE)
-        return()
+        set(have FALSE)
       endif()
     endforeach()
+    if(have)
+      list(APPEND present "${feature}")
+    elseif(feature IN_LIST asked)
+      # Asked for, so this is the wrong copy and there is nothing to weigh.
+      message(STATUS
+        "cmake-everywhere: ${feature} was asked for, so the ${package} "
+        "installed here is not used")
+      set(${out} FALSE PARENT_SCOPE)
+      return()
+    else()
+      list(APPEND absent "${feature}")
+    endif()
   endforeach()
+  cme_system_rules_or_build("${out}" "${package}" ${port} "${present}"
+                            "${absent}")
+  set(${out} "${${out}}" PARENT_SCOPE)
 endfunction()
 
 # Most distributions ship a .pc file and no CMake config at all, and CMake
