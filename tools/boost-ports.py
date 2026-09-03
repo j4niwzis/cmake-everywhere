@@ -117,12 +117,42 @@ NOTES = {
     "asio": """# Boost::asio is three libraries: asio_core, which needs align, assert,
 # config, system and throw_exception; asio_deadline_timer, which adds
 # date_time; and asio_spawn, which adds context for stackful coroutines.
-# Boost::asio itself is all three, and that is why Context and Date_Time are
-# in this list.
+# Boost::asio itself is all three.
 #
-# Taking less means linking Boost::asio_core, which is a choice for whoever
-# writes the target_link_libraries -- and not one Beast leaves open: its own
-# dependency list names Boost::asio.""",
+# Which of them Boost::asio is made of is a feature here, and the two that
+# cost another library are off unless they are asked for. Linking
+# Boost::asio_core instead would be the other way to say it, but it is not a
+# way anything gets to choose: Beast names Boost::asio, and a project that
+# uses Beast over a socket was building Boost.Context -- assembly per
+# architecture -- for coroutines nothing in it calls.""",
+}
+
+# A library that is more than one library.
+#
+# Boost.Asio is four targets upstream: a core, deadline_timer, spawn, and one
+# that is all of them. Only the last two need anything beyond the core --
+# Date_Time for the timer, Context for the stackful coroutines -- and a
+# project that names Boost::asio, which is what everything names, was
+# building both.
+#
+# Each part is a port, so what a project asks for is what it gets and what it
+# links keeps the name upstream gave it: Boost::asio is still all of Asio,
+# and a project that expects Context from it still has Context. The parts
+# share one download and one directory and are built separately, because a
+# build with no Boost.Context in it cannot produce the target that links
+# Boost.Context.
+#
+#   module: (patch, core target, [(feature, target, modules, switch)])
+SPLIT = {
+    "asio": (
+        "0001-let-a-build-say-which-parts-of-asio-it-wants.patch",
+        "asio_core",
+        [
+            ("deadline_timer", "asio_deadline_timer", ["date_time"],
+             "BOOST_ASIO_DEADLINE_TIMER"),
+            ("spawn", "asio_spawn", ["context"], "BOOST_ASIO_SPAWN"),
+        ],
+    ),
 }
 
 
@@ -230,6 +260,14 @@ def main(version):
     modules = libraries(version)
     sources = cmakelists(version, modules)
     edges, defines, unresolved, interface = graph(sources)
+    # The parts a library only links for a piece of itself are not
+    # dependencies of the library, so they are not in the graph the ports and
+    # the umbrella are written from.
+    for module, (_, _, pieces) in SPLIT.items():
+        if module not in edges:
+            continue
+        moved = {name for _, _, names, _ in pieces for name in names}
+        edges[module] = [other for other in edges[module] if other not in moved]
     if unresolved:
         print("targets nothing was found to define:", ", ".join(sorted(unresolved)))
 
@@ -248,6 +286,31 @@ def main(version):
                      else "BOOST_ENABLE_MPI"
             arrangement = f"\n  ARRANGEMENT {switch}"
         depends = " ".join(port(other) for other in edges[module])
+        extra = EXTRA.get(module, {})
+        if extra.get("DEPENDS"):
+            depends = (depends + " " + " ".join(extra["DEPENDS"])).strip()
+        added = ""
+        if depends:
+            added += f"\n  DEPENDS {depends}"
+        if extra.get("OPTIONS"):
+            added += "\n  OPTIONS " + " ".join(extra["OPTIONS"])
+        split = SPLIT.get(module)
+        switches = ""
+        patches = ""
+        virtual = ""
+        if split:
+            _, core_target, pieces = split
+            # The whole of the library is its parts, and it says so by naming
+            # them. Which feature a part is turned on by is the part'''s own
+            # business and is written down once, where the part is; naming
+            # the features here would be the same knowledge in two places,
+            # and a graph that says asio is made of a core rather than of the
+            # parts it is actually made of.
+            wanted = " ".join(
+                f"{port(module)}-{feature.replace('_', '-')}"
+                for feature, _, _, _ in pieces)
+            added = f"\n  DEPENDS {wanted}"
+            virtual = "\n  VIRTUAL YES"
         note = NOTES.get(module, "")
         if note:
             note = "#\n" + note + "\n"
@@ -264,7 +327,7 @@ def main(version):
   FAMILY boost
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_{key(module)}
-  TARGETS Boost::{name}{arrangement}
+  TARGETS Boost::{name}{arrangement}{virtual}{added}{switches}{patches}
 )
 
 # Where the sources come from, which is the one thing about a Boost library
@@ -282,18 +345,83 @@ else()
     GIT_TAG_TEMPLATE "boost-@VERSION@")
 endif()
 """
-        extra = EXTRA.get(module, {})
-        if extra.get("DEPENDS"):
-            depends = (depends + " " + " ".join(extra["DEPENDS"])).strip()
-        added = ""
-        if depends:
-            added += f"  DEPENDS {depends}\n"
-        if extra.get("OPTIONS"):
-            added += "  OPTIONS " + " ".join(extra["OPTIONS"]) + "\n"
-        if added:
-            text = text.replace("  TARGETS Boost::" + name + "\n",
-                                f"  TARGETS Boost::{name}\n{added}")
         write(f"registry/{port(module)}/port.cmake", text)
+
+        if not split:
+            continue
+
+        # The library itself: built once, with a feature per part. The parts
+        # are its own targets upstream, so what a feature adds is a target
+        # and what it costs is the library that target links.
+        patch, core_target, pieces = split
+        core = f"{port(module)}-core"
+        core_depends = " ".join(port(other) for other in edges[module])
+        core_switches = " ".join(
+            f'"{switch} OFF"' for _, _, _, switch in pieces)
+        features = ""
+        for feature, part_target, brings, switch in pieces:
+            features += f"""
+cme_port_feature({core} {feature}
+  SUMMARY "Boost::{part_target}"
+  DEFAULT NO
+  DEPENDS {" ".join(port(name) for name in brings)}
+  OPTIONS "{switch} ON"
+  TARGETS Boost::{part_target})
+"""
+        write(f"registry/{core}/{patch}", open(f"registry/{port(module)}/{patch}").read())
+        write(f"registry/{core}/port.cmake", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.
+#
+# Boost.{key(module).title()}, which upstream builds as four targets: this one, a part
+# apiece for the two that need another library, and one that is all of them.
+# The parts are features here -- they are built when they are asked for, and
+# what they need comes with them -- so a project that asks for the core
+# builds neither of the two.
+cme_declare_port(
+  NAME {core}
+  PROVIDES boost_{core_target} Boost{core_target.title().replace("_", "")}
+  VERSION {version}
+  FAMILY boost
+  LICENSE BSL-1.0
+  SYSTEM_PACKAGE boost_{core_target}
+  TARGETS Boost::{core_target}
+  DEPENDS {core_depends}
+  OPTIONS {core_switches}
+  PATCHES {patch}
+)
+{features}
+# Where the sources come from, the same choice as every other Boost port.
+if(CME_BOOST_ARCHIVE)
+  cme_port_source({core}
+    SOURCE_FROM boost-archive SOURCE_SUBDIR libs/{module})
+else()
+  cme_port_source({core}
+    GITHUB_REPOSITORY boostorg/{modules[module]}
+    GIT_TAG boost-{version}
+    GIT_TAG_TEMPLATE "boost-@VERSION@")
+endif()
+""")
+        # And a name for each part, which is the core with that part asked
+        # for. Nothing is built and nothing is added: the target it hands
+        # back is the one the core produces when the feature is on.
+        for feature, part_target, _, _ in pieces:
+            part = f"{port(module)}-{feature.replace('_', '-')}"
+            write(f"registry/{part}/port.cmake", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.
+#
+# A name for one part of Boost.{key(module).title()}: the library with that part asked
+# for. It builds nothing -- the part is a feature of {core}, and the
+# target below is what that port produces when it is on.
+cme_declare_port(
+  NAME {part}
+  PROVIDES boost_{part_target} Boost{part_target.title().replace("_", "")}
+  VERSION {version}
+  VIRTUAL YES
+  FAMILY boost
+  LICENSE BSL-1.0
+  SYSTEM_PACKAGE boost_{part_target}
+  TARGETS Boost::{part_target}
+  DEPENDS {core}[{feature}]
+)
+""")
 
     # A component brings the components it is built on. The member ports say
     # the same thing in their DEPENDS, and saying it here too is not a
@@ -334,6 +462,23 @@ cme_declare_port(
                 f"  SUMMARY \"Boost.{component.replace('_', ' ')}\""
                 f"{implied(module)}{separate}\n"
                 f"  DEPENDS {port(module)})")
+        # The parts of a library that is more than one are components too,
+        # so asking for one of them is find_package(Boost COMPONENTS
+        # asio_spawn) and nothing else: no call this registry invented.
+        split = SPLIT.get(module)
+        if split:
+            core_target, pieces = split[1], split[2]
+            lines.append(
+                f"cme_port_feature(boost {core_target}\n"
+                f"  SUMMARY \"Boost.{core_target.replace('_', ' ')}\""
+                f"{implied(module)}\n"
+                f"  DEPENDS {port(module)}-core)")
+            for feature, part_target, _, _ in pieces:
+                lines.append(
+                    f"cme_port_feature(boost {part_target}\n"
+                    f"  SUMMARY \"Boost.{part_target.replace('_', ' ')}\""
+                    f"{implied(module)}\n"
+                    f"  DEPENDS {port(module)}-{feature.replace('_', '-')})")
     features = "\n".join(lines)
     write("registry/boost/port.cmake", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.
 #
@@ -473,6 +618,37 @@ endfunction()
     # the waiting is what keeps one broken leaf from turning into a hundred
     # and fifty red jobs: what is built on it is skipped instead, which is
     # the truth about what was and was not checked.
+    def part_jobs(module):
+        split = SPLIT.get(module)
+        if not split:
+            return []
+        out = [f"""  {port(module)}-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: {port(module)}-core
+          package: boost_{split[1]}
+          target: Boost::{split[1]}"""]
+        for feature, part_target, brings, _ in split[2]:
+            part = f"{port(module)}-{feature.replace(chr(95), chr(45))}"
+            needs = [f"{port(module)}-core"]
+            needs += [port(name) for name in brings if defines.get(name)]
+            waits = ""
+            if needs:
+                waits = "    needs: [" + ", ".join(sorted(needs)) + "]\n"
+            out.append(f"""  {part}:
+{waits}    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: {part}
+          package: boost_{part_target}
+          target: Boost::{part_target}""")
+        return out
+
     jobs = []
     for module in modules:
         if not defines.get(module):
@@ -520,6 +696,11 @@ endfunction()
           port: {port(module)}
           package: boost_{key(module)}
           target: Boost::{target(module, defines)}""")
+            # A library that is more than one port is checked part by part.
+            # The core is the interesting one: it is what says that asking
+            # for it builds neither Boost.Context nor Boost.Date_Time.
+            for job in part_jobs(module):
+                kept.append(job)
         write(f".github/workflows/{name}.yml", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.
 #
 # {why}

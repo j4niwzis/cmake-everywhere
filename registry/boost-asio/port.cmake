@@ -8,12 +8,14 @@
 # Boost::asio is three libraries: asio_core, which needs align, assert,
 # config, system and throw_exception; asio_deadline_timer, which adds
 # date_time; and asio_spawn, which adds context for stackful coroutines.
-# Boost::asio itself is all three, and that is why Context and Date_Time are
-# in this list.
+# Boost::asio itself is all three.
 #
-# Taking less means linking Boost::asio_core, which is a choice for whoever
-# writes the target_link_libraries -- and not one Beast leaves open: its own
-# dependency list names Boost::asio.
+# Which of them Boost::asio is made of is a feature here, and the two that
+# cost another library are off unless they are asked for. Linking
+# Boost::asio_core instead would be the other way to say it, but it is not a
+# way anything gets to choose: Beast names Boost::asio, and a project that
+# uses Beast over a socket was building Boost.Context -- assembly per
+# architecture -- for coroutines nothing in it calls.
 cme_declare_port(
   NAME boost-asio
   PROVIDES boost_asio BoostAsio
@@ -22,7 +24,8 @@ cme_declare_port(
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_asio
   TARGETS Boost::asio
-  DEPENDS boost-align boost-assert boost-config boost-context boost-date-time boost-system boost-throw-exception
+  VIRTUAL YES
+  DEPENDS boost-asio-deadline-timer boost-asio-spawn
 )
 
 # Where the sources come from, which is the one thing about a Boost library

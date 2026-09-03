@@ -1264,7 +1264,7 @@ endfunction()
 # the configure and says the target was not found, with no word about which
 # library it belongs to or where it came from.
 function(cme_check_promised port package how)
-  cme_port_field(promised ${port} TARGETS)
+  cme_port_targets(promised ${port})
   set(missing "")
   foreach(target IN LISTS promised)
     if(NOT TARGET ${target})
@@ -1563,7 +1563,7 @@ endfunction()
 # in the build has Vulkan.
 function(cme_port_feature port feature)
   cmake_parse_arguments(FEATURE "" "SUMMARY"
-    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;PATCHES;DEFAULT"
+    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;PATCHES;TARGETS;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
   set_property(GLOBAL APPEND_STRING PROPERTY CME_PORT_${port}_RECIPE
@@ -1576,7 +1576,7 @@ function(cme_port_feature port feature)
   cme_export_line(${port} "${said})")
   foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY IMPLIES CONFLICTS
                 EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_CODE SYSTEM_COMPONENT
-                CONFIGURE_ARGS PATCHES
+                CONFIGURE_ARGS PATCHES TARGETS
                 DEFAULT)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
@@ -1586,6 +1586,27 @@ endfunction()
 function(cme_feature_field out port feature field)
   get_property(value GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field})
   set(${out} "${value}" PARENT_SCOPE)
+endfunction()
+
+# What a port hands back: what it declares, and what the features that are on
+# add to it.
+#
+# A library with a part that is only built when it is asked for produces that
+# part's target only when it is asked for. Promising it in the port would be
+# promising something that is not always there, and a port that promises a
+# target it did not define is a warning on every build that does without it.
+function(cme_port_targets out port)
+  cme_port_field(cme_declared_targets ${port} TARGETS)
+  cme_enabled_features(${port} cme_targets_features)
+  foreach(cme_target_feature IN LISTS cme_targets_features)
+    get_property(cme_extra_targets GLOBAL PROPERTY
+                 CME_FEATURE_${port}_${cme_target_feature}_TARGETS)
+    list(APPEND cme_declared_targets ${cme_extra_targets})
+  endforeach()
+  if(cme_declared_targets)
+    list(REMOVE_DUPLICATES cme_declared_targets)
+  endif()
+  set(${out} "${cme_declared_targets}" PARENT_SCOPE)
 endfunction()
 
 # The features a project wants from a library it did not write the
@@ -2272,7 +2293,7 @@ endfunction()
 # them and the stamp is written last, so an interrupted build leaves an entry
 # that is ignored rather than one that is half true.
 function(cme_store_write port package entry)
-  cme_port_field(aliases ${port} TARGETS)
+  cme_port_targets(aliases ${port})
   if(NOT aliases)
     message(STATUS
       "cmake-everywhere: ${port} is not kept: it does not say what it produces")
@@ -2955,7 +2976,7 @@ function(cme_install_pkgconfig_override)
           cme_port_field(cme_pkg_names ${cme_pkg_port} PROVIDES)
           list(GET cme_pkg_names 0 cme_pkg_package)
           find_package(${cme_pkg_package} REQUIRED QUIET)
-          cme_port_field(cme_pkg_theirs ${cme_pkg_port} TARGETS)
+          cme_port_targets(cme_pkg_theirs ${cme_pkg_port})
           foreach(cme_pkg_one IN LISTS cme_pkg_theirs)
             if(TARGET ${cme_pkg_one})
               list(APPEND cme_pkg_targets "${cme_pkg_one}")
@@ -3794,7 +3815,7 @@ function(cme_system_has_features out package port features)
     # Both names it can be under: what the port promises its consumers, and
     # what upstream calls it, which is the name a config file installed by
     # that upstream defines.
-    cme_port_field(targets ${port} TARGETS)
+    cme_port_targets(targets ${port})
     cme_port_field(names ${port} LINK_NAMES)
     foreach(pair IN LISTS names)
       if(pair MATCHES "^([^=]+)=")
@@ -4534,7 +4555,16 @@ function(cme_build_port port package version exact)
     CPMAddPackage(${arguments})
   endif()
   set_property(GLOBAL PROPERTY CME_TREE_${port} "${${port}_SOURCE_DIR}")
-  cme_apply_patches(${port} "${${port}_SOURCE_DIR}")
+  # Patched where the library is, which is not always where its sources were
+  # fetched to. A port that says its sources are a directory inside another
+  # port's is handed the other port's root here, and the directory is only
+  # applied when the build is configured -- so a patch written against the
+  # library's own CMakeLists was being offered the tree it sits in.
+  set(cme_patch_tree "${${port}_SOURCE_DIR}")
+  if(source_subdir)
+    set(cme_patch_tree "${cme_patch_tree}/${source_subdir}")
+  endif()
+  cme_apply_patches(${port} "${cme_patch_tree}")
 
   # What was actually fetched, rather than what was asked for. A tag moves,
   # a branch certainly moves, and an archive at a URL can be replaced; the
@@ -4947,7 +4977,7 @@ function(cme_build_virtual port package)
     cme_feature_field(depends ${port} ${feature} DEPENDS)
     foreach(spec IN LISTS depends)
       cme_split_requirement("${spec}" dep wanted wanted_features)
-      cme_port_field(theirs ${dep} TARGETS)
+      cme_port_targets(theirs ${dep})
       foreach(one IN LISTS theirs)
         if(TARGET ${one})
           list(APPEND parts "${one}")
@@ -5357,7 +5387,7 @@ macro(cme_provider cme_method cme_package)
         # asking find_package again then reports nothing found, about a
         # library this build had already resolved and is about to link.
         if(NOT ${cme_package}_FOUND)
-          cme_port_field(cme_promised "${cme_port}" TARGETS)
+          cme_port_targets(cme_promised "${cme_port}")
           set(cme_all TRUE)
           foreach(cme_one IN LISTS cme_promised)
             if(NOT TARGET ${cme_one})

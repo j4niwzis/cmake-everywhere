@@ -1,0 +1,81 @@
+--- a/CMakeLists.txt	2026-08-29 23:36:30.818460099 +0000
++++ b/CMakeLists.txt	2026-08-29 23:36:30.826460127 +0000
+@@ -26,8 +26,22 @@
+ 
+ target_compile_features(boost_asio_core INTERFACE cxx_std_11)
+ 
++# Two of the four targets below are the reason this library brings
++# Boost.Date_Time and Boost.Context, and a project that uses neither pays for
++# both -- one of them assembly per architecture. They are still built by
++# default, so nothing changes for a build that says nothing.
++
++option(BOOST_ASIO_DEADLINE_TIMER
++  "Build Boost::asio_deadline_timer, which needs Boost.Date_Time" ON)
++option(BOOST_ASIO_SPAWN
++  "Build Boost::asio_spawn, which needs Boost.Context" ON)
++
++set(BOOST_ASIO_PARTS Boost::asio_core)
++
+ # deadline_timer support
+ 
++if(BOOST_ASIO_DEADLINE_TIMER)
++
+ add_library(boost_asio_deadline_timer INTERFACE)
+ add_library(Boost::asio_deadline_timer ALIAS boost_asio_deadline_timer)
+ 
+@@ -41,8 +55,14 @@
+ 
+ target_compile_features(boost_asio_deadline_timer INTERFACE cxx_std_11)
+ 
++list(APPEND BOOST_ASIO_PARTS Boost::asio_deadline_timer)
++
++endif()
++
+ # spawn (stackful coroutines) support
+ 
++if(BOOST_ASIO_SPAWN)
++
+ add_library(boost_asio_spawn INTERFACE)
+ add_library(Boost::asio_spawn ALIAS boost_asio_spawn)
+ 
+@@ -56,6 +76,10 @@
+ 
+ target_compile_features(boost_asio_spawn INTERFACE cxx_std_11)
+ 
++list(APPEND BOOST_ASIO_PARTS Boost::asio_spawn)
++
++endif()
++
+ # the works
+ 
+ add_library(boost_asio INTERFACE)
+@@ -65,20 +89,22 @@
+ 
+ target_link_libraries(boost_asio
+   INTERFACE
+-    Boost::asio_core
+-    Boost::asio_deadline_timer
+-    Boost::asio_spawn
++    ${BOOST_ASIO_PARTS}
+ )
+ 
+ target_compile_features(boost_asio INTERFACE cxx_std_11)
+ 
+ if (BOOST_SUPERPROJECT_VERSION AND NOT CMAKE_VERSION VERSION_LESS 3.13)
++  set(BOOST_ASIO_INSTALL boost_asio_core boost_asio)
++  if(BOOST_ASIO_DEADLINE_TIMER)
++    list(APPEND BOOST_ASIO_INSTALL boost_asio_deadline_timer)
++  endif()
++  if(BOOST_ASIO_SPAWN)
++    list(APPEND BOOST_ASIO_INSTALL boost_asio_spawn)
++  endif()
+   boost_install(
+     TARGETS
+-      boost_asio_core
+-      boost_asio_deadline_timer
+-      boost_asio_spawn
+-      boost_asio
++      ${BOOST_ASIO_INSTALL}
+     VERSION
+       "${BOOST_SUPERPROJECT_VERSION}"
+     HEADER_DIRECTORY

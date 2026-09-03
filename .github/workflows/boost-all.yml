@@ -725,7 +725,7 @@ jobs:
           package: boost_intrusive
           target: Boost::intrusive
   boost-asio:
-    needs: [boost-align, boost-assert, boost-config, boost-context, boost-date-time, boost-system, boost-throw-exception]
+    needs: [boost-align, boost-assert, boost-config, boost-system, boost-throw-exception]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -734,6 +734,35 @@ jobs:
           port: boost-asio
           package: boost_asio
           target: Boost::asio
+  boost-asio-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-asio-core
+          package: boost_asio_core
+          target: Boost::asio_core
+  boost-asio-deadline-timer:
+    needs: [boost-asio-core, boost-date-time]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-asio-deadline-timer
+          package: boost_asio_deadline_timer
+          target: Boost::asio_deadline_timer
+  boost-asio-spawn:
+    needs: [boost-asio-core, boost-context]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/boost-library
+        with:
+          port: boost-asio-spawn
+          package: boost_asio_spawn
+          target: Boost::asio_spawn
   boost-uuid:
     needs: [boost-assert, boost-config, boost-throw-exception, boost-type-traits]
     runs-on: ubuntu-latest

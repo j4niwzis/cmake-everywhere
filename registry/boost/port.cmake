@@ -343,8 +343,20 @@ cme_port_feature(boost intrusive
   DEPENDS boost-intrusive)
 cme_port_feature(boost asio
   SUMMARY "Boost.asio"
-  IMPLIES align assert config context date_time system throw_exception
+  IMPLIES align assert config system throw_exception
   DEPENDS boost-asio)
+cme_port_feature(boost asio_core
+  SUMMARY "Boost.asio core"
+  IMPLIES align assert config system throw_exception
+  DEPENDS boost-asio-core)
+cme_port_feature(boost asio_deadline_timer
+  SUMMARY "Boost.asio deadline timer"
+  IMPLIES align assert config system throw_exception
+  DEPENDS boost-asio-deadline-timer)
+cme_port_feature(boost asio_spawn
+  SUMMARY "Boost.asio spawn"
+  IMPLIES align assert config system throw_exception
+  DEPENDS boost-asio-spawn)
 cme_port_feature(boost uuid
   SUMMARY "Boost.uuid"
   IMPLIES assert config throw_exception type_traits
@@ -735,7 +747,7 @@ function(cme_adapt_boost source binary)
   cme_export_variable(Boost Boost_VERSION_MACRO 109200)
   cme_export_variable(Boost Boost_MAJOR_VERSION 1)
   cme_export_variable(Boost Boost_MINOR_VERSION 92)
-  cme_export_variable(Boost Boost_SUBMINOR_VERSION 0)
+  cme_export_variable(Boost Boost_SUBMINOR_VERSION 0001-let-a-build-say-which-parts-of-asio-it-wants.patch)
   cme_export_variable(Boost Boost_LIB_VERSION "1_92")
   foreach(component IN LISTS enabled)
     string(TOUPPER "${component}" upper)
