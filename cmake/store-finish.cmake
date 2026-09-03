@@ -20,6 +20,17 @@ if(NOT EXISTS "${from}")
     "store-finish: there is nothing at ${from} to put in the store")
 endif()
 
+# A header this entry needs was still not there when the build finished, and
+# store-headers said so. Publishing it would put a library in the store that
+# nothing can be compiled against.
+if(EXISTS "${from}/incomplete")
+  message(STATUS
+    "cmake-everywhere: ${to} is not kept: something it needed was never "
+    "written")
+  file(REMOVE_RECURSE "${from}")
+  return()
+endif()
+
 if(EXISTS "${to}/complete")
   file(REMOVE_RECURSE "${from}")
   return()

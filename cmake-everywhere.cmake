@@ -43,13 +43,48 @@ endif()
 # What must never happen is a hit on something that is not the same. So when
 # in doubt an input goes into the hash: a hash that is too specific costs a
 # rebuild, and one that is not specific enough costs an afternoon.
+# The store is off unless it is asked for. A directory that outlives the
+# build, that another build reads from, and that grows without anyone
+# deciding to keep it, is not something to switch on for someone by default:
+# a wrong reuse is the one failure this mechanism can cause and it is the
+# expensive one. Asked for, it is stated in the log.
+#
+# Three ways to ask, in this order:
+#
+#   -DCME_STORE=/path      keep them here
+#   -DCME_STORE_ENABLED=ON keep them in the default location
+#   CME_STORE=/path        the same, from the environment, for a machine
+#   CME_STORE=ON           where every build should use one
+#
 set(CME_STORE "" CACHE PATH
   "Where built libraries are kept between builds, or empty for none")
-if(NOT CME_STORE AND NOT CME_STORE_DISABLED)
+option(CME_STORE_ENABLED
+  "Keep built libraries between builds, in the default location" OFF)
+if(NOT CME_STORE AND DEFINED ENV{CME_STORE})
+  set(cme_store_env "$ENV{CME_STORE}")
+  if(cme_store_env MATCHES "^(1|ON|on|YES|yes|TRUE|true)$")
+    set(CME_STORE_ENABLED ON)
+  elseif(NOT cme_store_env MATCHES "^(0|OFF|off|NO|no|FALSE|false)$")
+    set(CME_STORE "${cme_store_env}" CACHE PATH "" FORCE)
+    message(STATUS
+      "cmake-everywhere: built libraries are kept in ${CME_STORE}, which "
+      "CME_STORE in the environment names")
+  endif()
+  unset(cme_store_env)
+endif()
+if(NOT CME_STORE AND CME_STORE_ENABLED)
   if(DEFINED ENV{XDG_CACHE_HOME})
     set(CME_STORE "$ENV{XDG_CACHE_HOME}/cmake-everywhere/store" CACHE PATH "" FORCE)
   elseif(DEFINED ENV{HOME})
     set(CME_STORE "$ENV{HOME}/.cache/cmake-everywhere/store" CACHE PATH "" FORCE)
+  else()
+    message(WARNING
+      "cmake-everywhere: CME_STORE_ENABLED is on and there is no HOME or "
+      "XDG_CACHE_HOME to put a store in. Name one with -DCME_STORE=")
+  endif()
+  if(CME_STORE)
+    message(STATUS
+      "cmake-everywhere: built libraries are kept in ${CME_STORE}")
   endif()
 endif()
 
@@ -1863,7 +1898,13 @@ endfunction()
 function(cme_store_keep_headers out ok port entry directories)
   set(result "")
   set(${ok} TRUE PARENT_SCOPE)
-  set(index 0)
+  # Across both calls for one entry, because they write into the same
+  # directory: two calls each starting at zero would put two different
+  # include directories into generated/0 and mix them.
+  get_property(index GLOBAL PROPERTY CME_STORE_INDEX_${port})
+  if(NOT index)
+    set(index 0)
+  endif()
   foreach(directory IN LISTS directories)
     string(REGEX REPLACE "^\\$<BUILD_INTERFACE:(.*)>$" "\\1" directory
            "${directory}")
@@ -1879,23 +1920,44 @@ function(cme_store_keep_headers out ok port entry directories)
       list(APPEND result "${directory}")
       continue()
     endif()
-    if(NOT IS_DIRECTORY "${directory}")
-      # Not a directory to copy: a generator expression this cannot read, or
-      # a path that is already gone. Kept as it stands, and checked when the
-      # entry is read.
-      list(APPEND result "${directory}")
-      continue()
+    set(inside FALSE)
+    if(directory MATCHES "^${CMAKE_BINARY_DIR}")
+      set(inside TRUE)
     endif()
-    file(GLOB_RECURSE headers "${directory}/*")
-    if(NOT headers AND directory MATCHES "^${CMAKE_BINARY_DIR}")
-      # Nothing there at all, which means this library writes its headers
-      # while it builds rather than while it configures. Keeping the rest
-      # would keep a library that cannot be compiled against.
-      message(STATUS
-        "cmake-everywhere: ${port} is not kept: ${directory} has no headers "
-        "yet, so it makes them while building")
-      set(${ok} FALSE PARENT_SCOPE)
-      return()
+    set(later FALSE)
+    if(NOT IS_DIRECTORY "${directory}")
+      if(NOT inside)
+        # Not a directory to copy: a generator expression this cannot read,
+        # or a path that is already gone. Kept as it stands, and checked when
+        # the entry is read.
+        list(APPEND result "${directory}")
+        continue()
+      endif()
+      set(later TRUE)
+    else()
+      file(GLOB_RECURSE headers "${directory}/*")
+      if(NOT headers AND inside)
+        set(later TRUE)
+      endif()
+    endif()
+    if(later)
+      # The library writes its headers while it builds rather than while it
+      # configures -- libsndfile makes its include directory, mpg123 fills
+      # one -- so there is nothing to copy at this moment and there will be
+      # something to copy at the next one. The copy is put where the archives
+      # are copied, which is after the build.
+      #
+      # Recording the path instead, which is what happened before, keeps an
+      # entry that names a directory inside a build tree: true on the machine
+      # that wrote it and gone by the next build, so the entry is a miss
+      # every time and the library is rebuilt every time while a new copy of
+      # it is written into the store.
+      set_property(GLOBAL APPEND PROPERTY CME_STORE_LATE_${port}
+                   "${directory}" "${entry}/generated/${index}")
+      list(APPEND result "\${CMAKE_CURRENT_LIST_DIR}/generated/${index}")
+      math(EXPR index "${index} + 1")
+      set_property(GLOBAL PROPERTY CME_STORE_INDEX_${port} "${index}")
+      continue()
     endif()
     # All of it, rather than the extensions somebody thought of.
     #
@@ -1915,6 +1977,7 @@ function(cme_store_keep_headers out ok port entry directories)
          PATTERN "CMakeFiles" EXCLUDE PATTERN ".git" EXCLUDE)
     list(APPEND result "\${CMAKE_CURRENT_LIST_DIR}/generated/${index}")
     math(EXPR index "${index} + 1")
+    set_property(GLOBAL PROPERTY CME_STORE_INDEX_${port} "${index}")
   endforeach()
   set(${out} "${result}" PARENT_SCOPE)
 endfunction()
@@ -1934,6 +1997,8 @@ function(cme_store_write port package entry)
   # Filled under a name nobody reads and moved into place in one step at the
   # end. A reader cannot tell a directory being written from a finished one,
   # and a rename is the only way to say "now".
+  set_property(GLOBAL PROPERTY CME_STORE_LATE_${port} "")
+  set_property(GLOBAL PROPERTY CME_STORE_INDEX_${port} 0)
   string(RANDOM LENGTH 8 ALPHABET "abcdefghijklmnopqrstuvwxyz0123456789" tag)
   get_filename_component(parent "${entry}" DIRECTORY)
   get_filename_component(leaf "${entry}" NAME)
@@ -2109,6 +2174,15 @@ function(cme_store_write port package entry)
     list(APPEND keeping COMMAND ${CMAKE_COMMAND} -E copy_if_different
          "$<TARGET_FILE:${archive}>" "${building}/lib/lib${archive}.a")
   endforeach()
+  # The headers that did not exist when this entry was described. If one of
+  # them is still not there after the build, the entry is not published: the
+  # script says so and leaves a mark that store-finish reads.
+  get_property(late GLOBAL PROPERTY CME_STORE_LATE_${port})
+  while(late)
+    list(POP_FRONT late from to)
+    list(APPEND keeping COMMAND ${CMAKE_COMMAND} "-Dfrom=${from}" "-Dto=${to}"
+         -P "${CME_DIR}/cmake/store-headers.cmake")
+  endwhile()
   add_custom_target(cme_store_${port} ALL
     ${keeping}
     COMMAND ${CMAKE_COMMAND} "-Dfrom=${building}" "-Dto=${entry}"
