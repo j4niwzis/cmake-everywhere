@@ -37,7 +37,11 @@ cme_declare_port(
   # not there is a Vulkan backend in this build, so the headers are needed
   # even by a build that asked for GL and nothing else. Headers only: no
   # loader, no driver.
-  DEPENDS vulkan-headers
+  # Its own description names both of these whether or not the features
+  # that use them are on: //:skia links expat and includes vulkan_core.h,
+  # with skia_use_expat=false and no Vulkan backend. What a build says it
+  # links is what it links.
+  DEPENDS vulkan-headers expat
   # What the module called skia is, without saying that an installed one
   # will do. A project inside this build that asks pkg-config for skia --
   # skiff does -- is asking for this library, and answering it with the

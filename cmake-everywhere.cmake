@@ -1867,6 +1867,14 @@ function(cme_store_keep_headers out ok port entry directories)
   foreach(directory IN LISTS directories)
     string(REGEX REPLACE "^\\$<BUILD_INTERFACE:(.*)>$" "\\1" directory
            "${directory}")
+    # What a library says about where its headers will be once it is
+    # installed is about an install that is not going to happen: nothing
+    # here installs a dependency. Kept as it stands, that path is checked on
+    # the way back in, is never there, and the entry is rebuilt every time
+    # -- which is how freetype and libpng were stored and never used.
+    if(directory MATCHES "^\\$<INSTALL_INTERFACE:")
+      continue()
+    endif()
     if(NOT directory MATCHES "^${CMAKE_BINARY_DIR}" AND NOT CME_STORE_PORTABLE)
       list(APPEND result "${directory}")
       continue()

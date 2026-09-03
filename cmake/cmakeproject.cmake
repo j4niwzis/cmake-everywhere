@@ -402,9 +402,25 @@ function(cme_cmake_import port description)
 
     foreach(dependency IN LISTS ${prefix}_DEPENDS)
       set(other "${port}_${dependency}")
-      if(TARGET ${other})
-        add_dependencies(${target} ${other})
+      if(NOT TARGET ${other})
+        continue()
       endif()
+      get_target_property(other_kind ${other} TYPE)
+      # An object library is put into what depends on it, not linked to it.
+      #
+      # libjpeg-turbo compiles its NEON dispatch and its twelve-bit variant
+      # as object libraries and writes $<TARGET_OBJECTS:...> into the
+      # sources of the archive; the description lists them as targets of
+      # their own and as dependencies. An order-only dependency builds them
+      # and puts nothing anywhere, so the archive came out without
+      # jsimd_idct_islow or j12init_1pass_quantizer in it, and said so at
+      # the end of a link.
+      if(other_kind STREQUAL "OBJECT_LIBRARY"
+         AND NOT kind STREQUAL "INTERFACE_LIBRARY"
+         AND NOT kind STREQUAL "OBJECT_LIBRARY")
+        target_sources(${target} PRIVATE "$<TARGET_OBJECTS:${other}>")
+      endif()
+      add_dependencies(${target} ${other})
     endforeach()
   endforeach()
 endfunction()
