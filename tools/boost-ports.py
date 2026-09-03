@@ -343,6 +343,11 @@ cme_declare_port(
   FAMILY boost
   LICENSE BSL-1.0
   SYSTEM_PACKAGE Boost
+  # What an installed Boost calls the target that is only its headers. A
+  # member the installed copy has no separate target for -- every
+  # header-only library, on every distribution that ships configs for the
+  # compiled ones alone -- is that target.
+  SYSTEM_HEADER_TARGET Boost::headers
   TARGETS Boost::boost
 )
 

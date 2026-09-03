@@ -1061,6 +1061,114 @@ function(cme_port_needs port)
                "needs ${ARGN};")
 endfunction()
 
+# The members of a family that the installed copy has no separate name for.
+#
+# A distribution ships Boost as one package, and its CMake config answers
+# for the pieces that were compiled: there is a boost_json-config.cmake and
+# there is no boost_asio-config.cmake, because asio is headers and there is
+# nothing to configure. So asking for asio as a component is asking the
+# installed copy for a word it does not have, and it answers no about all
+# of Boost -- which is why only the compiled pieces are asked for.
+#
+# What is left is a member whose headers are there, in the copy that was
+# found, with nothing defining the target a consumer writes. That target is
+# those headers: the port says which member it is, the family says what an
+# installed copy calls its headers, and the two are put together here
+# rather than the build ending with "Boost::asio was not found".
+function(cme_system_header_members port package features)
+  cme_port_field(headers ${port} SYSTEM_HEADER_TARGET)
+  if(NOT headers OR NOT TARGET ${headers})
+    return()
+  endif()
+  set(made "")
+  foreach(feature IN LISTS features)
+    cme_feature_field(separate ${port} ${feature} SYSTEM_COMPONENT)
+    if(separate)
+      # Compiled, so the installed copy either has it as a component or
+      # does not have it at all. Not something headers can stand in for.
+      continue()
+    endif()
+    cme_feature_field(depends ${port} ${feature} DEPENDS)
+    foreach(spec IN LISTS depends)
+      cme_split_requirement("${spec}" member unused unused_features)
+      cme_port_field(targets ${member} TARGETS)
+      foreach(target IN LISTS targets)
+        if(TARGET ${target})
+          continue()
+        endif()
+        add_library(${target} INTERFACE IMPORTED GLOBAL)
+        set_property(TARGET ${target} APPEND PROPERTY
+                     INTERFACE_LINK_LIBRARIES ${headers})
+        list(APPEND made "${target}")
+      endforeach()
+    endforeach()
+  endforeach()
+  if(made)
+    list(REMOVE_DUPLICATES made)
+    list(JOIN made ", " listed)
+    message(STATUS
+      "cmake-everywhere: the ${package} installed here has no separate "
+      "target for ${listed}, which are headers in it, so they are its "
+      "headers (${headers})")
+  endif()
+endfunction()
+
+# What the port promises, made out of what the machine defined.
+#
+# A config file a distribution ships defines the targets its upstream
+# exports, under upstream's names: glfw3Config.cmake defines glfw. A port
+# promises a name of its own -- the one it tells consumers to write -- and
+# for a library built here the adapter makes it. Nothing makes it for a
+# library that was found, and the port already says what a bare name means,
+# so that is what it is made from.
+function(cme_alias_system_targets port)
+  cme_port_field(names ${port} LINK_NAMES)
+  foreach(pair IN LISTS names)
+    if(NOT pair MATCHES "^([^=]+)=(.+)$")
+      continue()
+    endif()
+    set(from "${CMAKE_MATCH_1}")
+    set(to "${CMAKE_MATCH_2}")
+    if(TARGET ${to} OR NOT TARGET ${from})
+      continue()
+    endif()
+    # An alias of an alias is refused, so what the other one points at is
+    # what this one points at.
+    get_target_property(behind ${from} ALIASED_TARGET)
+    if(behind)
+      set(from "${behind}")
+    endif()
+    add_library(${to} ALIAS ${from})
+  endforeach()
+endfunction()
+
+# Whether what a port promised is there, after it was answered.
+#
+# A consumer writes the name the port promises, and a name that nothing
+# defines is not refused where it is written -- CMake gets to the end of
+# the configure and says the target was not found, with no word about which
+# library it belongs to or where it came from.
+function(cme_check_promised port package how)
+  cme_port_field(promised ${port} TARGETS)
+  set(missing "")
+  foreach(target IN LISTS promised)
+    if(NOT TARGET ${target})
+      list(APPEND missing "${target}")
+    endif()
+  endforeach()
+  if(NOT missing)
+    return()
+  endif()
+  list(JOIN missing ", " listed)
+  message(WARNING
+    "cmake-everywhere: ${package} was answered ${how}, and ${listed} -- "
+    "which the ${port} port says it produces -- is not defined. Something "
+    "that links it will be told at the end of the configure that a target "
+    "was not found. What the copy on this machine defines and what this "
+    "port promises are not the same names, and the port has to say so in "
+    "LINK_NAMES.")
+endfunction()
+
 # A name the copy being built here will define, that is already taken.
 #
 # The machine's copy is looked for first, and finding one defines the
@@ -1109,8 +1217,9 @@ function(cme_declare_port)
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
           PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
-          CHECK_HEADER ARRANGEMENT)
-  set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
+          CHECK_HEADER ARRANGEMENT SYSTEM_HEADER_TARGET)
+  set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG PKGCONFIG_NAMES
+           EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
@@ -2145,10 +2254,24 @@ endfunction()
 # The ports already say it, the other way round: SYSTEM_PKGCONFIG is how a
 # port says which modules a machine may have it as. Read backwards it says
 # which port a module is, and that is what a pkg_check_modules call needs.
+#
+# Those are two questions, and a port can answer one and not the other.
+# "Which module names mean this library" is a fact about the library;
+# "which of them may answer for it" is a judgement about copies of it this
+# build did not make. Skia is where they came apart: what an installed Skia
+# was compiled with cannot be read from a .pc file and its features are
+# exactly that, so the port refuses to take a system copy -- and it is
+# still the port that the module `skia` means. PKGCONFIG_NAMES says the
+# first without the second.
 function(cme_pkgconfig_port out module)
   set(${out} "" PARENT_SCOPE)
   get_property(names GLOBAL PROPERTY CME_PORTS)
   foreach(port IN LISTS names)
+    cme_port_field(named ${port} PKGCONFIG_NAMES)
+    if(module IN_LIST named)
+      set(${out} "${port}" PARENT_SCOPE)
+      return()
+    endif()
     cme_port_field(mapping ${port} SYSTEM_PKGCONFIG)
     foreach(pair IN LISTS mapping)
       if(pair MATCHES "^([^:]+):(.+)$")
@@ -3875,6 +3998,11 @@ is being built at" FORCE)
       if(usable)
         set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
                      "${${package}_VERSION}")
+        cme_alias_system_targets("${port}")
+        if(virtual)
+          cme_system_header_members("${port}" "${package}" "${needed}")
+        endif()
+        cme_check_promised("${port}" "${package}" "by the system")
         cme_note_decision("${package}" "system" "${${package}_VERSION}")
         cme_family_settled("${port}" "${package}" "system")
         set(${out_answer} "system" PARENT_SCOPE)
@@ -3887,6 +4015,8 @@ is being built at" FORCE)
       cme_enabled_features(${port} needed)
       cme_system_has_features(usable "${package}" "${port}" "${needed}")
       if(usable)
+        cme_alias_system_targets("${port}")
+        cme_check_promised("${port}" "${package}" "through pkg-config")
         cme_family_settled("${port}" "${package}" "system")
         set(${out_answer} "pkg-config" PARENT_SCOPE)
         return()

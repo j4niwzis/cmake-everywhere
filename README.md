@@ -399,6 +399,22 @@ are set to what a target makes of them. `SYSTEM_PKGCONFIG` is what makes it
 possible: a port already says which pkg-config modules a machine may have it
 as, and read backwards that says which port a module is.
 
+Those are two questions, though, and a port can answer one and not the
+other. *Which module names mean this library* is a fact about the library.
+*Which of them may answer for it* is a judgement about copies of it this
+build did not make. Skia is where they come apart: what an installed Skia was
+compiled with cannot be read from its `.pc` file, and this port's features
+are exactly that, so it will not take a system copy -- and the module `skia`
+still means it. `PKGCONFIG_NAMES` says the first without the second:
+
+```cmake
+PKGCONFIG_NAMES skia
+```
+
+Without it, a library inside the build that asks pkg-config for `skia` --
+skiff does -- links the machine's Skia while everything else links the one
+built here, and nothing says so.
+
 **Only a `REQUIRED` call.** Without `REQUIRED` the question is "does this
 machine have it", and answering that by building the library answers a
 different question -- an optional dependency would become a compulsory
