@@ -14,6 +14,10 @@ cme_declare_port(
   TARGETS libzip::zip
   CHECK_HEADER zip.h
   OPTIONS
+    # Its install rules name a target from another port -- zlib's -- and
+    # CMake checks an install(EXPORT) even when the directory it is in is
+    # EXCLUDE_FROM_ALL. A dependency does not install itself here anyway.
+    "LIBZIP_DO_INSTALL OFF"
     "BUILD_TOOLS OFF"
     "BUILD_REGRESS OFF"
     "BUILD_EXAMPLES OFF"
