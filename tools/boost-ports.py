@@ -68,6 +68,25 @@ def cmakelists(version, modules):
 # is unit_test_framework, with two more beside it that FindBoost has always
 # known by name.
 PRIMARY = {"test": "unit_test_framework"}
+
+# What a library needs that it does not say in Boost's own vocabulary, and
+# what has to be decided for it because it cannot be found out.
+#
+# Boost.Iostreams looks for zlib, bzip2, lzma and zstd with find_package, so
+# those arrive through the provider like anything else -- but it then asks
+# whether liblzma has multithreading by compiling a program against
+# LibLZMA::LibLZMA, and a try_compile is a separate project that cannot see a
+# target this build is going to produce. A library built from source cannot
+# answer a configure-time link probe; that is true of every such probe and
+# not only this one. So the answer is given rather than measured, and it is
+# the one that costs a feature rather than the one that costs a build: no
+# multithreaded lzma.
+EXTRA = {
+    "iostreams": {
+        "DEPENDS": ["zlib", "xz"],
+        "OPTIONS": ['"BOOST_IOSTREAMS_HAS_LZMA_CPUTHREADS 0"'],
+    },
+}
 ALSO = {"test": ["prg_exec_monitor", "test_exec_monitor"]}
 
 
@@ -201,9 +220,17 @@ else()
     GIT_TAG_TEMPLATE "boost-@VERSION@")
 endif()
 """
+        extra = EXTRA.get(module, {})
+        if extra.get("DEPENDS"):
+            depends = (depends + " " + " ".join(extra["DEPENDS"])).strip()
+        added = ""
         if depends:
+            added += f"  DEPENDS {depends}\n"
+        if extra.get("OPTIONS"):
+            added += "  OPTIONS " + " ".join(extra["OPTIONS"]) + "\n"
+        if added:
             text = text.replace("  TARGETS Boost::" + name + "\n",
-                                f"  TARGETS Boost::{name}\n  DEPENDS {depends}\n")
+                                f"  TARGETS Boost::{name}\n{added}")
         write(f"registry/{port(module)}/port.cmake", text)
 
     # A component brings the components it is built on. The member ports say

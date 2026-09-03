@@ -1325,6 +1325,27 @@ The same project, the same code, both ways round -- which is the point. A
 project should not need one dependency arrangement for a normal build and
 another one for a builder that unplugs the network.
 
+## Configuring until it settles
+
+One configure pass cannot un-build a library, so a request that arrives after
+the library it is about -- a component asked for by a third-party CMakeLists
+this build added, a version needed by something deep in the graph -- is
+written into the cache and the run stops, saying so. The next configure has
+it from the start.
+
+That is one round per requirement of this kind, and a project with several is
+several rounds, which is a poor thing to ask a person to do by hand:
+
+```sh
+tools/configure -S . -B build -G Ninja   -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=.../cmake-everywhere.cmake
+```
+
+Everything after the name goes to `cmake` unchanged. It stops on the first
+configure that succeeds, on a failure that is not this one -- it looks for
+the message, not for failure in general -- and on the ceiling, `CME_ROUNDS`,
+four by default, because a project that has not settled in four rounds is not
+going to.
+
 ## Checking it
 
 There is a build that runs one job per library, so a port that has rotted is
@@ -1345,6 +1366,32 @@ test/store.sh             # built once, found again, not found when it should no
 test/run.sh               # everything that needs no more than a compiler
 test/run.sh --with-skia-features   # and the ones that need gn and a wait
 ```
+
+Every Boost library there is a port for is built, both ways round. All of it
+in one build from the archive, because the archive is one download of
+everything and that is the shape of that path; and a job apiece from the
+repositories, because a job apiece is what says which library broke rather
+than which build did, and cloning one library and the ones under it is the
+shape of *that* path. Between runs it is ccache and the source cache, and
+deliberately not the store -- a store hit skips the compiling, and a job
+whose question is "does this still compile" must not be answered by not
+compiling it.
+
+### What a source build cannot answer
+
+A library that asks a question at configure time by compiling a program
+against one of its dependencies cannot be answered by a dependency this build
+is going to produce. `try_compile` generates a separate project, which can be
+handed imported targets but not targets that do not exist yet -- so a system
+copy answers such a probe and a source build cannot.
+
+Boost.Iostreams is the worked example: it asks whether liblzma has
+multithreading by compiling against `LibLZMA::LibLZMA`, and the answer, when
+that liblzma is being built here, is a CMake error rather than yes or no. So
+its port gives the answer instead of letting it be measured, and gives the
+one that costs a feature rather than the one that costs a build. Any port
+whose library probes this way needs the same, and the message it fails with
+names the target, which is how you find it.
 
 `test/decentral.sh` builds an upstream repository, an overlay directory and
 an overlay repository a minute before using them, and then uses a library

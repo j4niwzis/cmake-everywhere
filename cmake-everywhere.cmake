@@ -3414,9 +3414,10 @@ function(cme_check_late package port version features)
       "Features wanted from the ${port} port" FORCE)
     cme_note_decision("${package}" "needs feature" "${listed}")
     message(FATAL_ERROR
-      "cmake-everywhere: ${package} is already here without ${listed}, and "
-      "something now asks for it. Written down -- run cmake again and it "
-      "will be built with it.")
+      "cmake-everywhere: rerun -- ${package} is already here without "
+      "${listed}, and something now asks for it. Written down: run cmake "
+      "again and it will be built with it, or use tools/configure, which "
+      "does that for you.")
   endif()
 
   get_property(have GLOBAL PROPERTY CME_PROVIDED_VERSION_${package})
@@ -3432,10 +3433,11 @@ function(cme_check_late package port version features)
       "Lowest acceptable ${package}, learned from a later caller" FORCE)
     cme_note_decision("${package}" "requires" "${version}")
     message(FATAL_ERROR
-      "cmake-everywhere: ${package} is here as ${have} and something now asks "
-      "for ${version}, which is later than anything the registry was told "
-      "about. Written down -- run cmake again and it will be resolved at "
-      "${version} from the start.")
+      "cmake-everywhere: rerun -- ${package} is here as ${have} and something "
+      "now asks for ${version}, which is later than anything this was told "
+      "about. Written down: run cmake again and it will be resolved at "
+      "${version} from the start, or use tools/configure, which does that "
+      "for you.")
   endif()
 endfunction()
 

@@ -1,0 +1,41 @@
+#!/bin/sh
+# Configure, and configure again if the answer was "run cmake again".
+#
+# One configure pass cannot un-build a library, so a request that arrives
+# after the library it is about -- a component asked for by a third-party
+# CMakeLists that this build added, a version needed by something deep in the
+# graph -- is written into the cache and the run stops. The next configure
+# has it from the start. That is one round per requirement of this kind, and
+# a project with several of them means several rounds, which is a poor thing
+# to ask a person to do by hand.
+#
+#   tools/configure -S . -B build -G Ninja
+#
+# Everything after the name is handed to cmake unchanged. It stops on the
+# first configure that succeeds, on a failure that is not this one, and on
+# the ceiling -- CME_ROUNDS, four by default, because a project that has not
+# settled in four rounds is not going to.
+set -e
+rounds=${CME_ROUNDS:-4}
+marker="cmake-everywhere: rerun"
+round=1
+while :; do
+  log=$(mktemp)
+  if cmake "$@" 2>&1 | tee "$log"; then
+    rm -f "$log"
+    exit 0
+  fi
+  if ! grep -qF "$marker" "$log"; then
+    # It failed for some other reason, which running it again will not fix.
+    rm -f "$log"
+    exit 1
+  fi
+  rm -f "$log"
+  if [ "$round" -ge "$rounds" ]; then
+    echo "cmake-everywhere: still learning after $rounds rounds; stopping." >&2
+    echo "Raise CME_ROUNDS if this is a project that really is that deep." >&2
+    exit 1
+  fi
+  echo "cmake-everywhere: round $round learned something; configuring again."
+  round=$((round + 1))
+done

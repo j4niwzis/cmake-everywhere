@@ -93,6 +93,21 @@ def sampled(all_ports):
     return kept, dropped
 
 
+if "--boost-ports" in sys.argv:
+    # One entry per Boost library, for a job apiece.
+    print(json.dumps([p for p in ports()
+                      if p["family"] == "boost" and not p["source_only"]
+                      and p["port"] != "boost"]))
+    raise SystemExit(0)
+
+if "--boost-components" in sys.argv:
+    # Every component the umbrella declares, which is every Boost library
+    # there is a port for. What a build asking for all of Boost asks for.
+    text = code("registry/boost/port.cmake")
+    names = re.findall(r"cme_port_feature\(boost\s+(\S+)", text)
+    print(";".join(sorted(set(names))))
+    raise SystemExit(0)
+
 if "--matrix" in sys.argv:
     kept, _ = sampled(ports())
     print(json.dumps(kept))

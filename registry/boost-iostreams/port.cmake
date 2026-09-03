@@ -12,7 +12,8 @@ cme_declare_port(
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_iostreams
   TARGETS Boost::iostreams
-  DEPENDS boost-assert boost-config boost-core boost-detail boost-function boost-integer boost-iterator boost-mpl boost-numeric-conversion boost-preprocessor boost-random boost-range boost-regex boost-smart-ptr boost-throw-exception boost-type-traits boost-utility
+  DEPENDS boost-assert boost-config boost-core boost-detail boost-function boost-integer boost-iterator boost-mpl boost-numeric-conversion boost-preprocessor boost-random boost-range boost-regex boost-smart-ptr boost-throw-exception boost-type-traits boost-utility zlib xz
+  OPTIONS "BOOST_IOSTREAMS_HAS_LZMA_CPUTHREADS 0"
 )
 
 # Where the sources come from, which is the one thing about a Boost library
