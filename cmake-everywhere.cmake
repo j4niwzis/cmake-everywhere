@@ -620,7 +620,12 @@ function(cme_declare_port)
     else()
       set(exported "${CMAKE_BINARY_DIR}/cme-ports/${PORT_NAME}/port.cmake")
       set(text "# Written by cmake-everywhere from the declaration in\n")
-      string(APPEND text "# ${CMAKE_CURRENT_SOURCE_DIR}.\ncme_declare_port(\n")
+      string(APPEND text "# ${CMAKE_CURRENT_SOURCE_DIR}.\n#\n")
+      string(APPEND text
+        "# A VERSION here is the version of the copy this was installed "
+        "beside.\n# It is what is here, not what this library can be: with "
+        "GIT_TAG_TEMPLATE\n# or a port of your own, another version of it is "
+        "a build away.\ncme_declare_port(\n")
       foreach(field IN LISTS one)
         if(NOT "${PORT_${field}}" STREQUAL "")
           cme_quote(value "${PORT_${field}}")
@@ -670,6 +675,13 @@ function(cme_declare_port)
     endif()
     set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_${field}
       "${PORT_${field}}")
+    # A version out of a description that was installed beside a library is
+    # the version of that copy. It is remembered as such, because it must
+    # never be the reason something is not built.
+    if(field STREQUAL "VERSION" AND origin MATCHES "^the system")
+      set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_VERSION_INSTALLED
+                   TRUE)
+    endif()
   endforeach()
   if(NOT merging)
     set_property(GLOBAL APPEND PROPERTY CME_PORTS "${PORT_NAME}")
@@ -1397,6 +1409,24 @@ function(cme_finish_exports)
     if(NOT needs)
       continue()
     endif()
+    # What a library needed is only what the library needs when it was built
+    # with nothing turned on. A build with a feature on needed what that
+    # feature needs, and writing that down as what the library needs would
+    # make the next project build a dependency it never asked for. So when
+    # anything was on, what was needed is said and not declared.
+    cme_enabled_features(${name} switched_on)
+    if(switched_on)
+      list(JOIN switched_on ", " listed_on)
+      list(JOIN needs " " listed_needs)
+      cme_export_line(${name}
+        "# Built here with ${listed_on}, and it needed ${listed_needs}. That "
+        "is a fact\n# about that build rather than about this library, so it "
+        "is not declared.")
+      message(STATUS
+        "cmake-everywhere: ${name} was built with ${listed_on}, so what it "
+        "needed is not written into its exported port")
+      continue()
+    endif()
     set(said "cme_port_needs(${name}")
     foreach(item IN LISTS needs)
       cme_quote(value "${item}")
@@ -1829,6 +1859,13 @@ function(cme_enabled_features port out)
   endforeach()
   set(result "")
   foreach(feature IN LISTS enabled)
+    # An empty item is not a feature. A list of two of them is still a list,
+    # and if(list) is true for it -- which is how "built with , so what it
+    # needed is not written down" came to be printed about a library with no
+    # features at all.
+    if(NOT feature)
+      continue()
+    endif()
     cme_feature_refused(refused ${port} ${feature})
     if(NOT refused)
       list(APPEND result "${feature}")
@@ -2006,7 +2043,7 @@ function(cme_source_ports port source)
     include("${file}")
     set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "")
     set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
-    message(STATUS "cmake-everywhere: ${port} describes itself in ${name}")
+    message(STATUS "cmake-everywhere: ${port} carries ${name}")
   endforeach()
 endfunction()
 
@@ -2097,30 +2134,55 @@ function(cme_build_port port package version exact)
       "cmake-everywhere: ${port} ${port_version} is not one of the versions "
       "this port has an archive and a digest for. It has: ${available}")
   endif()
+  get_property(installed_version GLOBAL PROPERTY
+               CME_PORT_${port}_VERSION_INSTALLED)
   if(listed)
     # A listed version is fetched and checked, so there is no tag to work out.
   elseif(NOT port_version VERSION_EQUAL pinned)
     cme_port_field(template ${port} GIT_TAG_TEMPLATE)
-    if(NOT template)
+    if(NOT template AND installed_version AND port_tag)
+      # The version came from a copy installed on this machine and something
+      # wants more than that copy is. That the copy will not do is why we are
+      # here; it says nothing about the library, and a tag was given. So it
+      # is fetched, and what it turns out to be is checked afterwards against
+      # what the library says it is.
+      message(STATUS
+        "cmake-everywhere: the ${port} installed here is ${pinned} and "
+        "${port_version} is wanted, so ${port_tag} is fetched instead")
+    elseif(NOT template)
       message(FATAL_ERROR
         "cmake-everywhere: ${port} is pinned at ${pinned} and something needs "
         "${port_version}, but the port does not say how a version becomes a "
         "tag. Add GIT_TAG_TEMPLATE to registry/${port}/port.cmake.")
     endif()
-    string(REPLACE "." "_" underscored "${port_version}")
-    string(REPLACE "." "-" dashed "${port_version}")
-    string(REPLACE "@VERSION@" "${port_version}" port_tag "${template}")
-    string(REPLACE "@VERSION_UNDERSCORE@" "${underscored}" port_tag
-           "${port_tag}")
-    string(REPLACE "@VERSION_DASH@" "${dashed}" port_tag "${port_tag}")
-    message(STATUS
-      "cmake-everywhere: ${port} at ${port_version} rather than the pinned "
-      "${pinned}")
+    if(template)
+      string(REPLACE "." "_" underscored "${port_version}")
+      string(REPLACE "." "-" dashed "${port_version}")
+      string(REPLACE "@VERSION@" "${port_version}" port_tag "${template}")
+      string(REPLACE "@VERSION_UNDERSCORE@" "${underscored}" port_tag
+             "${port_tag}")
+      string(REPLACE "@VERSION_DASH@" "${dashed}" port_tag "${port_tag}")
+      message(STATUS
+        "cmake-everywhere: ${port} at ${port_version} rather than the pinned "
+        "${pinned}")
+    endif()
   endif()
   if(version AND port_version VERSION_LESS version)
+    # An installed port was written by a copy of the library, and a copy is
+    # one version built one way. That it cannot give what is asked for means
+    # the copy cannot, and says nothing about the library.
+    get_property(described GLOBAL PROPERTY CME_PORT_${port}_ORIGIN)
+    set(aside "")
+    if(described MATCHES "^the system")
+      set(aside
+          "\nThat description came from a copy of the library installed on "
+          "this machine, which is one version built one way. Add "
+          "GIT_TAG_TEMPLATE to say how a version of it becomes a tag, or "
+          "declare the port in this project.")
+    endif()
     message(FATAL_ERROR
       "cmake-everywhere: something asks for ${package} ${version} and ${port} "
-      "resolved to ${port_version}.")
+      "resolved to ${port_version}.${aside}")
   endif()
   if(exact AND NOT port_version VERSION_EQUAL version)
     message(FATAL_ERROR
@@ -2293,10 +2355,23 @@ function(cme_build_port port package version exact)
     # library and where it is has not said which version this is. The library
     # has.
     cme_port_field(said_version ${port} VERSION)
-    if(said_version AND NOT port_version)
+    get_property(installed_version GLOBAL PROPERTY
+                 CME_PORT_${port}_VERSION_INSTALLED)
+    if(said_version AND (NOT port_version OR installed_version))
       set(port_version "${said_version}")
+      set_property(GLOBAL PROPERTY CME_PORT_${port}_VERSION_INSTALLED FALSE)
       set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
                    "${port_version}")
+      # Asked again now that it is the library answering rather than a copy
+      # of it. Refusing here costs a fetch and is the truth; refusing before
+      # the fetch would have been a guess made from somebody else's build.
+      if(version AND port_version VERSION_LESS version)
+        message(FATAL_ERROR
+          "cmake-everywhere: something asks for ${package} ${version}, and "
+          "what was fetched says it is ${port_version}. The copy installed "
+          "on this machine was not it either, so there is nothing here that "
+          "is ${version}.")
+      endif()
     endif()
     cme_resolve_depends(${port})
     cme_enabled_features(${port} features)
@@ -2317,6 +2392,11 @@ function(cme_build_port port package version exact)
       return()
     endif()
   endif()
+
+  # The name the result is kept under, worked out here rather than before the
+  # fetch: what a library said about itself is part of what it is, and what a
+  # thing is decides where it is kept.
+  cme_store_entry(entry ${port} "${port_version}")
 
   if(CME_FETCH_ONLY)
     message(STATUS "cmake-everywhere: fetched ${port} ${port_version}")

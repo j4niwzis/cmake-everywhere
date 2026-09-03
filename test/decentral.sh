@@ -189,7 +189,7 @@ configure carried \
 check "a library carrying the ports for what it needs" "$code" \
   "$work/carried.log"
 
-if grep -qF "cme-ports.cmake carried by" "$work/carried.log"; then
+if grep -qF "world carries cme-ports.cmake" "$work/carried.log"; then
   printf '  ok    %s\n' "and it says which file it read"
 else
   printf '  FAIL  %s  (see %s)\n' "and it says which file it read" \
@@ -265,7 +265,7 @@ configure thin -DCME_PORT_DECLARE="$work/declare-thin.cmake" && code=0 || code=1
 check "a name and a URL, and the library says the rest" "$code" \
   "$work/thin.log"
 
-if grep -qF "hello describes itself in cme-port.cmake" "$work/thin.log" &&
+if grep -qF "hello carries cme-port.cmake" "$work/thin.log" &&
    grep -q "^hello .*1\.0\.0" "$work/thin/cme-lock.txt"; then
   printf '  ok    %s\n' "and what it said is what was used"
 else

@@ -140,6 +140,17 @@ declarations with your next project.
 `CME_EXPORT_PORTS=OFF` if you would rather your package did not carry them,
 `CME_SYSTEM_PORTS=OFF` if you would rather this build did not read them.
 
+**An installed port says what that copy is, not what the library can be.**
+It was written beside one version, built one way, with some features on and
+others off. So a version in it is the version that is here, not a ceiling: a
+`GIT_TAG_TEMPLATE` or a port of your own gets another one. And what a library
+needed is only written down when it was built with nothing turned on --
+otherwise it is a fact about that build, and declaring it would make the next
+project build a dependency it never asked for. When a description that came
+from an installed copy is the reason something is refused, the message says
+so, because "the copy here will not do" is a different thing from "this
+library cannot".
+
 ### Overlays
 
 An **overlay** is a directory of ports, laid out the way `registry/` is --
