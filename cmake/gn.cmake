@@ -535,11 +535,99 @@ function(cme_gn_export port)
   endforeach()
 endfunction()
 
+# What a built copy of a GN project looks like in the store: the archives it
+# produced, and a file describing how to use them. The description is written
+# while the real targets exist, because that is when what to say is known;
+# the archives arrive at the end of the build, and the entry counts as
+# present only when they have. An interrupted build therefore leaves an entry
+# that is not used rather than one that is half true.
+function(cme_gn_store_write port entry)
+  cme_port_field(exports ${port} GN_TARGETS)
+  file(MAKE_DIRECTORY "${entry}/lib")
+  set(text "# Written by cmake-everywhere. Do not edit; the name is a hash.\n")
+  foreach(pair IN LISTS exports)
+    if(NOT pair MATCHES "^([^=]+)=(.+)$")
+      continue()
+    endif()
+    set(alias "${CMAKE_MATCH_2}")
+    cme_gn_target_name(name "${CMAKE_MATCH_1}")
+    set(target "${port}_${name}")
+    if(NOT TARGET ${target})
+      continue()
+    endif()
+
+    get_target_property(includes ${target} INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(links ${target} INTERFACE_LINK_LIBRARIES)
+    get_target_property(defines ${target} INTERFACE_COMPILE_DEFINITIONS)
+    foreach(property includes links defines)
+      if(${property} STREQUAL "${property}-NOTFOUND")
+        set(${property} "")
+      endif()
+    endforeach()
+    # A link to another port is written as the name that port answers to,
+    # not as a path: the dependency is resolved again by whoever reads this,
+    # and may itself come out of the store.
+    string(APPEND text
+      "add_library(${alias} STATIC IMPORTED GLOBAL)\n"
+      "set_target_properties(${alias} PROPERTIES\n"
+      "  IMPORTED_LOCATION \"\${CMAKE_CURRENT_LIST_DIR}/lib/lib${target}.a\"\n"
+      "  INTERFACE_INCLUDE_DIRECTORIES \"${includes}\"\n"
+      "  INTERFACE_LINK_LIBRARIES \"${links}\"\n"
+      "  INTERFACE_COMPILE_DEFINITIONS \"${defines}\")\n")
+
+    # The archive is copied when it exists, which is after everything that
+    # makes it. The stamp is written last and is what a later configure
+    # looks for.
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "$<TARGET_FILE:${target}>" "${entry}/lib/lib${target}.a"
+      COMMAND ${CMAKE_COMMAND} -E touch "${entry}/complete"
+      COMMENT "cmake-everywhere: keeping ${alias} in the store"
+      VERBATIM)
+  endforeach()
+  file(WRITE "${entry}/use.cmake" "${text}")
+  # What this was built with, in full, whatever part of it the name was made
+  # from. A later build compares the whole of it and says what differs.
+  cme_environment_pairs(pairs)
+  list(JOIN pairs "\n" recorded)
+  file(WRITE "${entry}/environment.txt" "${recorded}\n")
+endfunction()
+
+# A GN label as the target name it was imported under. The same rule as
+# gn_import.py, because the two have to agree.
+function(cme_gn_target_name out label)
+  string(REGEX REPLACE "\\(.*$" "" name "${label}")
+  string(REGEX REPLACE "^//" "" name "${name}")
+  string(REGEX REPLACE "^:" "" name "${name}")
+  string(REGEX REPLACE ":" "__" name "${name}")
+  string(REGEX REPLACE "[^A-Za-z0-9_]" "_" name "${name}")
+  if(NOT name)
+    set(name "root")
+  endif()
+  set(${out} "${name}" PARENT_SCOPE)
+endfunction()
+
 function(cme_gn_build port source)
+  cme_effective_version(${port} version)
+  cme_store_entry(entry ${port} "${version}")
+
+  # Built before, with everything the same. Nothing is generated, nothing is
+  # compiled, and the targets come from the description written last time.
+  if(entry AND EXISTS "${entry}/complete" AND EXISTS "${entry}/use.cmake")
+    message(STATUS "cmake-everywhere: ${port} ${version} is already built")
+    cme_store_differences("${entry}")
+    include("${entry}/use.cmake")
+    cme_note_decision("${port}" "store" "${version}")
+    return()
+  endif()
+
   # Inside the fetched tree because GN speaks in paths relative to its own
   # source root, and a build directory outside it has no spelling there.
   set(build "${source}/out/cme")
   cme_gn_generate(${port} "${source}" "${build}" description)
   cme_gn_import(${port} "${description}")
   cme_gn_export(${port})
+  if(entry)
+    cme_gn_store_write(${port} "${entry}")
+  endif()
 endfunction()

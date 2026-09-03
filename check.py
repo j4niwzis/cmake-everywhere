@@ -12,6 +12,18 @@ job per library.
 import glob, json, re, shlex, sys
 
 
+def code(path):
+    """A file with its strings and comments taken out, in that order.
+
+    In that order because a # inside a quoted argument is not a comment, and
+    taking comments out first ate the rest of the line -- including a closing
+    parenthesis -- and reported an imbalance that was not there.
+    """
+    text = open(path).read()
+    text = re.sub(r'"(\\.|[^"\\])*"', '""', text, flags=re.S)
+    return re.sub(r"#[^\n]*", "", text)
+
+
 def declaration_keywords():
     """The words cme_declare_port treats as keys, read from where it says so.
 
@@ -33,7 +45,7 @@ def ports():
     keywords = declaration_keywords()
     found = []
     for path in sorted(glob.glob("registry/*/port.cmake")):
-        text = re.sub(r"#[^\n]*", "", open(path).read())
+        text = code(path)
         call = re.search(r"cme_declare_port\s*\((.*?)\n\)", text, re.S)
         if not call:
             continue
@@ -67,7 +79,7 @@ files = (["cmake-everywhere.cmake", "cmake/gn.cmake"]
          + sorted(glob.glob("test/registry/*/*.cmake"))
          + sorted(glob.glob("profiles/*.cmake")))
 for path in files:
-    text = re.sub(r"#[^\n]*", "", open(path).read())
+    text = code(path)
     defined |= set(re.findall(r"(?:function|macro)\(\s*(cme_[A-Za-z0-9_]+)", text))
     for name in re.findall(r"\b(cme_[A-Za-z0-9_]+)\s*\(", text):
         called.setdefault(name, path)
@@ -78,7 +90,7 @@ for name, where in sorted(called.items()):
         print(f"  called and never defined: {name}  ({where})")
         problems += 1
 for path in files:
-    text = re.sub(r"#[^\n]*", "", open(path).read())
+    text = code(path)
     if text.count("(") != text.count(")"):
         print(f"  unbalanced parentheses: {path}")
         problems += 1

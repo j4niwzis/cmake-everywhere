@@ -30,6 +30,234 @@ endif()
 # difference between a minute and half an hour on something like Skia. Ports
 # are given it; the project doing the consuming is left exactly as it
 # configured itself.
+# Built libraries, kept outside any build directory and found again by what
+# they were built from.
+#
+# The name of an entry is a hash of everything that could have changed the
+# result: which library, at which version, from which archive, with which
+# features, with which options, by which compiler for which target with which
+# flags -- and the same for everything underneath it. Two configurations that
+# differ anywhere differ in the name, so a hit is a hit on the same thing
+# rather than on the same words.
+#
+# What must never happen is a hit on something that is not the same. So when
+# in doubt an input goes into the hash: a hash that is too specific costs a
+# rebuild, and one that is not specific enough costs an afternoon.
+set(CME_STORE "" CACHE PATH
+  "Where built libraries are kept between builds, or empty for none")
+if(NOT CME_STORE AND NOT CME_STORE_DISABLED)
+  if(DEFINED ENV{XDG_CACHE_HOME})
+    set(CME_STORE "$ENV{XDG_CACHE_HOME}/cmake-everywhere/store" CACHE PATH "" FORCE)
+  elseif(DEFINED ENV{HOME})
+    set(CME_STORE "$ENV{HOME}/.cache/cmake-everywhere/store" CACHE PATH "" FORCE)
+  endif()
+endif()
+
+# How much of the environment a stored library has to have been built with
+# before it may be reused.
+#
+# Two different things are mixed together in what decides a build. What the
+# library *is* -- which library, which version, which sources, which features,
+# which options -- is identity, and a difference there is a different library
+# whatever the mode. The rest is the machine it was built on, and how much of
+# that has to match is a judgement rather than a fact.
+#
+#   EXACT       everything, down to the exact flags
+#   COMPATIBLE  what decides whether two objects can be linked and behave:
+#               the compiler and its major version, the target, the sysroot,
+#               the toolchain file, position independence, the build type
+#   LOOSE       only what makes the objects usable at all: the target and
+#               which compiler it was
+#
+# In every mode the whole environment is recorded and compared, and anything
+# that differs is said out loud. A reuse that is not exact is a decision, and
+# a decision that nobody is told about is a surprise later.
+set(CME_STORE_MATCH "COMPATIBLE" CACHE STRING
+  "How closely a stored library has to match: EXACT, COMPATIBLE or LOOSE")
+set_property(CACHE CME_STORE_MATCH PROPERTY STRINGS EXACT COMPATIBLE LOOSE)
+
+# Everything about this build that a compiled library could depend on, as
+# name and value, so that a difference can be named rather than counted.
+function(cme_environment_pairs out)
+  set(pairs "")
+  foreach(name IN ITEMS
+      CMAKE_SYSTEM_NAME CMAKE_SYSTEM_PROCESSOR
+      CMAKE_C_COMPILER_ID CMAKE_C_COMPILER_VERSION CMAKE_C_COMPILER
+      CMAKE_CXX_COMPILER_ID CMAKE_CXX_COMPILER_VERSION CMAKE_CXX_COMPILER
+      CMAKE_CXX_COMPILER_TARGET CMAKE_C_COMPILER_TARGET
+      CMAKE_BUILD_TYPE CMAKE_C_FLAGS CMAKE_CXX_FLAGS
+      CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE
+      CMAKE_SYSROOT CMAKE_POSITION_INDEPENDENT_CODE
+      CMAKE_CXX_STANDARD CMAKE_OSX_DEPLOYMENT_TARGET CMAKE_OSX_ARCHITECTURES)
+    list(APPEND pairs "${name}=${${name}}")
+  endforeach()
+  # A toolchain file decides most of the above and can decide more, so it
+  # counts as a whole rather than by what it happens to set.
+  set(toolchain "")
+  if(CMAKE_TOOLCHAIN_FILE AND EXISTS "${CMAKE_TOOLCHAIN_FILE}")
+    file(SHA256 "${CMAKE_TOOLCHAIN_FILE}" toolchain)
+  endif()
+  list(APPEND pairs "TOOLCHAIN=${toolchain}")
+  set(${out} "${pairs}" PARENT_SCOPE)
+endfunction()
+
+# The compiler's major version. A patch release of the same compiler does not
+# make a library it built unusable, and treating it as though it did means
+# rebuilding everything on a Tuesday.
+function(cme_major out version)
+  string(REGEX REPLACE "^([0-9]+).*$" "\\1" major "${version}")
+  set(${out} "${major}" PARENT_SCOPE)
+endfunction()
+
+# The part of the environment the name is made from, which is the part that
+# has to match.
+function(cme_environment_key out)
+  if(CME_STORE_MATCH STREQUAL "EXACT")
+    cme_environment_pairs(pairs)
+    list(JOIN pairs "|" text)
+    set(${out} "${text}" PARENT_SCOPE)
+    return()
+  endif()
+
+  cme_major(c_major "${CMAKE_C_COMPILER_VERSION}")
+  cme_major(cxx_major "${CMAKE_CXX_COMPILER_VERSION}")
+  set(toolchain "")
+  if(CMAKE_TOOLCHAIN_FILE AND EXISTS "${CMAKE_TOOLCHAIN_FILE}")
+    file(SHA256 "${CMAKE_TOOLCHAIN_FILE}" toolchain)
+  endif()
+
+  if(CME_STORE_MATCH STREQUAL "LOOSE")
+    set(parts "${CMAKE_SYSTEM_NAME}" "${CMAKE_SYSTEM_PROCESSOR}"
+              "${CMAKE_C_COMPILER_ID}" "${CMAKE_CXX_COMPILER_ID}"
+              "${CMAKE_CXX_COMPILER_TARGET}" "${CMAKE_SYSROOT}"
+              "${toolchain}")
+  else()
+    set(parts "${CMAKE_SYSTEM_NAME}" "${CMAKE_SYSTEM_PROCESSOR}"
+              "${CMAKE_C_COMPILER_ID}" "${c_major}"
+              "${CMAKE_CXX_COMPILER_ID}" "${cxx_major}"
+              "${CMAKE_CXX_COMPILER_TARGET}" "${CMAKE_C_COMPILER_TARGET}"
+              "${CMAKE_SYSROOT}" "${CMAKE_POSITION_INDEPENDENT_CODE}"
+              "${CMAKE_CXX_STANDARD}" "${CMAKE_BUILD_TYPE}"
+              "${CMAKE_OSX_DEPLOYMENT_TARGET}" "${CMAKE_OSX_ARCHITECTURES}"
+              "${toolchain}")
+  endif()
+  list(JOIN parts "|" text)
+  set(${out} "${CME_STORE_MATCH}|${text}" PARENT_SCOPE)
+endfunction()
+
+# What was recorded when this was built against what is true now. Everything
+# that differs is named; whether any of it matters was decided by the mode
+# when the name was made.
+function(cme_store_differences entry)
+  if(NOT EXISTS "${entry}/environment.txt")
+    return()
+  endif()
+  file(STRINGS "${entry}/environment.txt" recorded)
+  cme_environment_pairs(now)
+  set(differences "")
+  foreach(pair IN LISTS recorded)
+    if(NOT pair MATCHES "^([^=]+)=(.*)$")
+      continue()
+    endif()
+    set(name "${CMAKE_MATCH_1}")
+    set(was "${CMAKE_MATCH_2}")
+    foreach(current IN LISTS now)
+      if(current MATCHES "^${name}=(.*)$")
+        if(NOT "${CMAKE_MATCH_1}" STREQUAL "${was}")
+          list(APPEND differences "${name}: built with [${was}], now [${CMAKE_MATCH_1}]")
+        endif()
+        break()
+      endif()
+    endforeach()
+  endforeach()
+  if(differences)
+    list(LENGTH differences count)
+    message(STATUS
+      "cmake-everywhere: reusing it across ${count} difference(s), because "
+      "CME_STORE_MATCH is ${CME_STORE_MATCH}")
+    foreach(difference IN LISTS differences)
+      message(STATUS "    ${difference}")
+    endforeach()
+  endif()
+endfunction()
+
+# What the library is, as opposed to what it was built on. A difference here
+# is a different library in any mode.
+function(cme_identity_key out port version)
+  cme_enabled_features(${port} features)
+  cme_port_field(options ${port} OPTIONS)
+  foreach(feature IN LISTS features)
+    cme_feature_field(extra ${port} ${feature} OPTIONS)
+    list(APPEND options ${extra})
+    cme_feature_field(extra ${port} ${feature} GN_ARGS)
+    list(APPEND options ${extra})
+  endforeach()
+  cme_port_field(gn_args ${port} GN_ARGS)
+  list(APPEND options ${gn_args} ${CME_OPTIONS_${port}} ${CME_GN_ARGS_${port}})
+
+  # The port file itself: changing what a port does has to change the name of
+  # what it produces.
+  set(recipe "")
+  file(GLOB files "${CME_REGISTRY}/${port}/*.cmake")
+  foreach(file IN LISTS files)
+    file(SHA256 "${file}" digest)
+    string(APPEND recipe "${digest}")
+  endforeach()
+
+  # And everything underneath, by the same rule.
+  set(beneath "")
+  cme_gn_dependency_ports_or_depends(${port} deps)
+  foreach(dep IN LISTS deps)
+    cme_effective_version(${dep} dep_version)
+    get_property(dep_features GLOBAL PROPERTY CME_REQUIRED_FEATURES_${dep})
+    list(APPEND beneath "${dep}=${dep_version}[${dep_features}]")
+  endforeach()
+
+  list(JOIN options "|" options)
+  list(JOIN features "," features)
+  list(JOIN beneath "|" beneath)
+  set(${out} "${port}|${version}|${features}|${options}|${recipe}|${beneath}"
+      PARENT_SCOPE)
+endfunction()
+
+# Dependencies of a port, including the ones a feature brought. Named apart
+# from the one in gn.cmake because this is asked before a port is known to be
+# a GN project at all.
+function(cme_gn_dependency_ports_or_depends port out)
+  cme_port_field(depends ${port} DEPENDS)
+  cme_enabled_features(${port} features)
+  foreach(feature IN LISTS features)
+    cme_feature_field(extra ${port} ${feature} DEPENDS)
+    list(APPEND depends ${extra})
+  endforeach()
+  set(result "")
+  foreach(spec IN LISTS depends)
+    cme_split_requirement("${spec}" dep unused unused_features)
+    list(APPEND result "${dep}")
+  endforeach()
+  if(result)
+    list(REMOVE_DUPLICATES result)
+  endif()
+  set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
+function(cme_store_key out port version)
+  cme_identity_key(identity ${port} "${version}")
+  cme_environment_key(environment)
+  string(SHA256 digest "2|${identity}|${environment}")
+  string(SUBSTRING "${digest}" 0 16 digest)
+  set(${out} "${digest}" PARENT_SCOPE)
+endfunction()
+
+function(cme_store_entry out port version)
+  if(NOT CME_STORE)
+    set(${out} "" PARENT_SCOPE)
+    return()
+  endif()
+  cme_store_key(key ${port} "${version}")
+  set(${out} "${CME_STORE}/${port}/${version}-${key}" PARENT_SCOPE)
+endfunction()
+
 # A build with no network. Everything a build reads has to be in the source
 # cache already, put there by a run that did have one -- which is what
 # tools/prefetch is for. This is not an optimisation: some builders, flatpak

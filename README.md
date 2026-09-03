@@ -612,6 +612,64 @@ library with CMake, a library without one, and a library with a different
 build system entirely -- and enough to prove the interesting case:
 `find_package(SndFile)` alone brings four more.
 
+## Not building the same thing twice
+
+A library that has been built before, from the same sources with the same
+features by the same compiler for the same target, is not built again. It is
+kept in `~/.cache/cmake-everywhere/store` under a name that is a hash of all
+of that -- and of everything underneath it, so a change to zlib changes the
+name of everything above zlib.
+
+```
+store/skia/153-4f2b9c1ea3d07e58/
+  use.cmake     what the library is and how to use it
+  lib/          the archives
+  complete      written last, and the only thing a later build looks for
+```
+
+A later configure that computes the same name reads `use.cmake` and has its
+targets in a second: no fetch, no `gn gen`, no five hundred compiles.
+
+How much has to match is a choice, because two different things are mixed
+together in what decides a build. What the library *is* -- which library, at
+which version, from which sources, with which features and options -- is its
+identity, and a difference there is a different library whatever you say. The
+rest is the machine it was built on, and how much of that matters is a
+judgement:
+
+| `CME_STORE_MATCH` | what has to match |
+| --- | --- |
+| `EXACT` | everything, down to the exact flags |
+| `COMPATIBLE` (default) | what decides whether objects link and behave: the compiler and its major version, the target, the sysroot, the toolchain file, position independence, the C++ standard, the build type |
+| `LOOSE` | only what makes the objects usable at all: the target and which compiler it was |
+
+`COMPATIBLE` means a patch release of the same compiler, a changed warning
+flag or a different `-O` is a hit rather than half an hour. In every mode the
+whole environment is recorded next to the library and compared on the way
+back in, and everything that differs is printed:
+
+```
+-- cmake-everywhere: skia 153 is already built
+-- cmake-everywhere: reusing it across 2 difference(s), because CME_STORE_MATCH is COMPATIBLE
+--     CMAKE_CXX_FLAGS: built with [-O2], now [-O2 -march=native]
+--     CMAKE_CXX_COMPILER_VERSION: built with [19.1.7], now [19.1.9]
+```
+
+A reuse that is not exact is a decision, and a decision nobody is told about
+is a surprise later.
+
+Two things this is careful about. The archives are copied when the build has
+made them and the stamp is written last, so an interrupted build leaves an
+entry that is ignored rather than one that is half true. And when in doubt an
+input goes into the hash: a hash that is too specific costs a rebuild, and
+one that is not specific enough costs an afternoon of looking for why a
+library behaves as though it were built with something else.
+
+Turn it off with `-DCME_STORE=` (empty), or point it somewhere else with
+`-DCME_STORE=/path`. There is a compiler cache as well, used when one is
+installed, but it is the smaller half: it makes compiling cheaper, while this
+skips the compiling, the generating and the linking together.
+
 ## A build with no network
 
 Some builders take the network away on purpose -- flatpak-builder does -- and
