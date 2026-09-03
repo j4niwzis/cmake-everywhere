@@ -33,6 +33,11 @@ cme_declare_port(
   # another; a number that is not listed is refused, because there is no
   # digest for it.
   VERSION 153
+  # Its AHardwareBuffer code on Android includes vulkan_core.h whether or
+  # not there is a Vulkan backend in this build, so the headers are needed
+  # even by a build that asked for GL and nothing else. Headers only: no
+  # loader, no driver.
+  DEPENDS vulkan-headers
   # What the module called skia is, without saying that an installed one
   # will do. A project inside this build that asks pkg-config for skia --
   # skiff does -- is asking for this library, and answering it with the
