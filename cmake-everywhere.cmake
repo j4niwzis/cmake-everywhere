@@ -1025,7 +1025,7 @@ function(cme_declare_port)
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
           PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
-          CHECK_HEADER)
+          CHECK_HEADER ARRANGEMENT)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS)
@@ -1681,6 +1681,14 @@ function(cme_store_write port package entry)
   file(REMOVE_RECURSE "${building}")
   file(MAKE_DIRECTORY "${building}/lib")
   set(text "# Written by cmake-everywhere. Do not edit; the name is a hash.\n")
+  # An entry keeps the headers a library wrote while configuring, and points
+  # at the ones that were already in its source tree rather than copying
+  # them. That is cheap and it is true on the machine that built it -- and a
+  # store handed to another machine, or to another job, may not have those
+  # sources. So the entry says which directories it is relying on, and checks
+  # them before it defines anything: a missing one is a miss, and a miss is a
+  # rebuild rather than an imported target pointing into nothing.
+  set(outside "")
   set(main "")
   set(everything "")
   foreach(alias IN LISTS aliases)
@@ -1721,6 +1729,11 @@ function(cme_store_write port package entry)
       file(REMOVE_RECURSE "${building}")
       return()
     endif()
+    foreach(directory IN LISTS includes)
+      if(NOT directory MATCHES "^\\\${CMAKE_CURRENT_LIST_DIR}")
+        list(APPEND outside "${directory}")
+      endif()
+    endforeach()
 
     set(archives "${target}")
     set(links "")
@@ -1737,6 +1750,31 @@ function(cme_store_write port package entry)
     list(JOIN defines ";" defines)
     list(JOIN options ";" options)
 
+    # A name that is somebody else's target has to be somebody else's target
+    # again when this is read back. The entry says which package makes it and
+    # asks for it -- through the provider, so another port in the registry is
+    # built or found, and something the consumer's CMake knows about, like
+    # Threads::Threads, is found by its own find module.
+    #
+    # Without this the entry sets a link interface naming a target that does
+    # not exist, and the failure is at generate time in a file whose name is
+    # a hash, about a target the project never mentioned.
+    foreach(item IN LISTS rest)
+      if(NOT item MATCHES "^([A-Za-z0-9_.+-]+)::")
+        continue()
+      endif()
+      string(APPEND text
+        "if(NOT TARGET ${item})\n"
+        "  find_package(${CMAKE_MATCH_1} QUIET)\n"
+        "endif()\n"
+        "if(NOT TARGET ${item})\n"
+        "  message(FATAL_ERROR\n"
+        "    \"cmake-everywhere: ${port} was built against ${item}, and this "
+        "build has no target by that name. find_package(${CMAKE_MATCH_1}) "
+        "did not make one.\")\n"
+        "endif()\n")
+    endforeach()
+
     string(APPEND text
       "add_library(${alias} STATIC IMPORTED GLOBAL)\n"
       "set_target_properties(${alias} PROPERTIES\n"
@@ -1745,6 +1783,18 @@ function(cme_store_write port package entry)
       "  INTERFACE_LINK_LIBRARIES \"${rest}\"\n"
       "  INTERFACE_COMPILE_OPTIONS \"${options}\"\n"
       "  INTERFACE_COMPILE_DEFINITIONS \"${defines}\")\n")
+
+    # And the name the library calls itself, once the target it points at
+    # exists. Boost.Filesystem puts $<TARGET_PROPERTY:boost_filesystem,TYPE>
+    # in its own compile definitions, and on a hit that target does not
+    # exist: only the namespaced name does, which is the one a consumer
+    # writes and not the one the library wrote about itself.
+    if(NOT target STREQUAL alias)
+      string(APPEND text
+        "if(NOT TARGET ${target})\n"
+        "  add_library(${target} ALIAS ${alias})\n"
+        "endif()\n")
+    endif()
 
     list(APPEND everything ${archives})
   endforeach()
@@ -1768,6 +1818,22 @@ function(cme_store_write port package entry)
   endwhile()
   string(APPEND text
     "set_property(GLOBAL PROPERTY CME_EXPORT_${package} \"\${CME_STORED_EXPORT}\")\n")
+
+  if(outside)
+    list(REMOVE_DUPLICATES outside)
+    set(guard "")
+    foreach(directory IN LISTS outside)
+      string(APPEND guard
+        "if(NOT EXISTS \"${directory}\")\n"
+        "  message(STATUS\n"
+        "    \"cmake-everywhere: ${port} was kept beside ${directory}, and "
+        "that is not here now\")\n"
+        "  set(CME_STORE_INCOMPLETE TRUE)\n"
+        "  return()\n"
+        "endif()\n")
+    endforeach()
+    set(text "${guard}${text}")
+  endif()
 
   # A target of our own rather than a step after theirs: a POST_BUILD command
   # may only be attached to a target created in the same directory, and a
@@ -2669,9 +2735,18 @@ function(cme_store_hit out port package version features)
      OR NOT EXISTS "${entry}/use.cmake")
     return()
   endif()
+  # Read before it is believed: the entry checks the directories it was kept
+  # beside and stops before defining anything if one of them is gone.
+  set(CME_STORE_INCOMPLETE FALSE)
+  include("${entry}/use.cmake")
+  if(CME_STORE_INCOMPLETE)
+    message(STATUS
+      "cmake-everywhere: ${port} ${version} is in the store and not usable "
+      "here, so it is built")
+    return()
+  endif()
   message(STATUS "cmake-everywhere: ${port} ${version} is already built")
   cme_store_differences("${entry}")
-  include("${entry}/use.cmake")
   set_property(GLOBAL PROPERTY CME_BUILT_FEATURES_${port} "${features}")
   set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package} "${version}")
   cme_note_decision("${port}" "store" "${version}")

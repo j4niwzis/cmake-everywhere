@@ -13,6 +13,7 @@ cme_declare_port(
   SYSTEM_PACKAGE boost_parameter_python
   TARGETS Boost::parameter_python
   DEPENDS boost-mpl boost-parameter boost-preprocessor boost-python
+  ARRANGEMENT BOOST_ENABLE_PYTHON
 )
 
 # Where the sources come from, which is the one thing about a Boost library

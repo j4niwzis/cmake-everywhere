@@ -27,6 +27,18 @@ ARCHIVE = "boost-{version}-cmake.tar.xz"
 # form this can read. Named here rather than dropped silently.
 ALIASES = {"disable_autolinking": "config", "numeric_conversion": "numeric/conversion"}
 
+# Libraries Boost itself will not build unless it is told the machine has
+# what they need: BOOST_ENABLE_MPI and BOOST_ENABLE_PYTHON, both off by
+# default. The lists are Boost's own, in boostorg/cmake.
+#
+# They are ports like any other and can be asked for by name. What they are
+# not is a dependency of anything: odeint mentions Boost::mpi inside
+# if(BOOST_ENABLE_MPI), and every reference in a file is a reference whether
+# or not the branch it is in is taken -- so reading them as dependencies had
+# odeint building MPI, and MPI failing on a header no machine here has.
+BY_ARRANGEMENT = ["mpi", "graph_parallel", "property_map_parallel",
+                  "python", "parameter_python"]
+
 
 def fetch(url):
     with urllib.request.urlopen(url, timeout=60) as answer:
@@ -150,8 +162,15 @@ def graph(sources):
                 if target != "boost":
                     unresolved.add(target)
                 continue
-            if where != module:
-                needs.add(where)
+            # An edge into one of those is dropped, unless it comes from
+            # one of them: property_map_parallel links Boost::mpi and means
+            # it, which is why they are a set rather than a list of things
+            # nobody may depend on.
+            if where == module:
+                continue
+            if key(where) in BY_ARRANGEMENT and key(module) not in BY_ARRANGEMENT:
+                continue
+            needs.add(where)
         edges[module] = sorted(needs)
     return edges, defines, unresolved
 
@@ -198,6 +217,15 @@ def main(version):
             print(f"{module}: no library target, no port")
             continue
         name = target(module, defines)
+        # A library that needs something of the machine's, said in the port
+        # rather than left for the build to discover. Boost will not build
+        # these unless it is told, and nothing that lists all of Boost should
+        # list them.
+        arrangement = ""
+        if key(module) in BY_ARRANGEMENT:
+            switch = "BOOST_ENABLE_PYTHON" if "python" in key(module) \
+                     else "BOOST_ENABLE_MPI"
+            arrangement = f"\n  ARRANGEMENT {switch}"
         depends = " ".join(port(other) for other in edges[module])
         text = f"""# Written by tools/boost-ports.py from what boostorg/{modules[module]}
 # declares. Do not edit: run the script again.
@@ -212,7 +240,7 @@ cme_declare_port(
   FAMILY boost
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_{key(module)}
-  TARGETS Boost::{name}
+  TARGETS Boost::{name}{arrangement}
 )
 
 # Where the sources come from, which is the one thing about a Boost library
@@ -390,6 +418,11 @@ endfunction()
     for module in modules:
         if not defines.get(module):
             continue
+        # No job for a library that needs MPI or Python: a runner has
+        # neither, and a red job for a machine that was never going to have
+        # what it needs says nothing about the port.
+        if key(module) in BY_ARRANGEMENT:
+            continue
         needs = [port(other) for other in edges[module] if defines.get(other)]
         waits = ""
         if needs:
@@ -400,11 +433,19 @@ endfunction()
         # and takes theirs as they left them. Its own store is never restored
         # -- a job whose question is "does this library build" must not be
         # answered by not building it.
+        # And their sources beside their stores. A stored entry points at
+        # the headers that were in the tree it was built from rather than
+        # copying them, so a store without the sources it was kept beside is
+        # a miss -- correct, and a great deal of rebuilding for nothing.
         theirs = "\n".join(
             f"""      - uses: actions/cache/restore@v4
         with:
           path: .cache/store
-          key: boost-store-{other}-{version}"""
+          key: boost-store-{other}-{version}
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/sources
+          key: boost-git-{other}-{version}"""
             for other in sorted(needs))
         jobs.append(f"""  {port(module)}:
 {waits}    runs-on: ubuntu-latest
@@ -415,7 +456,6 @@ endfunction()
         with:
           path: .cache/sources
           key: boost-git-{port(module)}-{version}
-          restore-keys: boost-git-
       - uses: actions/cache@v4
         with:
           path: .cache/ccache

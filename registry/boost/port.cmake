@@ -399,7 +399,7 @@ cme_port_feature(boost ratio
   DEPENDS boost-ratio)
 cme_port_feature(boost numeric_odeint
   SUMMARY "Boost.numeric odeint"
-  IMPLIES assert compute config core fusion iterator math mpi mpl multi_array numeric_ublas preprocessor range throw_exception type_traits units utility
+  IMPLIES assert compute config core fusion iterator math mpl multi_array numeric_ublas preprocessor range throw_exception type_traits units utility
   DEPENDS boost-numeric-odeint)
 cme_port_feature(boost geometry
   SUMMARY "Boost.geometry"

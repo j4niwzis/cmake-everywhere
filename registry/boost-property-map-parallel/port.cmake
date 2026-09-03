@@ -13,6 +13,7 @@ cme_declare_port(
   SYSTEM_PACKAGE boost_property_map_parallel
   TARGETS Boost::property_map_parallel
   DEPENDS boost-assert boost-bind boost-concept-check boost-config boost-function boost-mpi boost-mpl boost-multi-index boost-optional boost-property-map boost-serialization boost-smart-ptr boost-type-traits
+  ARRANGEMENT BOOST_ENABLE_MPI
 )
 
 # Where the sources come from, which is the one thing about a Boost library

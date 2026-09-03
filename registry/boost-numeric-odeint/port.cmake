@@ -12,7 +12,7 @@ cme_declare_port(
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_numeric_odeint
   TARGETS Boost::numeric_odeint
-  DEPENDS boost-assert boost-compute boost-config boost-core boost-fusion boost-iterator boost-math boost-mpi boost-mpl boost-multi-array boost-numeric-ublas boost-preprocessor boost-range boost-throw-exception boost-type-traits boost-units boost-utility
+  DEPENDS boost-assert boost-compute boost-config boost-core boost-fusion boost-iterator boost-math boost-mpl boost-multi-array boost-numeric-ublas boost-preprocessor boost-range boost-throw-exception boost-type-traits boost-units boost-utility
 )
 
 # Where the sources come from, which is the one thing about a Boost library
