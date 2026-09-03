@@ -16,6 +16,118 @@ That is the whole consumer side. libsndfile looks for ogg, vorbis, FLAC and
 opus itself; those four calls are answered here rather than in your
 CMakeLists. Nothing about them appears in your project.
 
+## A library nobody has ported
+
+The reason to use CPM is not that it is CMake and convenient. It is that
+nobody has to agree: a git URL and a tag are enough, the repository already
+exists, and a project can depend on it this afternoon. An index that has to
+accept a library first turns that into a queue.
+
+So this is a default, not a gate, and the ordinary case is a port written
+where it is used:
+
+```cmake
+cme_declare_port(
+  NAME hello
+  PROVIDES Hello
+  VERSION 1.0.0
+  GIT_REPOSITORY https://example.invalid/hello.git
+  GIT_TAG v1.0.0
+)
+
+find_package(Hello REQUIRED)          # and everything under it resolves too
+```
+
+That port is a port in every way the ones here are: features, versions, the
+store, and every `find_package` underneath it. Nothing about it is second
+class and nothing about it involves us.
+
+### What a library needs is the library's to say
+
+The obvious problem with the above is that it does not stop at one. If
+`hello` needs two libraries nobody has ported either, every project that uses
+`hello` would have to declare those too, and their names would appear in
+CMakeLists files that have nothing to do with them.
+
+They do not have to. A library says what it needs, and whoever fetches it
+reads that before configuring it -- which is before the library's own
+`find_package` calls happen:
+
+* **a library that uses this says it in its own CMakeLists.** Its
+  `cme_declare_port` calls run when its directory is added, which is exactly
+  when they are needed. There is no extra file, no convention to adopt, and
+  nothing to keep in sync: using this *is* the declaration.
+* **a library that has never heard of this** can carry a `cme-ports.cmake`
+  (or `.cme/ports.cmake`), which is the same calls and nothing else.
+* **a library you do not control** can have one attached to it by whoever
+  declares it: `PORTS_FROM ports/hello-deps.cmake`, relative to the fetched
+  tree, or an absolute path to a file you keep yourself.
+
+So a project declares what it uses, and what that uses does not leak into it.
+
+### Without cloning anything
+
+Finding out what a library needs by cloning the library is backwards when the
+question is whether this machine already has it. So what a project declares
+is installed beside the project:
+
+```
+${prefix}/share/cmake-everywhere/ports/<name>/port.cmake
+```
+
+A library that uses this writes nothing to make that happen -- it declared
+the ports already, and installing the library installs them. Any prefix in
+`CMAKE_PREFIX_PATH` is then a place ports come from: no index, no server, no
+clone, and the metadata arrives with the package it describes. A distribution
+that packages a library can ship its port in the package; the store can do
+the same for what it builds; `make install` into your own prefix shares your
+declarations with your next project.
+
+`CME_EXPORT_PORTS=OFF` if you would rather your package did not carry them,
+`CME_SYSTEM_PORTS=OFF` if you would rather this build did not read them.
+
+### Overlays
+
+An **overlay** is a directory of ports, laid out the way `registry/` is --
+one directory per port, each with a `port.cmake`. Name as many as you like,
+as paths or as URLs:
+
+```
+-DCME_OVERLAYS="/home/me/ports;https://example.invalid/our-ports.git#stable"
+```
+
+A URL is cloned once into `~/.cache/cmake-everywhere/overlays` and then left
+alone; `#ref` pins it to a branch or a tag, and `-DCME_OVERLAY_REFRESH=ON`
+updates the ones that are not pinned. This is for an organisation with its
+own libraries, not for the ordinary case.
+
+### The order
+
+| | |
+| --- | --- |
+| the project | `cme_declare_port()` in your own CMakeLists |
+| a fetched source | what the library itself says it needs |
+| an overlay | in the order the overlays are named |
+| the system | `share/cmake-everywhere/ports` in the prefixes |
+| the registry | the ports that come with this |
+
+The first one that names a port is the one that is read, and the build says
+so: `beta comes from the overlay ...; the copy in the registry is not read`.
+`cme_report()` names, for every library in the build, who ported it.
+
+Explicit before ambient, and yours before anybody's: an overlay can correct a
+port here without waiting for us to merge anything, and a project can correct
+an overlay without waiting for whoever keeps it.
+
+### The registry is the part that should shrink
+
+Everything above is what makes the registry in this repository a fallback.
+The number of ports in it is how much work is left, not how much is done: a
+port exists because a library has not adopted this, and adopting it is a
+handful of lines in the library's own CMakeLists, for which the library gets
+its own dependencies resolved the same way. When that happens the port here
+should shrink to nothing and then be deleted.
+
 ## Why this is possible at all
 
 CMake 3.24 added [dependency providers][provider]. A provider installed

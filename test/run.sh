@@ -97,6 +97,15 @@ else
   report 1 "store  (see $out/store.log)"
 fi
 
+echo "ports from anywhere -- a library nobody has ported, used three ways"
+if "$here/decentral.sh" "$out/decentral" >"$out/decentral.log" 2>&1; then
+  sed 's/^/  /' "$out/decentral.log"
+  passed=$((passed + 1))
+else
+  sed 's/^/  /' "$out/decentral.log"
+  report 1 "decentral  (see $out/decentral.log)"
+fi
+
 echo "builds"
 expect_build features "$here/features"
 expect_build features-from-source "$here/features" -DCME_SYSTEM=NEVER

@@ -204,11 +204,19 @@ function(cme_identity_key out port version)
   # The port file itself: changing what a port does has to change the name of
   # what it produces.
   set(recipe "")
-  file(GLOB files "${CME_REGISTRY}/${port}/*.cmake")
-  foreach(file IN LISTS files)
-    file(SHA256 "${file}" digest)
-    string(APPEND recipe "${digest}")
-  endforeach()
+  get_property(port_dir GLOBAL PROPERTY CME_PORT_${port}_DIR)
+  if(port_dir)
+    file(GLOB files "${port_dir}/*.cmake")
+    foreach(file IN LISTS files)
+      file(SHA256 "${file}" digest)
+      string(APPEND recipe "${digest}")
+    endforeach()
+  else()
+    # A port a project declared in its own CMakeLists has no file of its own,
+    # so what it said is hashed instead. Either way, changing what a port
+    # does changes the name of what it produces.
+    get_property(recipe GLOBAL PROPERTY CME_PORT_${port}_RECIPE)
+  endif()
 
   # And everything underneath, by the same rule and in full. A version and a
   # feature list is not enough: editing zlib's port changes what zlib is, and
@@ -305,7 +313,71 @@ include("${CME_DIR}/cmake/gn.cmake")
 include("${CME_DIR}/cmake/cmakeproject.cmake")
 
 set(CME_REGISTRY "${CME_DIR}/registry" CACHE PATH
-  "Where the ports are. Point this at your own directory to add ports.")
+  "The ports that come with this. Overlays are searched before it.")
+
+# Ports do not have to be ours, and that is the point.
+#
+# What makes CPM worth using is not that it is CMake and convenient. It is
+# that a library needs nobody's permission: a git URL and a tag are enough,
+# the repository already exists, and a project can depend on it this
+# afternoon without an index accepting it first. A registry that only worked
+# for what it contained would take exactly that away and hand it back as a
+# queue.
+#
+# So there are three places a port comes from, searched in this order:
+#
+#   the project    -- cme_declare_port() written in your own CMakeLists,
+#                     for a library nobody has ported and nobody needs to
+#   an overlay     -- a directory of ports, or the URL of a repository of
+#                     them, which anyone can publish and anyone can name
+#   the registry   -- the ones that come with this
+#
+# The first one that names a port wins, so an overlay can correct a port
+# here without waiting for us, and a project can correct an overlay without
+# waiting for it. Nothing has to be merged anywhere for any of it to work.
+set(CME_OVERLAYS "" CACHE STRING
+  "Directories of ports, or URLs of repositories of them, searched before \
+the bundled registry. A URL may end in #ref to pin it to a branch or tag.")
+if(DEFINED ENV{XDG_CACHE_HOME})
+  set(cme_overlay_default "$ENV{XDG_CACHE_HOME}/cmake-everywhere/overlays")
+else()
+  set(cme_overlay_default "$ENV{HOME}/.cache/cmake-everywhere/overlays")
+endif()
+set(CME_OVERLAY_CACHE "${cme_overlay_default}" CACHE PATH
+  "Where overlay repositories are cloned")
+# An overlay is cloned once and then left alone. A dependency tree that
+# quietly changes under a project between two configures of the same source
+# is worse than one that is out of date, and out of date is one flag away.
+# An overlay pinned with #ref is never refreshed at all: it is pinned.
+set(CME_OVERLAY_REFRESH OFF CACHE BOOL
+  "Update overlays that were named without a ref before reading them")
+
+# A library that needs libraries nobody has ported has to be able to say so
+# itself, or every one of its consumers says it instead. Whatever it says is
+# read after it is fetched and before it is configured, which is before its
+# own find_package calls happen -- so a project names what it uses, and
+# nothing underneath that leaks into it.
+#
+# A library that uses this already says it, in its own CMakeLists, and needs
+# no file: those calls run at the right moment on their own. The file is for
+# the ones that have never heard of any of this, and it can be put there by
+# whoever declares them, with PORTS_FROM.
+set(CME_SOURCE_PORTS ON CACHE BOOL
+  "Read the port declarations a fetched source carries")
+
+# And then the same declarations, without the fetching.
+#
+# Knowing what a library needs by cloning the library is backwards when the
+# question is whether this machine already has it. So what a project declares
+# is installed beside it, and a prefix that has the library has the
+# declarations too: share/cmake-everywhere/ports/<name>/port.cmake. No index,
+# no server, no clone -- it arrives with the package it describes.
+set(CME_SYSTEM_PORTS ON CACHE BOOL
+  "Read port declarations installed in the prefixes")
+set(CME_EXPORT_PORTS ON CACHE BOOL
+  "Install the ports this project declares, beside this project")
+set(CME_EXPORT_DESTINATION "share/cmake-everywhere/ports" CACHE STRING
+  "Where a port is installed to, under the prefix")
 set(CME_SYSTEM "AUTO" CACHE STRING
   "AUTO: take a package from the system when it is there and new enough. \
 ALWAYS: refuse to build anything, the system must have it. \
@@ -329,13 +401,89 @@ set(CME_POLICY_VERSION_MINIMUM "3.5" CACHE STRING
 
 # ---------------------------------------------------------------- registry
 
+# Where an overlay's ports are on this machine. A directory is read where it
+# is; a URL is cloned once into the overlay cache.
+function(cme_overlay_directory out spec)
+  if(IS_DIRECTORY "${spec}")
+    set(${out} "${spec}" PARENT_SCOPE)
+    return()
+  endif()
+  set(url "${spec}")
+  set(ref "")
+  if(url MATCHES "^(.+)#([^#]+)$")
+    set(url "${CMAKE_MATCH_1}")
+    set(ref "${CMAKE_MATCH_2}")
+  endif()
+  if(NOT url MATCHES "^(https?://|git://|ssh://|file://|git@)")
+    message(FATAL_ERROR
+      "cmake-everywhere: the overlay \"${spec}\" is not a directory that "
+      "exists and not a URL. An overlay is either a path to a directory of "
+      "ports or the URL of a repository of them, optionally #ref.")
+  endif()
+  find_package(Git QUIET BYPASS_PROVIDER)
+  if(NOT GIT_FOUND)
+    message(FATAL_ERROR
+      "cmake-everywhere: the overlay ${url} has to be cloned and there is no "
+      "git on this machine.")
+  endif()
+  string(SHA256 key "${url}#${ref}")
+  string(SUBSTRING "${key}" 0 16 key)
+  get_filename_component(leaf "${url}" NAME_WE)
+  set(dir "${CME_OVERLAY_CACHE}/${leaf}-${key}")
+  if(NOT IS_DIRECTORY "${dir}/.git")
+    file(MAKE_DIRECTORY "${CME_OVERLAY_CACHE}")
+    set(clone clone --depth 1)
+    if(ref)
+      list(APPEND clone --branch "${ref}")
+    endif()
+    message(STATUS "cmake-everywhere: cloning the overlay ${spec}")
+    execute_process(
+      COMMAND "${GIT_EXECUTABLE}" ${clone} "${url}" "${dir}"
+      RESULT_VARIABLE code OUTPUT_VARIABLE said ERROR_VARIABLE said)
+    if(NOT code EQUAL 0)
+      file(REMOVE_RECURSE "${dir}")
+      message(FATAL_ERROR
+        "cmake-everywhere: cannot clone the overlay ${spec}:\n${said}")
+    endif()
+  elseif(CME_OVERLAY_REFRESH AND NOT ref)
+    execute_process(
+      COMMAND "${GIT_EXECUTABLE}" pull --ff-only
+      WORKING_DIRECTORY "${dir}"
+      RESULT_VARIABLE code OUTPUT_VARIABLE said ERROR_VARIABLE said)
+    if(NOT code EQUAL 0)
+      message(FATAL_ERROR
+        "cmake-everywhere: cannot update the overlay ${spec}:\n${said}")
+    endif()
+  endif()
+  set(${out} "${dir}" PARENT_SCOPE)
+endfunction()
+
+# One value, as it has to be written back into a file that will be read as
+# CMake again.
+function(cme_quote out value)
+  string(REPLACE "\\" "\\\\" value "${value}")
+  string(REPLACE "\"" "\\\"" value "${value}")
+  set(${out} "${value}" PARENT_SCOPE)
+endfunction()
+
+# What a project declared, said again in the file that is installed beside
+# it. Features and rules are separate calls made after the port, so they are
+# appended to what the port wrote.
+function(cme_export_line port text)
+  get_property(exported GLOBAL PROPERTY CME_EXPORTED_${port})
+  if(exported)
+    file(APPEND "${exported}" "${text}\n")
+  endif()
+endfunction()
+
 # A port describes one library: where it comes from, what it needs, and what
 # find_package names it answers to. Ports only declare; nothing is fetched
 # until something asks for it.
 function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
-          POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT)
+          POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
+          PORTS_FROM)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS)
@@ -346,6 +494,73 @@ function(cme_declare_port)
   if(NOT PORT_PROVIDES)
     set(PORT_PROVIDES "${PORT_NAME}")
   endif()
+  # The first place that names a port is the place it comes from. A project
+  # declares before anything is loaded, overlays are loaded before the
+  # registry, so this ordering is what lets either of them correct what is
+  # below without arranging anything with anybody.
+  get_property(known GLOBAL PROPERTY CME_PORTS)
+  get_property(origin GLOBAL PROPERTY CME_PORT_ORIGIN)
+  if(NOT origin)
+    set(origin "the project")
+  endif()
+  if("${PORT_NAME}" IN_LIST known)
+    get_property(first GLOBAL PROPERTY CME_PORT_${PORT_NAME}_ORIGIN)
+    message(STATUS
+      "cmake-everywhere: ${PORT_NAME} comes from ${first}; the copy in "
+      "${origin} is not read")
+    return()
+  endif()
+  get_property(directory GLOBAL PROPERTY CME_PORT_DIRECTORY)
+  set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_ORIGIN "${origin}")
+  set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_DIR "${directory}")
+  # What the port said, for a port that has no file of its own to hash.
+  set(recipe "")
+  foreach(field IN LISTS one many)
+    string(APPEND recipe "${field}=${PORT_${field}};")
+  endforeach()
+  set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_RECIPE "${recipe}")
+
+  # Written out and installed, when this is the project's own declaration.
+  #
+  # Not when it came from an overlay, the registry, or a library this build
+  # fetched: those are somebody else's to publish. This is the project saying
+  # what it needed, so that whoever installs the project gets to know it
+  # without fetching the project.
+  if(CME_EXPORT_PORTS AND origin STREQUAL "the project"
+     AND CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    if(PORT_OVERLAY)
+      message(STATUS
+        "cmake-everywhere: ${PORT_NAME} is not exported: its OVERLAY "
+        "${PORT_OVERLAY} is a directory beside a port file, and a port "
+        "declared in a CMakeLists has no directory")
+    else()
+      set(exported "${CMAKE_BINARY_DIR}/cme-ports/${PORT_NAME}/port.cmake")
+      set(text "# Written by cmake-everywhere from the declaration in\n")
+      string(APPEND text "# ${CMAKE_CURRENT_SOURCE_DIR}.\ncme_declare_port(\n")
+      foreach(field IN LISTS one)
+        if(NOT "${PORT_${field}}" STREQUAL "")
+          cme_quote(value "${PORT_${field}}")
+          string(APPEND text "  ${field} \"${value}\"\n")
+        endif()
+      endforeach()
+      foreach(field IN LISTS many)
+        if(PORT_${field})
+          set(items "")
+          foreach(item IN LISTS PORT_${field})
+            cme_quote(value "${item}")
+            string(APPEND items " \"${value}\"")
+          endforeach()
+          string(APPEND text "  ${field}${items}\n")
+        endif()
+      endforeach()
+      string(APPEND text ")\n")
+      file(WRITE "${exported}" "${text}")
+      set_property(GLOBAL PROPERTY CME_EXPORTED_${PORT_NAME} "${exported}")
+      install(FILES "${exported}"
+              DESTINATION "${CME_EXPORT_DESTINATION}/${PORT_NAME}")
+    endif()
+  endif()
+
   foreach(field IN LISTS one many)
     set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_${field}
       "${PORT_${field}}")
@@ -374,6 +589,14 @@ function(cme_port_feature port feature)
     "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
+  set_property(GLOBAL APPEND_STRING PROPERTY CME_PORT_${port}_RECIPE
+    "feature ${feature}=${ARGN};")
+  set(said "cme_port_feature(${port} ${feature}")
+  foreach(item IN LISTS ARGN)
+    cme_quote(value "${item}")
+    string(APPEND said " \"${value}\"")
+  endforeach()
+  cme_export_line(${port} "${said})")
   foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY IMPLIES CONFLICTS
                 EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS DEFAULT)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
@@ -472,6 +695,12 @@ function(cme_port_rule port kind)
   list(LENGTH rules index)
   set_property(GLOBAL APPEND PROPERTY CME_RULES_${port} "${kind}")
   set_property(GLOBAL PROPERTY CME_RULE_${port}_${index} "${ARGN}")
+  set(said "cme_port_rule(${port} ${kind}")
+  foreach(item IN LISTS ARGN)
+    cme_quote(value "${item}")
+    string(APPEND said " \"${value}\"")
+  endforeach()
+  cme_export_line(${port} "${said})")
 endfunction()
 
 function(cme_port_field out port field)
@@ -967,16 +1196,108 @@ function(cme_alias alias target)
   add_library(${alias} ALIAS ${target})
 endfunction()
 
+function(cme_include_ports where origin)
+  file(GLOB ports "${where}/*/port.cmake")
+  foreach(port IN LISTS ports)
+    get_filename_component(directory "${port}" DIRECTORY)
+    set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "${origin}")
+    set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "${directory}")
+    include("${port}")
+  endforeach()
+  set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "")
+  set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
+endfunction()
+
+# The declarations a library carries, read after it is fetched and before it
+# is configured.
+#
+# A library that uses this needs no file: its own cme_declare_port calls run
+# when its CMakeLists is added, which is before its own find_package calls,
+# which is exactly when they are needed. This is for the ones that do not,
+# and for whoever wants to attach declarations to a library they do not
+# control: PORTS_FROM names a file, relative to the fetched tree, or an
+# absolute path anywhere.
+function(cme_source_ports port source)
+  if(NOT CME_SOURCE_PORTS)
+    return()
+  endif()
+  cme_port_field(from ${port} PORTS_FROM)
+  set(files "")
+  if(from)
+    if(NOT IS_ABSOLUTE "${from}")
+      set(from "${source}/${from}")
+    endif()
+    if(NOT EXISTS "${from}")
+      message(FATAL_ERROR
+        "cmake-everywhere: the ${port} port says its declarations are in "
+        "${from}, and there is no such file.")
+    endif()
+    list(APPEND files "${from}")
+  else()
+    foreach(name "cme-ports.cmake" ".cme/ports.cmake")
+      if(EXISTS "${source}/${name}")
+        list(APPEND files "${source}/${name}")
+      endif()
+    endforeach()
+  endif()
+  foreach(file IN LISTS files)
+    get_filename_component(directory "${file}" DIRECTORY)
+    set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "the ${port} source")
+    set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "${directory}")
+    include("${file}")
+    set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "")
+    set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
+    message(STATUS "cmake-everywhere: ${port} carries ${file}")
+  endforeach()
+endfunction()
+
+# Every prefix this configuration would look in, that has ports in it.
+function(cme_system_port_directories out)
+  set(prefixes "")
+  foreach(list IN ITEMS CMAKE_PREFIX_PATH CMAKE_SYSTEM_PREFIX_PATH)
+    list(APPEND prefixes ${${list}})
+  endforeach()
+  if(DEFINED ENV{CMAKE_PREFIX_PATH})
+    file(TO_CMAKE_PATH "$ENV{CMAKE_PREFIX_PATH}" from_environment)
+    list(APPEND prefixes ${from_environment})
+  endif()
+  list(APPEND prefixes "${CMAKE_STAGING_PREFIX}" "${CMAKE_INSTALL_PREFIX}")
+  set(found "")
+  foreach(prefix IN LISTS prefixes)
+    if(prefix AND IS_DIRECTORY "${prefix}/${CME_EXPORT_DESTINATION}")
+      list(APPEND found "${prefix}/${CME_EXPORT_DESTINATION}")
+    endif()
+  endforeach()
+  if(found)
+    list(REMOVE_DUPLICATES found)
+  endif()
+  set(${out} "${found}" PARENT_SCOPE)
+endfunction()
+
 function(cme_load_registry)
   get_property(loaded GLOBAL PROPERTY CME_REGISTRY_LOADED)
   if(loaded)
     return()
   endif()
-  file(GLOB ports "${CME_REGISTRY}/*/port.cmake")
-  foreach(port IN LISTS ports)
-    include("${port}")
-  endforeach()
   set_property(GLOBAL PROPERTY CME_REGISTRY_LOADED TRUE)
+  foreach(spec IN LISTS CME_OVERLAYS)
+    cme_overlay_directory(directory "${spec}")
+    file(GLOB found "${directory}/*/port.cmake")
+    if(NOT found)
+      message(FATAL_ERROR
+        "cmake-everywhere: the overlay ${spec} has no <name>/port.cmake "
+        "under ${directory}. An overlay is laid out the way the registry "
+        "is: one directory per port, with a port.cmake in it.")
+    endif()
+    cme_include_ports("${directory}" "the overlay ${spec}")
+  endforeach()
+  if(CME_SYSTEM_PORTS)
+    cme_system_port_directories(prefixes)
+    foreach(directory IN LISTS prefixes)
+      cme_include_ports("${directory}" "the system, in ${directory}")
+    endforeach()
+  endif()
+  cme_include_ports("${CME_REGISTRY}" "the registry")
   get_property(names GLOBAL PROPERTY CME_PORTS)
   list(LENGTH names count)
   message(STATUS "cmake-everywhere: ${count} ports")
@@ -1730,6 +2051,10 @@ function(cme_build_port port package version exact)
 
   CPMAddPackage(${arguments})
 
+  # Before anything in the tree is configured, and so before anything in it
+  # calls find_package.
+  cme_source_ports(${port} "${${port}_SOURCE_DIR}")
+
   if(CME_FETCH_ONLY)
     message(STATUS "cmake-everywhere: fetched ${port} ${port_version}")
     cme_note_decision("${port}" "fetched" "${port_version}")
@@ -1761,7 +2086,15 @@ function(cme_build_port port package version exact)
       string(REGEX REPLACE "^([^ ]+) +(.*)$" "\\2" value "${option}")
       set(${name} "${value}")
     endforeach()
-    add_subdirectory("${CME_REGISTRY}/${port}/${overlay}"
+    get_property(port_dir GLOBAL PROPERTY CME_PORT_${port}_DIR)
+    if(NOT port_dir)
+      message(FATAL_ERROR
+        "cmake-everywhere: the ${port} port asks for the OVERLAY ${overlay} "
+        "and was declared without a directory, so there is nowhere to look "
+        "for it. A port with an OVERLAY has to be a port.cmake in a "
+        "directory.")
+    endif()
+    add_subdirectory("${port_dir}/${overlay}"
                      "${CMAKE_BINARY_DIR}/_cme/${port}")
   endif()
 
@@ -1807,7 +2140,13 @@ function(cme_report)
       set(how "not reached")
     endif()
     cme_why(reason ${port} "")
-    string(APPEND text "${port} ${version} from ${how}, asked for by ${reason}\n")
+    get_property(origin GLOBAL PROPERTY CME_PORT_${port}_ORIGIN)
+    if(NOT origin)
+      set(origin "nowhere")
+    endif()
+    string(APPEND text
+      "${port} ${version} from ${how}, asked for by ${reason}, "
+      "ported by ${origin}\n")
     cme_port_field(declared ${port} FEATURES)
     cme_enabled_features(${port} enabled)
     foreach(feature IN LISTS declared)

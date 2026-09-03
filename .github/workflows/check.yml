@@ -57,6 +57,25 @@ jobs:
             echo "  refused: $case"
           done
 
+  # Whether a library nobody has ported can be used anyway. Everything this
+  # one touches is made while it runs: an upstream repository, a directory of
+  # ports, a repository of ports. Nothing is downloaded and nothing is in the
+  # registry, which is the point of it.
+  decentral:
+    needs: quick
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: a port from the project, a directory and a repository
+        run: test/decentral.sh "${{ github.workspace }}/build/decentral-check"
+      - name: what the builds decided
+        if: always()
+        run: |
+          for log in build/decentral-check/*.log; do
+            echo "=== $log"; tail -30 "$log"
+          done
+
   # Whether a library built once is found again, and not found when what it
   # was built with has changed in a way the mode does not allow. zlib,
   # because the question is about the store rather than about the library.

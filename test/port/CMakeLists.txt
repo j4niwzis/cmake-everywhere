@@ -16,6 +16,12 @@ if(NOT CME_PORT_PACKAGE)
   message(FATAL_ERROR "Set CME_PORT_PACKAGE to the name to look for")
 endif()
 
+# A port does not have to come from a registry. Given a file of
+# cme_declare_port() calls, this is a project carrying its own.
+if(CME_PORT_DECLARE)
+  include("${CME_PORT_DECLARE}")
+endif()
+
 find_package(${CME_PORT_PACKAGE} REQUIRED)
 
 add_executable(cme-port main.cc)
