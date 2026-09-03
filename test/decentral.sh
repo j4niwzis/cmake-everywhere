@@ -388,4 +388,46 @@ else
   failed=$((failed + 1))
 fi
 
+# Nine: a port described in full by the project, which never gets as far as
+# the repository because pkg-config answers first. The URL is one that could
+# not possibly work, so anything that tried to fetch would say so.
+cat >"$work/declare-installed.cmake" <<'EOF'
+cme_declare_port(NAME zed PROVIDES Zed
+  SYSTEM_PKGCONFIG "zlib:Zed::Zed"
+  GIT_REPOSITORY "file:///nowhere/at/all/zed.git" GIT_TAG v1)
+EOF
+rm -rf "$work/from-pkgconfig"
+if cmake -S "$here/port" -B "$work/from-pkgconfig" -G Ninja \
+     -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$provider" \
+     -DCME_REGISTRY="$here/registry" -DCME_LOCK= \
+     -DCME_PORT_PACKAGE=Zed -DCME_PORT_TARGETS=Zed::Zed \
+     -DCME_PORT_DECLARE="$work/declare-installed.cmake" \
+     >"$work/from-pkgconfig.log" 2>&1 &&
+   grep -q "^Zed pkg-config" "$work/from-pkgconfig/cme-report.txt"; then
+  printf '  ok    %s\n' "pkg-config answers and the repository is never reached"
+else
+  printf '  FAIL  %s  (see %s)\n' \
+    "pkg-config answers and the repository is never reached" \
+    "$work/from-pkgconfig.log"
+  failed=$((failed + 1))
+fi
+
+# Ten: a project that describes a library and gets it wrong. The tree says
+# 1.0.0 and the declaration says 0.9.0; what is built is the tree.
+cat >"$work/declare-stale.cmake" <<EOF
+cme_declare_port(NAME hello PROVIDES Hello VERSION 0.9.0 LICENSE GPL-3.0-only
+  GIT_REPOSITORY "file://$work/upstream" GIT_TAG v1.0.0)
+EOF
+configure stale -DCME_PORT_DECLARE="$work/declare-stale.cmake" && code=0 || code=1
+check "a stale description does not outrank the tree" "$code" "$work/stale.log"
+
+if grep -qF "the tree that was fetched says 1.0.0" "$work/stale.log" &&
+   grep -q "^hello .*1\.0\.0" "$work/stale/cme-report.txt"; then
+  printf '  ok    %s\n' "and it says which one it took"
+else
+  printf '  FAIL  %s  (see %s)\n' "and it says which one it took" \
+    "$work/stale.log"
+  failed=$((failed + 1))
+fi
+
 [ "$failed" = 0 ]

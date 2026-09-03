@@ -1095,8 +1095,27 @@ function(cme_declare_port)
     endif()
     if(merging)
       get_property(said GLOBAL PROPERTY CME_PORT_${PORT_NAME}_${field})
-      if(NOT "${said}" STREQUAL "" OR "${PORT_${field}}" STREQUAL "")
-        continue()
+      set(overrules FALSE)
+      # Two things are declared by the same command and are not the same
+      # kind of thing. Where a library is, and which library it is, are the
+      # project's: it chose it. What this tree turns out to be -- which
+      # version it is and what it is licensed under -- is the tree's, and a
+      # project that named a tag and guessed at the rest guessed. So a
+      # library speaking about itself overrules a description of it.
+      get_property(speaking_for GLOBAL PROPERTY CME_READING_FOR)
+      if(speaking_for STREQUAL PORT_NAME AND field MATCHES "^(VERSION|LICENSE)$"
+         AND NOT "${PORT_${field}}" STREQUAL ""
+         AND NOT "${said}" STREQUAL "${PORT_${field}}")
+        set(overrules TRUE)
+        message(STATUS
+          "cmake-everywhere: ${PORT_NAME} was declared with ${field} ${said} "
+          "and the tree that was fetched says ${PORT_${field}}; the tree is "
+          "what is being built")
+      endif()
+      if(NOT overrules)
+        if(NOT "${said}" STREQUAL "" OR "${PORT_${field}}" STREQUAL "")
+          continue()
+        endif()
       endif()
     endif()
     set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_${field}
@@ -2864,22 +2883,25 @@ function(cme_build_port port package version exact)
     # library and where it is has not said which version this is. The library
     # has.
     cme_port_field(said_version ${port} VERSION)
-    get_property(installed_version GLOBAL PROPERTY
-                 CME_PORT_${port}_VERSION_INSTALLED)
-    if(said_version AND (NOT port_version OR installed_version))
+    if(said_version AND NOT said_version VERSION_EQUAL "${port_version}")
+      # The tree says which version it is, and it is the tree that is being
+      # built. A number settled before it arrived -- a project's guess, or
+      # the version of a copy installed on this machine -- was about
+      # something else.
       set(port_version "${said_version}")
       set_property(GLOBAL PROPERTY CME_PORT_${port}_VERSION_INSTALLED FALSE)
       set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
                    "${port_version}")
-      # Asked again now that it is the library answering rather than a copy
-      # of it. Refusing here costs a fetch and is the truth; refusing before
-      # the fetch would have been a guess made from somebody else's build.
+      # Asked again now that it is the library answering rather than a guess
+      # about it. Refusing here costs a fetch and is the truth; refusing
+      # before the fetch would have been a guess made from somebody else's
+      # build.
       if(version AND port_version VERSION_LESS version)
         message(FATAL_ERROR
           "cmake-everywhere: something asks for ${package} ${version}, and "
-          "what was fetched says it is ${port_version}. The copy installed "
-          "on this machine was not it either, so there is nothing here that "
-          "is ${version}.")
+          "what was fetched says it is ${port_version}. Nothing here is "
+          "${version}: the copy on this machine was not, and neither is the "
+          "tree that was fetched.")
       endif()
     endif()
     cme_resolve_depends(${port})
@@ -3079,7 +3101,18 @@ function(cme_resolve package port version exact features out_answer)
   if(try_system)
     # BYPASS_PROVIDER is what keeps this call from being routed straight back
     # here. It is the one place the keyword is allowed.
-    find_package(${package} ${version} QUIET GLOBAL BYPASS_PROVIDER)
+    # The name a distribution's CMake config uses, when it is not the name
+    # projects write in find_package. Nothing in the registry needs it yet;
+    # a port declared in a project may.
+    cme_port_field(as ${port} SYSTEM_PACKAGE)
+    if(NOT as)
+      set(as "${package}")
+    endif()
+    find_package(${as} ${version} QUIET GLOBAL BYPASS_PROVIDER)
+    if(NOT ${as} STREQUAL "${package}" AND ${as}_FOUND)
+      set(${package}_FOUND TRUE)
+      set(${package}_VERSION "${${as}_VERSION}")
+    endif()
     if(${package}_FOUND)
       cme_enabled_features(${port} needed)
       cme_system_has_features(usable "${package}" "${port}" "${needed}")

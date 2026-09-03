@@ -149,13 +149,61 @@ which feature was missing.
 That line is honoured only from a port read out of a prefix. In a source tree
 it is a statement about somebody else's machine.
 
-### Two declarations of the same port fill each other in
+### A port that never gets as far as the repository
+
+A port declared in a project is a whole port, so it can also say where the
+library can be found instead of being built. Then the URL is what happens if
+none of that works:
+
+```cmake
+cme_declare_port(NAME hello PROVIDES Hello
+  SYSTEM_PACKAGE HelloLib                # if its CMake config is named that
+  SYSTEM_PKGCONFIG "hello:Hello::Hello"  # or if it ships a .pc
+  GIT_REPOSITORY https://example.invalid/hello.git
+  GIT_TAG v1.4.0)
+```
+
+The order is a CMake config or Find module, then pkg-config, then build it,
+and only the last of those fetches anything. On a machine that has the
+library installed with a `.pc`, nothing is cloned, nothing is compiled, and
+the report says `Hello pkg-config 1.4.0`.
+
+The version request is carried into all three: `find_package(Hello 1.4)`
+becomes `hello >= 1.4` in the pkg-config query, and `EXACT` becomes `=`.
+Features are checked on the installed copy too -- by what the copy says about
+itself if it says anything, and by looking for headers and symbols if it does
+not.
+
+### Two shapes of the same thing
+
+There is one command and there are two things a project does with it.
+
+**Saying which library and where**, which is the ordinary case above: a name,
+a `PROVIDES`, and coordinates. That is not half a port -- it is the whole of
+what a project is in a position to know. Everything else arrives with the
+tree.
+
+**Describing the library**, which is what you write when the library says
+nothing about itself: version, licence, features, dependencies, options, an
+adapter. A registry port is this, and so is a port you write in your own
+CMakeLists for a library that has never heard of any of this.
 
 A second declaration of a port fills in what the first did not say and
-changes nothing that it did. This is the same rule from the other side: a
-project knows where a library is, because it chose it; a library knows what
-it is, because it is the library. Neither list is complete and neither should
-erase the other.
+changes nothing that it did, so the two compose without either being a
+special case. And there is one exception, which is the rule underneath both:
+
+**Where a library is, and which library it is, are the project's to say. What
+the tree turns out to be is the tree's.** A project that names a tag and
+guesses the version has guessed; when the tree that was fetched says which
+version it is, that is what is being built, and the build says so:
+
+```
+hello was declared with VERSION 0.9.0 and the tree that was fetched says
+1.0.0; the tree is what is being built
+```
+
+The same for the licence. Everything else a project says stands, because the
+project chose the library.
 
 ### Where a port can come from
 
