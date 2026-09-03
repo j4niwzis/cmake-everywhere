@@ -796,6 +796,8 @@ endfunction()
 function(cme_store_write port package entry)
   cme_port_field(aliases ${port} TARGETS)
   if(NOT aliases)
+    message(STATUS
+      "cmake-everywhere: ${port} is not kept: it does not say what it produces")
     return()
   endif()
   # Filled under a name nobody reads and moved into place in one step at the
@@ -812,6 +814,9 @@ function(cme_store_write port package entry)
   set(everything "")
   foreach(alias IN LISTS aliases)
     if(NOT TARGET ${alias})
+      message(STATUS
+        "cmake-everywhere: ${port} is not kept: it says it produces ${alias} "
+        "and that is not a target")
       file(REMOVE_RECURSE "${building}")
       return()
     endif()
@@ -823,6 +828,8 @@ function(cme_store_write port package entry)
     if(NOT kind STREQUAL "STATIC_LIBRARY")
       # Only an archive can be kept and used again. Anything else -- an
       # interface library, a shared object -- is left to be built.
+      message(STATUS
+        "cmake-everywhere: ${port} is not kept: ${alias} is a ${kind}")
       file(REMOVE_RECURSE "${building}")
       return()
     endif()
@@ -913,6 +920,9 @@ function(cme_store_write port package entry)
     VERBATIM)
   add_dependencies(cme_store_${port} ${everything})
   file(WRITE "${building}/use.cmake" "${text}")
+  list(LENGTH everything count)
+  message(STATUS
+    "cmake-everywhere: ${port} will be kept as ${entry} (${count} archive(s))")
   cme_environment_pairs(pairs)
   list(JOIN pairs "\n" recorded)
   file(WRITE "${building}/environment.txt" "${recorded}\n")

@@ -52,7 +52,7 @@ configure "$work/first"
 cmake --build "$work/first" >>"$work/first.log" 2>&1
 "$work/first/cme-port" >/dev/null
 check "first build builds it" "$(came_from $port "$work/first")" "built"
-if [ -f "$store/$port"/*/complete ]; then
+if [ -n "$(find "$store" -name complete -print -quit 2>/dev/null)" ]; then
   printf '  ok    it is in the store\n'
 else
   printf '  FAIL  nothing in the store\n'
@@ -67,16 +67,40 @@ cmake --build "$work/second" >>"$work/second.log" 2>&1
 "$work/second/cme-port" >/dev/null
 check "a second build finds it" "$(came_from $port "$work/second")" "store"
 
-# Three: the same library, asked for differently. EXACT means the flags are
-# part of the name, so this is a different name and has to be built.
+# Three: the same library with a flag it was not built with. Under EXACT the
+# flags are part of the name, so this is a different name and a real build.
+# The mode is part of the name too, so this one is built rather than found
+# whatever else is true -- which is why the fourth question is asked twice in
+# the same mode rather than compared against the two above.
 configure "$work/third" -DCME_STORE_MATCH=EXACT -DCMAKE_C_FLAGS="-DCME_CHECK=1"
 cmake --build "$work/third" >>"$work/third.log" 2>&1
-check "a different build is not it" "$(came_from $port "$work/third")" "built"
+check "a flag that counts is a different library" \
+  "$(came_from $port "$work/third")" "built"
 
-# Four: and with the difference allowed, it is found again.
+configure "$work/third-again" -DCME_STORE_MATCH=EXACT \
+  -DCMAKE_C_FLAGS="-DCME_CHECK=1"
+cmake --build "$work/third-again" >>"$work/third-again.log" 2>&1
+check "and is found once it has been built" \
+  "$(came_from $port "$work/third-again")" "store"
+
+# Four: the same difference, in a mode that does not count it. The first of
+# these builds -- nothing has been kept under this mode -- and the second
+# finds it despite the flags having changed again.
 configure "$work/fourth" -DCME_STORE_MATCH=LOOSE -DCMAKE_C_FLAGS="-DCME_CHECK=2"
 cmake --build "$work/fourth" >>"$work/fourth.log" 2>&1
-check "a difference that is allowed still finds it" \
-  "$(came_from $port "$work/fourth")" "store"
+configure "$work/fifth" -DCME_STORE_MATCH=LOOSE -DCMAKE_C_FLAGS="-DCME_CHECK=3"
+cmake --build "$work/fifth" >>"$work/fifth.log" 2>&1
+check "a flag that does not count is the same library" \
+  "$(came_from $port "$work/fifth")" "store"
 
-[ "$failed" = 0 ] || exit 1
+# When something is wrong, what the build said about keeping libraries is
+# the first thing worth reading, and it is buried in a log nobody opened.
+if [ "$failed" != 0 ]; then
+  echo
+  echo "what the builds said about the store:"
+  grep -h "is not kept\|will be kept\|is already built\|reusing it\|kept /\|cannot put" \
+    "$work"/*.log 2>/dev/null | sed 's/^/    /' || echo "    (nothing)"
+  echo "what is in $store:"
+  find "$store" -maxdepth 3 2>/dev/null | sed 's/^/    /' || true
+  exit 1
+fi
