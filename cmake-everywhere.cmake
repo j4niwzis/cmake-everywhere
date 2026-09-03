@@ -556,6 +556,31 @@ function(cme_build_includes target)
   endforeach()
 endfunction()
 
+# Headers under a name they are not under in the source tree.
+#
+# A library's include directory in its own checkout and the same directory
+# once it is installed are often not the same shape. Opus keeps its headers
+# flat, at include/opus.h, and everything that consumes an installed Opus
+# writes <opus/opus.h>. Skia includes itself by a path that says nothing
+# about whose headers they are.
+#
+# Rather than copy or rewrite anything, the directory is offered a second
+# time under the name consumers use, as a link, and the directory holding
+# that link is what goes on the interface. Both spellings then work and the
+# checkout is untouched.
+function(cme_header_prefix out name directory)
+  set(root "${CMAKE_BINARY_DIR}/cme-include")
+  file(MAKE_DIRECTORY "${root}")
+  if(NOT EXISTS "${root}/${name}")
+    file(CREATE_LINK "${directory}" "${root}/${name}" SYMBOLIC RESULT status)
+    if(NOT status STREQUAL "0")
+      message(FATAL_ERROR
+        "cmake-everywhere: cannot offer ${directory} as ${name}: ${status}")
+    endif()
+  endif()
+  set(${out} "${root}" PARENT_SCOPE)
+endfunction()
+
 # An alias so that whatever the upstream calls its target -- zlibstatic,
 # png_static, FLAC -- can be linked under the name its consumers expect.
 function(cme_alias alias target)

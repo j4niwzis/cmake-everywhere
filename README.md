@@ -81,21 +81,32 @@ is still being decided, and a port whose pin is lower is built at the version
 that satisfies everyone -- provided it says how a version becomes a tag.
 Nothing is built twice and nothing ends up older than something else needed.
 
-### A library under a name of its own
+### Headers under the name they are used by
 
-Skia includes itself as `"include/core/SkCanvas.h"`. That is a path with
-nothing in it to say whose include directory it is, and a consumer that
-writes it has not said which library it meant. So the port offers Skia's
-include directory a second time under a name:
+A library's include directory in its own checkout and the same directory once
+it is installed are often not the same shape, and everything that consumes
+the library was written against the installed one.
+
+Opus keeps its headers flat, at `include/opus.h`, and puts them under `opus/`
+when it installs them -- so libsndfile's `#include <opus/opus.h>` compiles
+against an installed Opus and not against a checkout of it. Skia includes
+itself as `"include/core/SkCanvas.h"`, a path with nothing in it to say whose
+include directory that is.
+
+A port offers the directory a second time under the name consumers use:
+
+```cmake
+cme_header_prefix(prefix opus "${source}/include")
+```
 
 ```cpp
+#include <opus/opus.h>
 #include <skia/core/SkCanvas.h>
 ```
 
-Skia is unchanged and still compiles against its own spelling. Nothing is
-copied and nothing is rewritten -- the name is a link, and the root of the
-checkout stays on the interface too, so what lives outside `include/`, such
-as `modules/skottie/include`, is still reachable.
+Nothing is copied and nothing is rewritten. The name is a link, and the
+original directory stays on the interface too, so the library's own spelling
+keeps working -- which matters, because the library compiles itself with it.
 
 ### Versions as archives
 

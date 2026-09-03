@@ -226,16 +226,7 @@ function(cme_adapt_skia source binary)
   # of the checkout is on the interface as well -- which is also how the
   # things outside include/, like modules/skottie/include, are still
   # reachable. The name is a link rather than a copy.
-  set(named "${CMAKE_BINARY_DIR}/cme-include")
-  file(MAKE_DIRECTORY "${named}")
-  if(NOT EXISTS "${named}/skia")
-    file(CREATE_LINK "${source}/include" "${named}/skia" SYMBOLIC
-         RESULT status)
-    if(NOT status STREQUAL "0")
-      message(FATAL_ERROR
-        "cmake-everywhere: cannot put Skia's headers under a name: ${status}")
-    endif()
-  endif()
+  cme_header_prefix(named skia "${source}/include")
   target_include_directories(skia_skia INTERFACE
     "$<BUILD_INTERFACE:${named}>" "$<BUILD_INTERFACE:${source}>")
   cme_export_variable(Skia SKIA_FOUND TRUE)

@@ -26,10 +26,16 @@ cme_declare_port(
 
 function(cme_adapt_opus source binary)
   cme_alias(Opus::opus opus)
+  # Opus keeps its headers flat -- include/opus.h -- and puts them under
+  # opus/ when it installs them. libsndfile, like everything else that
+  # consumes an installed Opus, writes <opus/opus.h>, so the same directory
+  # is offered under that name as well.
+  cme_header_prefix(prefix opus "${source}/include")
+  target_include_directories(opus INTERFACE "$<BUILD_INTERFACE:${prefix}>")
   cme_export_variable(Opus OPUS_FOUND TRUE)
   cme_export_variable(Opus OPUS_LIBRARY Opus::opus)
   cme_export_variable(Opus OPUS_LIBRARIES Opus::opus)
-  cme_export_variable(Opus OPUS_INCLUDE_DIR "${source}/include")
-  cme_export_variable(Opus OPUS_INCLUDE_DIRS "${source}/include")
+  cme_export_variable(Opus OPUS_INCLUDE_DIR "${source}/include;${prefix}")
+  cme_export_variable(Opus OPUS_INCLUDE_DIRS "${source}/include;${prefix}")
   cme_export_variable(Opus OPUS_VERSION 1.5.2)
 endfunction()
