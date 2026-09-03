@@ -30,16 +30,60 @@ include_guard(GLOBAL)
 
 set(CME_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "cmake-everywhere root")
 
-# Sources are kept outside the build directory, so a second build directory
-# does not fetch Skia's 65 MiB again, and deleting one does not throw the
-# fetching away. CPM reads this; a value already set anywhere is left alone.
+# Fetched sources land in the build directory, the way anything a build
+# fetches does, unless somebody asks for them to be kept outside it. Kept,
+# a second build directory does not fetch Skia's 65 MiB again and deleting
+# one does not throw the fetching away.
+#
+# Off unless asked for, for the reason the store below is off: a directory
+# that outlives the build, that another build reads, and that grows without
+# anyone deciding to keep it, is not something to make for someone. Nothing
+# can be reused wrongly out of it -- every source is checked against a digest
+# or named by a commit -- so what it costs is disk, and whose disk it is is
+# not this file's decision.
+#
+# Four ways to ask, in this order:
+#
+#   -DCME_SOURCES=/path      keep them here
+#   -DCME_SOURCES_ENABLED=ON keep them in the default location
+#   CME_SOURCES=/path        the same, from the environment, for a machine
+#   CME_SOURCES=ON           where every build should keep them
+#
+# CPM is what reads the answer, as CPM_SOURCE_CACHE. A value already set
+# there is left alone: the caller said where, or this is a build with no
+# network that was handed its sources and is reading them from where they
+# were put.
+set(CME_SOURCES "" CACHE PATH
+  "Where fetched sources are kept between builds, or empty for none")
+option(CME_SOURCES_ENABLED
+  "Keep fetched sources between builds, in the default location" OFF)
+if(NOT CME_SOURCES AND DEFINED ENV{CME_SOURCES})
+  set(cme_sources_env "$ENV{CME_SOURCES}")
+  if(cme_sources_env MATCHES "^(1|ON|on|YES|yes|TRUE|true)$")
+    set(CME_SOURCES_ENABLED ON)
+  elseif(NOT cme_sources_env MATCHES "^(0|OFF|off|NO|no|FALSE|false)$")
+    set(CME_SOURCES "${cme_sources_env}" CACHE PATH "" FORCE)
+  endif()
+  unset(cme_sources_env)
+endif()
 if(NOT CPM_SOURCE_CACHE AND NOT DEFINED ENV{CPM_SOURCE_CACHE})
-  if(DEFINED ENV{XDG_CACHE_HOME})
+  if(CME_SOURCES)
+    set(CPM_SOURCE_CACHE "${CME_SOURCES}"
+        CACHE PATH "Where fetched sources are kept")
+  elseif(CME_SOURCES_ENABLED AND DEFINED ENV{XDG_CACHE_HOME})
     set(CPM_SOURCE_CACHE "$ENV{XDG_CACHE_HOME}/cmake-everywhere/sources"
         CACHE PATH "Where fetched sources are kept")
-  elseif(DEFINED ENV{HOME})
+  elseif(CME_SOURCES_ENABLED AND DEFINED ENV{HOME})
     set(CPM_SOURCE_CACHE "$ENV{HOME}/.cache/cmake-everywhere/sources"
         CACHE PATH "Where fetched sources are kept")
+  elseif(CME_SOURCES_ENABLED)
+    message(WARNING
+      "cmake-everywhere: CME_SOURCES_ENABLED is on and there is no HOME or "
+      "XDG_CACHE_HOME to keep sources in. Name one with -DCME_SOURCES=")
+  endif()
+  if(CPM_SOURCE_CACHE)
+    message(STATUS
+      "cmake-everywhere: fetched sources are kept in ${CPM_SOURCE_CACHE}")
   endif()
 endif()
 
@@ -785,8 +829,9 @@ option(CME_OFFLINE "Refuse to fetch anything; use what is in the cache" OFF)
 if(CME_OFFLINE)
   if(NOT CPM_SOURCE_CACHE)
     message(FATAL_ERROR
-      "cmake-everywhere: CME_OFFLINE and no CPM_SOURCE_CACHE. Offline means "
-      "reading a cache somebody filled, so there has to be one.")
+      "cmake-everywhere: CME_OFFLINE and nowhere to read from. Offline means "
+      "reading sources somebody fetched, so say where they are with "
+      "-DCME_SOURCES=/path (or CPM_SOURCE_CACHE, which is what CPM reads).")
   endif()
   set(FETCHCONTENT_FULLY_DISCONNECTED ON CACHE BOOL "" FORCE)
   message(STATUS "cmake-everywhere: offline, reading ${CPM_SOURCE_CACHE}")
