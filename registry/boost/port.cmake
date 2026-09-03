@@ -119,6 +119,7 @@ cme_port_feature(boost integer
 cme_port_feature(boost thread
   SUMMARY "Boost.thread"
   IMPLIES assert atomic bind chrono concept_check config container container_hash core date_time exception function io move optional predef preprocessor smart_ptr system throw_exception tuple type_traits utility winapi
+  SYSTEM_COMPONENT YES
   DEPENDS boost-thread)
 cme_port_feature(boost tokenizer
   SUMMARY "Boost.tokenizer"
@@ -127,6 +128,7 @@ cme_port_feature(boost tokenizer
 cme_port_feature(boost timer
   SUMMARY "Boost.timer"
   IMPLIES config io predef
+  SYSTEM_COMPONENT YES
   DEPENDS boost-timer)
 cme_port_feature(boost regex
   SUMMARY "Boost.regex"
@@ -142,22 +144,27 @@ cme_port_feature(boost random
 cme_port_feature(boost serialization
   SUMMARY "Boost.serialization"
   IMPLIES array assert config core detail function integer io iterator move mpl optional predef preprocessor smart_ptr spirit type_traits unordered utility variant
+  SYSTEM_COMPONENT YES
   DEPENDS boost-serialization)
 cme_port_feature(boost unit_test_framework
   SUMMARY "Boost.unit test framework"
   IMPLIES algorithm assert bind config core describe detail exception function io iterator mpl numeric_conversion optional preprocessor smart_ptr type_traits utility
+  SYSTEM_COMPONENT YES
   DEPENDS boost-test)
 cme_port_feature(boost prg_exec_monitor
   SUMMARY "Boost.prg exec monitor"
   IMPLIES algorithm assert bind config core describe detail exception function io iterator mpl numeric_conversion optional preprocessor smart_ptr type_traits utility
+  SYSTEM_COMPONENT YES
   DEPENDS boost-test)
 cme_port_feature(boost test_exec_monitor
   SUMMARY "Boost.test exec monitor"
   IMPLIES algorithm assert bind config core describe detail exception function io iterator mpl numeric_conversion optional preprocessor smart_ptr type_traits utility
+  SYSTEM_COMPONENT YES
   DEPENDS boost-test)
 cme_port_feature(boost date_time
   SUMMARY "Boost.date time"
   IMPLIES algorithm assert config core io lexical_cast numeric_conversion range smart_ptr throw_exception tokenizer type_traits utility winapi
+  SYSTEM_COMPONENT YES
   DEPENDS boost-date-time)
 cme_port_feature(boost logic
   SUMMARY "Boost.logic"
@@ -166,6 +173,7 @@ cme_port_feature(boost logic
 cme_port_feature(boost graph
   SUMMARY "Boost.graph"
   IMPLIES algorithm any array assert bimap concept_check config container_hash conversion core detail foreach function integer iterator lexical_cast math move mpl multi_index multiprecision optional parameter preprocessor property_map property_tree random range regex serialization smart_ptr spirit throw_exception tti tuple type_traits typeof unordered utility xpressive
+  SYSTEM_COMPONENT YES
   DEPENDS boost-graph)
 cme_port_feature(boost numeric_conversion
   SUMMARY "Boost.numeric conversion"
@@ -202,6 +210,7 @@ cme_port_feature(boost assign
 cme_port_feature(boost filesystem
   SUMMARY "Boost.filesystem"
   IMPLIES assert atomic config container_hash core detail io iterator predef scope smart_ptr system type_traits winapi
+  SYSTEM_COMPONENT YES
   DEPENDS boost-filesystem)
 cme_port_feature(boost function
   SUMMARY "Boost.function"
@@ -234,6 +243,7 @@ cme_port_feature(boost array
 cme_port_feature(boost iostreams
   SUMMARY "Boost.iostreams"
   IMPLIES assert config core detail function integer iterator mpl numeric_conversion preprocessor random range regex smart_ptr throw_exception type_traits utility
+  SYSTEM_COMPONENT YES
   DEPENDS boost-iostreams)
 cme_port_feature(boost multi_index
   SUMMARY "Boost.multi index"
@@ -266,6 +276,7 @@ cme_port_feature(boost iterator
 cme_port_feature(boost graph_parallel
   SUMMARY "Boost.graph parallel"
   IMPLIES assert concept_check config container_hash core detail dynamic_bitset filesystem foreach function graph iterator lexical_cast mpi mpl optional property_map property_map_parallel random serialization smart_ptr tuple type_traits variant
+  SYSTEM_COMPONENT YES
   DEPENDS boost-graph-parallel)
 cme_port_feature(boost property_map
   SUMMARY "Boost.property map"
@@ -274,6 +285,7 @@ cme_port_feature(boost property_map
 cme_port_feature(boost program_options
   SUMMARY "Boost.program options"
   IMPLIES any bind config core detail function iterator lexical_cast smart_ptr throw_exception tokenizer type_traits
+  SYSTEM_COMPONENT YES
   DEPENDS boost-program-options)
 cme_port_feature(boost detail
   SUMMARY "Boost.detail"
@@ -290,6 +302,7 @@ cme_port_feature(boost numeric_ublas
 cme_port_feature(boost wave
   SUMMARY "Boost.wave"
   IMPLIES assert concept_check config core filesystem format iterator lexical_cast mpl multi_index optional pool preprocessor serialization smart_ptr spirit throw_exception type_traits
+  SYSTEM_COMPONENT YES
   DEPENDS boost-wave)
 cme_port_feature(boost type_traits
   SUMMARY "Boost.type traits"
@@ -338,6 +351,7 @@ cme_port_feature(boost circular_buffer
 cme_port_feature(boost mpi
   SUMMARY "Boost.mpi"
   IMPLIES assert config core foreach function graph integer iterator lexical_cast mpl optional serialization smart_ptr throw_exception type_traits utility
+  SYSTEM_COMPONENT YES
   DEPENDS boost-mpi)
 cme_port_feature(boost unordered
   SUMMARY "Boost.unordered"
@@ -354,6 +368,7 @@ cme_port_feature(boost accumulators
 cme_port_feature(boost atomic
   SUMMARY "Boost.atomic"
   IMPLIES align assert config predef preprocessor type_traits winapi
+  SYSTEM_COMPONENT YES
   DEPENDS boost-atomic)
 cme_port_feature(boost scope_exit
   SUMMARY "Boost.scope exit"
@@ -373,6 +388,7 @@ cme_port_feature(boost predef
 cme_port_feature(boost chrono
   SUMMARY "Boost.chrono"
   IMPLIES assert config core integer move mpl predef ratio system throw_exception type_traits typeof utility winapi
+  SYSTEM_COMPONENT YES
   DEPENDS boost-chrono)
 cme_port_feature(boost polygon
   SUMMARY "Boost.polygon"
@@ -389,6 +405,7 @@ cme_port_feature(boost heap
 cme_port_feature(boost coroutine
   SUMMARY "Boost.coroutine"
   IMPLIES assert config context core exception move system throw_exception type_traits utility
+  SYSTEM_COMPONENT YES
   DEPENDS boost-coroutine)
 cme_port_feature(boost coroutine2
   SUMMARY "Boost.coroutine2"
@@ -416,6 +433,7 @@ cme_port_feature(boost move
 cme_port_feature(boost locale
   SUMMARY "Boost.locale"
   IMPLIES assert charconv config core iterator predef thread
+  SYSTEM_COMPONENT YES
   DEPENDS boost-locale)
 cme_port_feature(boost container
   SUMMARY "Boost.container"
@@ -428,10 +446,12 @@ cme_port_feature(boost local_function
 cme_port_feature(boost context
   SUMMARY "Boost.context"
   IMPLIES assert config core mp11 pool predef smart_ptr
+  SYSTEM_COMPONENT YES
   DEPENDS boost-context)
 cme_port_feature(boost type_erasure
   SUMMARY "Boost.type erasure"
   IMPLIES assert config core fusion iterator mp11 mpl preprocessor smart_ptr thread throw_exception type_traits typeof vmd
+  SYSTEM_COMPONENT YES
   DEPENDS boost-type-erasure)
 cme_port_feature(boost multiprecision
   SUMMARY "Boost.multiprecision"
@@ -507,10 +527,12 @@ cme_port_feature(boost qvm
 cme_port_feature(boost fiber
   SUMMARY "Boost.fiber"
   IMPLIES algorithm assert config context core filesystem format intrusive predef smart_ptr
+  SYSTEM_COMPONENT YES
   DEPENDS boost-fiber)
 cme_port_feature(boost process
   SUMMARY "Boost.process"
   IMPLIES algorithm asio config core filesystem fusion iterator move optional system tokenizer type_index winapi
+  SYSTEM_COMPONENT YES
   DEPENDS boost-process)
 cme_port_feature(boost stacktrace
   SUMMARY "Boost.stacktrace"
@@ -533,6 +555,7 @@ cme_port_feature(boost callable_traits
 cme_port_feature(boost contract
   SUMMARY "Boost.contract"
   IMPLIES any assert config core exception function function_types mpl optional preprocessor smart_ptr thread type_traits typeof utility
+  SYSTEM_COMPONENT YES
   DEPENDS boost-contract)
 cme_port_feature(boost container_hash
   SUMMARY "Boost.container hash"
@@ -571,6 +594,7 @@ cme_port_feature(boost variant2
 cme_port_feature(boost nowide
   SUMMARY "Boost.nowide"
   IMPLIES config
+  SYSTEM_COMPONENT YES
   DEPENDS boost-nowide)
 cme_port_feature(boost static_string
   SUMMARY "Boost.static string"
@@ -586,6 +610,7 @@ cme_port_feature(boost leaf
 cme_port_feature(boost json
   SUMMARY "Boost.json"
   IMPLIES assert config container container_hash core describe endian mp11 system throw_exception
+  SYSTEM_COMPONENT YES
   DEPENDS boost-json)
 cme_port_feature(boost pfr
   SUMMARY "Boost.pfr"
@@ -604,6 +629,7 @@ cme_port_feature(boost property_map_parallel
 cme_port_feature(boost url
   SUMMARY "Boost.url"
   IMPLIES align assert config core headers mp11 optional system throw_exception type_traits variant2
+  SYSTEM_COMPONENT YES
   DEPENDS boost-url)
 cme_port_feature(boost mysql
   SUMMARY "Boost.mysql"
@@ -620,10 +646,12 @@ cme_port_feature(boost redis
 cme_port_feature(boost cobalt
   SUMMARY "Boost.cobalt"
   IMPLIES asio callable_traits circular_buffer config container core endian intrusive mp11 preprocessor smart_ptr static_string system throw_exception variant2
+  SYSTEM_COMPONENT YES
   DEPENDS boost-cobalt)
 cme_port_feature(boost charconv
   SUMMARY "Boost.charconv"
   IMPLIES assert config core
+  SYSTEM_COMPONENT YES
   DEPENDS boost-charconv)
 cme_port_feature(boost scope
   SUMMARY "Boost.scope"

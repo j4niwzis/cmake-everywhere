@@ -1246,7 +1246,7 @@ endfunction()
 # in the build has Vulkan.
 function(cme_port_feature port feature)
   cmake_parse_arguments(FEATURE "" "SUMMARY"
-    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;DEFAULT"
+    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_COMPONENT;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
   set_property(GLOBAL APPEND_STRING PROPERTY CME_PORT_${port}_RECIPE
@@ -1258,7 +1258,8 @@ function(cme_port_feature port feature)
   endforeach()
   cme_export_line(${port} "${said})")
   foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY IMPLIES CONFLICTS
-                EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS DEFAULT)
+                EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_COMPONENT
+                DEFAULT)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
   endforeach()
@@ -3416,6 +3417,17 @@ function(cme_build_virtual port package)
   cme_port_field(names ${port} TARGETS)
   cme_port_field(port_version ${port} VERSION)
   cme_resolve_depends(${port})
+  # A name for other ports is whatever those turned out to be. On a machine
+  # that has the library installed they are the installed one, and saying the
+  # version this port pins would be reporting a number nothing in the build
+  # is at.
+  cme_port_field(family ${port} FAMILY)
+  if(family)
+    get_property(settled GLOBAL PROPERTY CME_FAMILY_${family}_VERSION)
+    if(settled)
+      set(port_version "${settled}")
+    endif()
+  endif()
   cme_enabled_features(${port} features)
   set(parts "")
   foreach(feature IN LISTS features)
@@ -3488,13 +3500,6 @@ function(cme_resolve package port version exact features out_answer)
 
   cme_require("${port}" "${version}" "${features}" "the project")
 
-  cme_port_field(virtual ${port} VIRTUAL)
-  if(virtual)
-    cme_build_virtual("${port}" "${package}")
-    set(${out_answer} "port" PARENT_SCOPE)
-    return()
-  endif()
-
   # What the rest of this library was answered with, if it has a rest.
   cme_family_answer(family_answer "${port}")
   cme_port_field(family ${port} FAMILY)
@@ -3506,6 +3511,10 @@ function(cme_resolve package port version exact features out_answer)
 is being built at" FORCE)
     endif()
   endif()
+
+  # Read here rather than inside the branch below, because a build that
+  # never looks at the system still has to know what kind of port this is.
+  cme_port_field(virtual ${port} VIRTUAL)
 
   cme_system_allowed(try_system "${package}")
   if(family_answer STREQUAL "built")
@@ -3524,7 +3533,34 @@ is being built at" FORCE)
     if(NOT as)
       set(as "${package}")
     endif()
-    find_package(${as} ${version} QUIET GLOBAL BYPASS_PROVIDER)
+    # A port that is a name for other ports asks for those by name, because
+    # that is how a machine has the library: a distribution ships Boost as
+    # one package with one config that answers for every component, not as a
+    # hundred and fifty-eight installable pieces. Asking without them would
+    # take the headers and miss that the compiled parts are there too.
+    set(asking "")
+    if(virtual)
+      # Only the pieces a machine has as pieces. Boost's header-only
+      # libraries are not components to a distribution -- Ubuntu ships no
+      # boost_align-config.cmake and never will, because there is nothing to
+      # configure -- so asking for them is asking the installed copy for
+      # something it has no word for, and being told no about all of it.
+      cme_enabled_features(${port} wanted)
+      foreach(cme_feature IN LISTS wanted)
+        cme_feature_field(separate ${port} ${cme_feature} SYSTEM_COMPONENT)
+        if(separate)
+          list(APPEND asking "${cme_feature}")
+        endif()
+      endforeach()
+    endif()
+    set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM TRUE)
+    if(asking)
+      find_package(${as} ${version} QUIET GLOBAL BYPASS_PROVIDER
+                   COMPONENTS ${asking})
+    else()
+      find_package(${as} ${version} QUIET GLOBAL BYPASS_PROVIDER)
+    endif()
+    set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM FALSE)
     if(NOT ${as} STREQUAL "${package}" AND ${as}_FOUND)
       set(${package}_FOUND TRUE)
       set(${package}_VERSION "${${as}_VERSION}")
@@ -3552,6 +3588,14 @@ is being built at" FORCE)
         return()
       endif()
     endif()
+  endif()
+
+  if(virtual)
+    # Nothing installed answers for it, so it is what it is: a name for the
+    # ports beside it, each of which is asked the same question in turn.
+    cme_build_virtual("${port}" "${package}")
+    set(${out_answer} "port" PARENT_SCOPE)
+    return()
   endif()
 
   if(CME_SYSTEM STREQUAL "ALWAYS")
@@ -3637,7 +3681,17 @@ endfunction()
 # back. So it stays small, and everything that could re-enter is in the
 # functions above.
 macro(cme_provider cme_method cme_package)
-  if("${cme_method}" STREQUAL "FIND_PACKAGE")
+  # A config file the system installed resolves its own pieces by calling
+  # find_package again, and those calls arrive here. They must not: a copy
+  # of a library that somebody else built was built against the rest of what
+  # is installed, and answering one of its pieces with something built here
+  # puts two versions of one library in one build -- the same mix a family
+  # exists to prevent, arriving through the back door.
+  #
+  # So while a system copy is being looked for, this steps aside and lets
+  # CMake search the way it would without a provider.
+  get_property(cme_bypassing GLOBAL PROPERTY CME_INSIDE_SYSTEM)
+  if("${cme_method}" STREQUAL "FIND_PACKAGE" AND NOT cme_bypassing)
     cme_load_registry()
     get_property(cme_port GLOBAL PROPERTY CME_PROVIDER_${cme_package})
     if(cme_port)

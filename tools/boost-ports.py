@@ -130,11 +130,18 @@ def made_by_hand(stripped):
 
 def graph(sources):
     """Which module defines which target, and which modules each one links."""
-    defines, references = {}, {}
+    defines, references, interface = {}, {}, {}
     for module, text in sources.items():
         stripped = re.sub(r"#[^\n]*", "", text)
         defines[module] = set(re.findall(r"add_library\(\s*boost_([A-Za-z0-9_]+)", stripped))
         defines[module] |= made_by_hand(stripped)
+        # Header-only or compiled, which is what decides whether a machine
+        # has this library as a thing of its own. A distribution installs a
+        # config file for what it compiled and nothing for what is only
+        # headers, so only the compiled ones are components in its
+        # vocabulary.
+        interface[module] = bool(re.search(
+            r"add_library\(\s*boost_[A-Za-z0-9_]+\s+INTERFACE", stripped))
         references[module] = set(re.findall(r"Boost::([A-Za-z0-9_]+)", stripped))
     owner = {}
     for module, targets in defines.items():
@@ -172,7 +179,7 @@ def graph(sources):
                 continue
             needs.add(where)
         edges[module] = sorted(needs)
-    return edges, defines, unresolved
+    return edges, defines, unresolved, interface
 
 
 def key(module):
@@ -208,7 +215,7 @@ def main(version):
     url, digest = archive(version)
     modules = libraries(version)
     sources = cmakelists(version, modules)
-    edges, defines, unresolved = graph(sources)
+    edges, defines, unresolved, interface = graph(sources)
     if unresolved:
         print("targets nothing was found to define:", ", ".join(sorted(unresolved)))
 
@@ -304,9 +311,11 @@ cme_declare_port(
         if not defines.get(module):
             continue
         for component in [target(module, defines)] + ALSO.get(module, []):
+            separate = "" if interface.get(module) else "\n  SYSTEM_COMPONENT YES"
             lines.append(
                 f"cme_port_feature(boost {component}\n"
-                f"  SUMMARY \"Boost.{component.replace('_', ' ')}\"{implied(module)}\n"
+                f"  SUMMARY \"Boost.{component.replace('_', ' ')}\""
+                f"{implied(module)}{separate}\n"
                 f"  DEPENDS {port(module)})")
     features = "\n".join(lines)
     write("registry/boost/port.cmake", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.

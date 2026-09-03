@@ -1367,6 +1367,13 @@ test/run.sh               # everything that needs no more than a compiler
 test/run.sh --with-skia-features   # and the ones that need gn and a wait
 ```
 
+Boost is also taken from the system once, which is the path a distribution's
+user takes: the family agreeing to come from the installed copy, the
+per-library config files a distribution ships, and the umbrella reporting
+what the family settled on. The assertion that matters there is that nothing
+was fetched -- a build that quietly downloaded and built Boost beside an
+installed one would pass every other check.
+
 Every Boost library there is a port for is built, both ways round. All of it
 in one build from the archive, because the archive is one download of
 everything and that is the shape of that path; and a job apiece from the

@@ -101,6 +101,47 @@ jobs:
           ./build/boost/cme-port
       - run: ccache --show-stats
 
+  # Boost from the system, which is the path a distribution's user takes and
+  # nothing here had ever run. Everything else about Boost in this build
+  # takes CME_SYSTEM=NEVER, so the family agreeing to come from the system,
+  # the per-library config files a distribution ships, and the umbrella
+  # reporting what the family settled on were all untested.
+  #
+  # The assertion that matters is the second one: nothing was fetched. A
+  # build that quietly downloaded and built Boost beside an installed one
+  # would pass every other check in this file.
+  boost-from-the-system:
+    needs: quick
+    runs-on: ubuntu-latest
+    name: boost from the system
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libboost-all-dev
+      - name: the installed one, and nothing downloaded
+        run: |
+          export CPM_SOURCE_CACHE="$PWD/.cache/sources"
+          cmake -S test/port -B build/system -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_LOCK= -DCME_STORE= \
+            -DCME_PORT_PACKAGE=Boost \
+            -DCME_PORT_TARGETS=Boost::boost \
+            -DCME_PORT_COMPONENTS="filesystem;system"
+          cmake --build build/system
+          ./build/system/cme-port
+          echo "--- what it decided"
+          cat build/system/cme-report.txt
+          # The umbrella itself, because that is how a machine has Boost:
+          # one package with one config, not a hundred and fifty-eight
+          # installable pieces.
+          grep -qE "^Boost (system|pkg-config)" build/system/cme-report.txt
+          if ls .cache/sources 2>/dev/null | grep -q boost; then
+            echo "it downloaded Boost while a Boost was installed:"
+            ls .cache/sources
+            exit 1
+          fi
+
   # Whether a library nobody has ported can be used anyway. Everything this
   # one touches is made while it runs: an upstream repository, a directory of
   # ports, a repository of ports. Nothing is downloaded and nothing is in the
