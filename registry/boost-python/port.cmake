@@ -13,7 +13,6 @@ cme_declare_port(
   SYSTEM_PACKAGE boost_python
   TARGETS Boost::python
   DEPENDS boost-align boost-bind boost-config boost-conversion boost-core boost-detail boost-foreach boost-function boost-graph boost-integer boost-iterator boost-lexical-cast boost-mpl boost-numeric-conversion boost-preprocessor boost-property-map boost-smart-ptr boost-tuple boost-type-traits boost-utility
-  ARRANGEMENT BOOST_ENABLE_PYTHON
 )
 
 # Where the sources come from, which is the one thing about a Boost library

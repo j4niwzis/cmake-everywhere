@@ -66,9 +66,9 @@ jobs:
   # download is shared and every dependent part links what was built a moment
   # earlier.
   #
-  # Without the libraries that need an arrangement about the machine -- MPI,
-  # Python -- which the ports say of themselves, so this asks for what there
-  # is rather than repeating a list that would drift from theirs.
+  # Without mpi, python and graph_parallel, which Boost refuses unless it is
+  # told to enable MPI or Python. That is a decision about the machine rather
+  # than about the ports.
   boost-archive:
     needs: quick
     runs-on: ubuntu-latest
@@ -89,7 +89,8 @@ jobs:
         run: |
           export CPM_SOURCE_CACHE="$PWD/.cache/sources"
           export CCACHE_DIR="$PWD/.cache/ccache"
-          components=$(python3 check.py --boost-components)
+          components=$(python3 check.py --boost-components |
+            tr ';' '\n' | grep -vE '^(mpi|python|graph_parallel)$' | paste -sd ';')
           tools/configure -S test/port -B build/boost -G Ninja \
             -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
             -DCME_SYSTEM=NEVER -DCME_STORE= -DCME_BOOST_ARCHIVE=ON \

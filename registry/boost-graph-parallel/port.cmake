@@ -12,8 +12,7 @@ cme_declare_port(
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_graph_parallel
   TARGETS Boost::graph_parallel
-  DEPENDS boost-assert boost-concept-check boost-config boost-container-hash boost-core boost-detail boost-dynamic-bitset boost-filesystem boost-foreach boost-function boost-graph boost-iterator boost-lexical-cast boost-mpi boost-mpl boost-optional boost-property-map boost-property-map-parallel boost-random boost-serialization boost-smart-ptr boost-tuple boost-type-traits boost-variant
-  ARRANGEMENT BOOST_ENABLE_MPI
+  DEPENDS boost-assert boost-concept-check boost-config boost-container-hash boost-core boost-detail boost-dynamic-bitset boost-filesystem boost-foreach boost-function boost-graph boost-iterator boost-lexical-cast boost-mpl boost-optional boost-property-map boost-random boost-serialization boost-smart-ptr boost-tuple boost-type-traits boost-variant
 )
 
 # Where the sources come from, which is the one thing about a Boost library
