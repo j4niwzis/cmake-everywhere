@@ -39,7 +39,7 @@ set(CME_POLICY_VERSION_MINIMUM "3.5" CACHE STRING
 function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
-          POLICY_MINIMUM)
+          POLICY_MINIMUM GIT_TAG_TEMPLATE)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
@@ -91,6 +91,18 @@ endfunction()
 function(cme_options port)
   set(CME_OPTIONS_${port} "${ARGN}" CACHE STRING
     "Extra build options for the ${port} port" FORCE)
+endfunction()
+
+# Build a different version of a library than the port pins:
+#
+#   cme_version(flac 1.5.0)
+#
+# The port has to say how a version becomes a tag -- GIT_TAG_TEMPLATE, since
+# one project tags v1.3.5 and the next tags 1.4.3 -- or there is nothing to
+# check out and the request is refused rather than quietly ignored.
+function(cme_version port version)
+  set(CME_VERSION_${port} "${version}" CACHE STRING
+    "Version of the ${port} port to build" FORCE)
 endfunction()
 
 # An alias so that whatever the upstream calls its target -- zlibstatic,
@@ -149,7 +161,7 @@ endfunction()
 # installed, and the port would be built for nothing. A port that says
 # SYSTEM_PKGCONFIG names the modules to ask pkg-config for instead, and the
 # target each one answers to.
-function(cme_try_pkgconfig found port package version)
+function(cme_try_pkgconfig found port package version exact)
   set(${found} FALSE PARENT_SCOPE)
   cme_port_field(mapping ${port} SYSTEM_PKGCONFIG)
   if(NOT mapping)
@@ -175,7 +187,11 @@ function(cme_try_pkgconfig found port package version)
     endif()
     set(query "${module}")
     if(version AND index EQUAL 0)
-      set(query "${module} >= ${version}")
+      if(exact)
+        set(query "${module} = ${version}")
+      else()
+        set(query "${module} >= ${version}")
+      endif()
     endif()
     set(prefix CME_PC_${port}_${index})
     pkg_check_modules(${prefix} QUIET IMPORTED_TARGET GLOBAL "${query}")
@@ -201,6 +217,8 @@ function(cme_try_pkgconfig found port package version)
   cme_export_variable(${package} ${upper}_INCLUDE_DIRS "${includes}")
   cme_export_variable(${package} ${upper}_INCLUDE_DIR "${includes}")
   cme_export_variable(${package} ${upper}_VERSION "${CME_PC_${port}_0_VERSION}")
+  set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
+               "${CME_PC_${port}_0_VERSION}")
   cme_note_decision("${package}" "pkg-config" "${CME_PC_${port}_0_VERSION}")
   set(${found} TRUE PARENT_SCOPE)
 endfunction()
@@ -208,7 +226,7 @@ endfunction()
 # Builds one port and everything it needs. Called from the provider, so the
 # nested find_package() calls the port's own CMakeLists makes come back
 # through the provider and are answered from what is already here.
-function(cme_build_port port package version)
+function(cme_build_port port package version exact)
   get_property(done GLOBAL PROPERTY CME_BUILT_${port})
   if(done)
     return()
@@ -228,15 +246,50 @@ function(cme_build_port port package version)
   cme_port_field(overlay ${port} OVERLAY)
   cme_port_field(options ${port} OPTIONS)
   cme_port_field(port_version ${port} VERSION)
+  cme_port_field(port_tag ${port} GIT_TAG)
+
+  # A version asked for is a version the port has to be able to produce.
+  # Building 1.3.5 because that is what the port happens to pin, while
+  # something asked for 1.4, is the kind of quiet wrong answer that turns up
+  # much later as a missing symbol.
+  if(CME_VERSION_${port})
+    cme_port_field(template ${port} GIT_TAG_TEMPLATE)
+    if(NOT template)
+      message(FATAL_ERROR
+        "cmake-everywhere: asked to build ${port} ${CME_VERSION_${port}}, but "
+        "the port does not say how a version becomes a tag. Add "
+        "GIT_TAG_TEMPLATE to registry/${port}/port.cmake.")
+    endif()
+    set(port_version "${CME_VERSION_${port}}")
+    string(REPLACE "@VERSION@" "${port_version}" port_tag "${template}")
+    message(STATUS "cmake-everywhere: ${port} at ${port_version} (asked for)")
+  endif()
+  if(version AND port_version VERSION_LESS version)
+    message(FATAL_ERROR
+      "cmake-everywhere: something asks for ${package} ${version} and the "
+      "${port} port is ${port_version}. Raise VERSION in "
+      "registry/${port}/port.cmake, or set CME_VERSION_${port} to a version "
+      "the port can check out.")
+  endif()
+  if(exact AND NOT port_version VERSION_EQUAL version)
+    message(FATAL_ERROR
+      "cmake-everywhere: ${package} was asked for as exactly ${version} and "
+      "the ${port} port is ${port_version}.")
+  endif()
+  set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
+               "${port_version}")
 
   set(arguments NAME ${port})
-  foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY GIT_TAG
+  foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
                 URL URL_HASH)
     cme_port_field(value ${port} ${field})
     if(value)
       list(APPEND arguments ${field} "${value}")
     endif()
   endforeach()
+  if(port_tag)
+    list(APPEND arguments GIT_TAG "${port_tag}")
+  endif()
   if(port_version)
     list(APPEND arguments VERSION "${port_version}")
   endif()
@@ -290,6 +343,11 @@ function(cme_build_port port package version)
     cmake_language(CALL cme_adapt_${port} "${${port}_SOURCE_DIR}"
                    "${${port}_BINARY_DIR}")
   endif()
+  # Said by the core rather than by each adapter: the port names the version
+  # once, and this is the same number.
+  string(TOUPPER "${package}" upper)
+  cme_export_variable(${package} ${package}_VERSION "${port_version}")
+  cme_export_variable(${package} ${upper}_VERSION "${port_version}")
   cme_note_decision("${port}" "built" "${port_version}")
 endfunction()
 
@@ -301,9 +359,12 @@ macro(cme_provider cme_method cme_package)
     get_property(cme_port GLOBAL PROPERTY CME_PROVIDER_${cme_package})
     if(cme_port)
       set(cme_wanted "")
+      set(cme_exact FALSE)
       foreach(cme_argument IN ITEMS ${ARGN})
         if("${cme_argument}" MATCHES "^[0-9]+(\\.[0-9]+)*$" AND NOT cme_wanted)
           set(cme_wanted "${cme_argument}")
+        elseif("${cme_argument}" STREQUAL "EXACT")
+          set(cme_exact TRUE)
         endif()
       endforeach()
 
@@ -318,11 +379,13 @@ macro(cme_provider cme_method cme_package)
                        BYPASS_PROVIDER)
           if(${cme_package}_FOUND)
             set(cme_answered "system")
+            set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${cme_package}
+                         "${${cme_package}_VERSION}")
             cme_note_decision("${cme_package}" "system"
                               "${${cme_package}_VERSION}")
           else()
             cme_try_pkgconfig(cme_by_pc "${cme_port}" "${cme_package}"
-                              "${cme_wanted}")
+                              "${cme_wanted}" "${cme_exact}")
             if(cme_by_pc)
               set(cme_answered "pkg-config")
             endif()
@@ -334,10 +397,24 @@ macro(cme_provider cme_method cme_package)
               "cmake-everywhere: CME_SYSTEM is ALWAYS and the system has no "
               "${cme_package}")
           endif()
-          cme_build_port("${cme_port}" "${cme_package}" "${cme_wanted}")
+          cme_build_port("${cme_port}" "${cme_package}" "${cme_wanted}"
+                         "${cme_exact}")
         endif()
         set_property(GLOBAL PROPERTY CME_ANSWERED_${cme_package}
                      "${cme_answered}")
+      endif()
+
+      # A package is resolved once and cannot be resolved again: whatever was
+      # built or found is already in the build. So a later caller asking for
+      # more than that is told, rather than linked against something older
+      # than it asked for.
+      get_property(cme_have GLOBAL PROPERTY
+                   CME_PROVIDED_VERSION_${cme_package})
+      if(cme_wanted AND cme_have AND cme_have VERSION_LESS cme_wanted)
+        message(FATAL_ERROR
+          "cmake-everywhere: ${cme_package} is already here as ${cme_have} and "
+          "something now asks for ${cme_wanted}. Raise the port, or the "
+          "version the earlier caller asked for.")
       endif()
 
       if(cme_answered STREQUAL "system")

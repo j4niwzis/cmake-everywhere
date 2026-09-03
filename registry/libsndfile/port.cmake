@@ -15,6 +15,7 @@ cme_declare_port(
     "ENABLE_MPEG OFF"
     "ENABLE_CPACK OFF"
   SYSTEM_PKGCONFIG "sndfile:SndFile::sndfile"
+  GIT_TAG_TEMPLATE "@VERSION@"
 )
 
 # One find_package(SndFile) brings ogg, vorbis, FLAC and opus with it,

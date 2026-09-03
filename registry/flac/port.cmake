@@ -15,6 +15,7 @@ cme_declare_port(
     "INSTALL_MANPAGES OFF"
     "WITH_FORTIFY_SOURCE OFF"
   SYSTEM_PKGCONFIG "flac:FLAC::FLAC"
+  GIT_TAG_TEMPLATE "@VERSION@"
 )
 
 function(cme_adapt_flac source binary)

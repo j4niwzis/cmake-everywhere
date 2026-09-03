@@ -49,6 +49,38 @@ Per package: `-DCME_SYSTEM_ZLIB=OFF` builds that one and leaves the rest
 alone. Every decision is written to `cme-lock.txt` in the build directory --
 which package came from where, and at what version.
 
+## Versions
+
+`find_package(FLAC 1.4)` means 1.4 or newer, and it is treated that way:
+
+* the system copy is accepted only if it satisfies the request -- the version
+  goes into the `find_package` call and into the pkg-config query;
+* the port is built only if what it pins satisfies the request. A port
+  pinning 1.3.5 while something asks for 1.4 is an error naming both, not a
+  build of 1.3.5 that fails much later as a missing symbol;
+* a package already resolved cannot be resolved again, so a later caller
+  asking for more than what is already in the build is told so;
+* `EXACT` is honoured on all three paths.
+
+A newer version wins where there is a choice: the system copy is tried first,
+so an installed 1.5 is used rather than the 1.4 the port pins.
+
+To build a version other than the one the port pins:
+
+```cmake
+cme_version(flac 1.5.0)
+```
+
+The port says how a version becomes a tag, because one project tags `v1.3.5`
+and the next tags `1.4.3`:
+
+```cmake
+GIT_TAG_TEMPLATE "v@VERSION@"
+```
+
+A port without one refuses the request instead of checking out something that
+is not what was asked for.
+
 ## Options for a library being built
 
 ```cmake
@@ -128,6 +160,18 @@ correct, so ports are configured with `CMAKE_POLICY_VERSION_MINIMUM` set to
 3.5. A port that needs another floor says `POLICY_MINIMUM` and gets it. The
 floor applies to ports only: your own project is configured exactly as you
 wrote it.
+
+## Nothing is built at configure time
+
+The `*-populate` steps in the log are FetchContent downloading, and they say
+so themselves: no configure step, no build step, no install step. Every
+library is added with `add_subdirectory` and compiled by ninja in the main
+build, in parallel with everything else, with your flags and your generator.
+
+A port pinned to a branch instead of a commit makes those download steps run
+on every configure, because a moving ref has to be checked each time. That is
+what "Fetching latest from the remote origin" was, and it is why ports name
+commits or tags.
 
 ## A library with no CMake
 

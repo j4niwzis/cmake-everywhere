@@ -11,6 +11,7 @@ cme_declare_port(
     "vorbis:Vorbis::vorbis"
     "vorbisenc:Vorbis::vorbisenc"
     "vorbisfile:Vorbis::vorbisfile"
+  GIT_TAG_TEMPLATE "v@VERSION@"
 )
 
 function(cme_adapt_vorbis source binary)
