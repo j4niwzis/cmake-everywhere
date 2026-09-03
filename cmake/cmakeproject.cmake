@@ -109,8 +109,104 @@ function(cme_cmake_import port description)
       "which is built here and run from where this build puts it")
   endif()
 
-  # The commands first: a source that is generated has to have something
-  # that generates it before anything can be told to compile it.
+  # Every generated header, made before anything is compiled.
+  #
+  # A generated source is already a source of the target that compiles it,
+  # so the graph waits for it. A generated header is a source of nothing:
+  # the compile that includes it finds it or does not, depending on the
+  # order two independent things happened in. One target that makes all of
+  # them, that every imported target depends on, is what makes that order
+  # the same every time.
+  #
+  # Only headers, because a command whose output nothing reads is a command
+  # that does not have to run: several of libjpeg-turbo's make test images
+  # with tools it builds for its own tests.
+  set(generated "")
+  if(CMAKE_IMPORT_COMMANDS GREATER 0)
+    math(EXPR last "${CMAKE_IMPORT_COMMANDS} - 1")
+    foreach(index RANGE ${last})
+      foreach(output IN LISTS CMAKE_IMPORT_COMMAND${index}_OUTPUTS)
+        if(output MATCHES "\\.(h|hh|hpp|hxx|inc|ipp|def)$")
+          list(APPEND generated "${output}")
+        endif()
+      endforeach()
+    endforeach()
+  endif()
+  if(generated)
+    add_custom_target(${port}_generated DEPENDS ${generated})
+  endif()
+
+  # What cannot wait for what it makes.
+  #
+  # The barrier is every generated header, and everything imported waits
+  # for it -- except the tool that writes them and everything that tool is
+  # built from. Those are what the barrier waits for, and a thing cannot be
+  # both sides of that: wayland-scanner is built from wayland-util, the
+  # barrier is what wayland-scanner produces, and asking wayland-util to
+  # wait for the barrier is a cycle CMake refuses to generate.
+  set(making "${CMAKE_IMPORT_GENERATED_BY_TOOLS}")
+  set(pending "${making}")
+  while(pending)
+    list(POP_FRONT pending one)
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" key "${one}")
+    set(under "${CMAKE_IMPORT_${key}_DEPENDS}")
+    foreach(fragment IN LISTS CMAKE_IMPORT_${key}_LINK)
+      list(FIND CMAKE_IMPORT_ARTIFACT_PATHS "${fragment}" at)
+      if(at GREATER_EQUAL 0)
+        list(GET CMAKE_IMPORT_ARTIFACT_OWNERS ${at} owner)
+        list(APPEND under "${owner}")
+      endif()
+    endforeach()
+    foreach(dep IN LISTS under)
+      if(NOT dep IN_LIST making)
+        list(APPEND making "${dep}")
+        list(APPEND pending "${dep}")
+      endif()
+    endforeach()
+  endwhile()
+
+  set(made "")
+  foreach(name IN LISTS CMAKE_IMPORT_TARGETS)
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" key "${name}")
+    set(prefix "CMAKE_IMPORT_${key}")
+    set(target "${port}_${name}")
+    set(type "${${prefix}_TYPE}")
+    set(sources "${${prefix}_SOURCES}")
+
+    if(type STREQUAL "STATIC_LIBRARY" OR type STREQUAL "SHARED_LIBRARY"
+       OR type STREQUAL "MODULE_LIBRARY")
+      if(NOT sources)
+        continue()
+      endif()
+      add_library(${target} STATIC ${sources})
+    elseif(type STREQUAL "OBJECT_LIBRARY")
+      if(NOT sources)
+        continue()
+      endif()
+      add_library(${target} OBJECT ${sources})
+    elseif(type STREQUAL "EXECUTABLE")
+      if(NOT sources)
+        continue()
+      endif()
+      # Built only if something needs it, which is how a generator this
+      # project runs gets built and nothing else does.
+      add_executable(${target} EXCLUDE_FROM_ALL ${sources})
+    elseif(type STREQUAL "INTERFACE_LIBRARY")
+      add_library(${target} INTERFACE)
+    else()
+      continue()
+    endif()
+    list(APPEND made "${name}")
+  endforeach()
+
+  # The commands, after the targets they may run.
+  #
+  # A command that runs a tool this project builds is rewritten to run
+  # the target that builds it, and a target has to exist before anything
+  # can be said about it -- which is why this is here and not before the
+  # loop above. Nothing else depends on the order: a source that is
+  # generated is resolved against the commands of its directory when the
+  # build files are written, not when it is named.
   #
   # Each is run the way the generator would have run it -- through a shell,
   # from the directory it was written for -- because that is what it was
@@ -170,76 +266,32 @@ function(cme_cmake_import port description)
         list(REMOVE_DUPLICATES needs)
       endif()
 
+      # And the same file taken out of what the command waits for. It is
+      # named there too, as the path in the directory the description came
+      # from, and nothing makes a file at that path here: the target does,
+      # somewhere else, which is what `needs` says.
+      set(inputs "")
+      foreach(input IN LISTS CMAKE_IMPORT_COMMAND${index}_INPUTS)
+        list(FIND CMAKE_IMPORT_ARTIFACT_PATHS "${input}" at)
+        if(at GREATER_EQUAL 0)
+          list(GET CMAKE_IMPORT_ARTIFACT_OWNERS ${at} owner)
+          if(TARGET ${port}_${owner})
+            continue()
+          endif()
+        endif()
+        list(APPEND inputs "${input}")
+      endforeach()
+
       add_custom_command(
         OUTPUT ${outputs}
         COMMAND /bin/sh -c "${line}"
-        DEPENDS ${CMAKE_IMPORT_COMMAND${index}_INPUTS} ${needs}
+        DEPENDS ${inputs} ${needs}
         WORKING_DIRECTORY "${CMAKE_IMPORT_BUILD}"
         COMMENT "${comment}"
         VERBATIM)
     endforeach()
   endif()
 
-  # Every generated header, made before anything is compiled.
-  #
-  # A generated source is already a source of the target that compiles it,
-  # so the graph waits for it. A generated header is a source of nothing:
-  # the compile that includes it finds it or does not, depending on the
-  # order two independent things happened in. One target that makes all of
-  # them, that every imported target depends on, is what makes that order
-  # the same every time.
-  #
-  # Only headers, because a command whose output nothing reads is a command
-  # that does not have to run: several of libjpeg-turbo's make test images
-  # with tools it builds for its own tests.
-  set(generated "")
-  if(CMAKE_IMPORT_COMMANDS GREATER 0)
-    math(EXPR last "${CMAKE_IMPORT_COMMANDS} - 1")
-    foreach(index RANGE ${last})
-      foreach(output IN LISTS CMAKE_IMPORT_COMMAND${index}_OUTPUTS)
-        if(output MATCHES "\\.(h|hh|hpp|hxx|inc|ipp|def)$")
-          list(APPEND generated "${output}")
-        endif()
-      endforeach()
-    endforeach()
-  endif()
-  if(generated)
-    add_custom_target(${port}_generated DEPENDS ${generated})
-  endif()
-
-  set(made "")
-  foreach(name IN LISTS CMAKE_IMPORT_TARGETS)
-    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" key "${name}")
-    set(prefix "CMAKE_IMPORT_${key}")
-    set(target "${port}_${name}")
-    set(type "${${prefix}_TYPE}")
-    set(sources "${${prefix}_SOURCES}")
-
-    if(type STREQUAL "STATIC_LIBRARY" OR type STREQUAL "SHARED_LIBRARY"
-       OR type STREQUAL "MODULE_LIBRARY")
-      if(NOT sources)
-        continue()
-      endif()
-      add_library(${target} STATIC ${sources})
-    elseif(type STREQUAL "OBJECT_LIBRARY")
-      if(NOT sources)
-        continue()
-      endif()
-      add_library(${target} OBJECT ${sources})
-    elseif(type STREQUAL "EXECUTABLE")
-      if(NOT sources)
-        continue()
-      endif()
-      # Built only if something needs it, which is how a generator this
-      # project runs gets built and nothing else does.
-      add_executable(${target} EXCLUDE_FROM_ALL ${sources})
-    elseif(type STREQUAL "INTERFACE_LIBRARY")
-      add_library(${target} INTERFACE)
-    else()
-      continue()
-    endif()
-    list(APPEND made "${name}")
-  endforeach()
 
   foreach(name IN LISTS made)
     string(REGEX REPLACE "[^A-Za-z0-9_]" "_" key "${name}")
@@ -343,7 +395,8 @@ function(cme_cmake_import port description)
       endif()
     endif()
 
-    if(generated AND NOT kind STREQUAL "INTERFACE_LIBRARY")
+    if(generated AND NOT kind STREQUAL "INTERFACE_LIBRARY"
+       AND NOT name IN_LIST making)
       add_dependencies(${target} ${port}_generated)
     endif()
 

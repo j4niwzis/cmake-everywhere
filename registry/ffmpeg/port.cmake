@@ -144,3 +144,24 @@ cme_port_feature(ffmpeg x264
   SUMMARY "H.264 through libx264, which is GPL and has to be installed"
   CONFIGURE_ARGS "--enable-libx264" "--enable-gpl"
                  "--enable-encoder=libx264,libx264rgb")
+
+function(cme_adapt_ffmpeg source binary)
+  # Where its headers are, for whoever links it. Every source it compiles
+  # was given these as private flags by its own build; a consumer writes
+  # <libavcodec/avcodec.h> and has been given nothing at all.
+  #
+  # Two directories, because FFmpeg's configure builds out of tree and puts
+  # what it generated -- config.h, and the tables it writes -- beside the
+  # objects, with a symlink called src pointing back at the checkout.
+  set(built "${CMAKE_BINARY_DIR}/_cme/ffmpeg-build")
+  foreach(name avcodec avformat avutil swscale swresample)
+    if(TARGET ffmpeg_${name})
+      target_include_directories(ffmpeg_${name} INTERFACE
+        "$<BUILD_INTERFACE:${source}>" "$<BUILD_INTERFACE:${built}>")
+    endif()
+  endforeach()
+  cme_export_variable(FFmpeg FFMPEG_FOUND TRUE)
+  cme_export_variable(FFmpeg FFMPEG_INCLUDE_DIRS "${source};${built}")
+  cme_export_variable(FFmpeg FFMPEG_LIBRARIES
+                      "FFmpeg::avcodec;FFmpeg::avformat;FFmpeg::avutil;FFmpeg::swscale;FFmpeg::swresample")
+endfunction()
