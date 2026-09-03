@@ -449,6 +449,7 @@ include("${CME_DIR}/cmake/cmakeproject.cmake")
 include("${CME_DIR}/cmake/mesonproject.cmake")
 include("${CME_DIR}/cmake/configureproject.cmake")
 include("${CME_DIR}/cmake/cargoproject.cmake")
+include("${CME_DIR}/cmake/ninjaproject.cmake")
 
 set(CME_REGISTRY "${CME_DIR}/registry" CACHE PATH
   "The ports that come with this. Overlays are searched before it.")
@@ -1340,7 +1341,7 @@ function(cme_declare_port)
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
           PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
           CHECK_HEADER ARRANGEMENT SYSTEM_HEADER_TARGET CONFIGURE
-          INSTALLED_INCLUDE SOURCE_DIR
+          INSTALLED_INCLUDE SOURCE_DIR MACHINE
           # What a crate is built as: which package of a workspace, which
           # manifest, which target triple, where its generated headers land,
           # and whether the features it has by default are wanted.
@@ -1355,7 +1356,7 @@ function(cme_declare_port)
            PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG PKGCONFIG_NAMES
            SYSTEM_CODE
            EXCLUDES LICENSE
-           LINK_NAMES TARGETS SYSTEMS
+           LINK_NAMES TARGETS SYSTEMS PROGRAMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE IMPORT_TARGETS
            CONFIGURE_ARGS CONFIGURE_CROSS INSTALLED_TARGETS PATCHES TREES)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
@@ -4518,6 +4519,10 @@ function(cme_build_port port package version exact)
   cme_port_field(imported ${port} IMPORT)
   cme_port_field(configure ${port} CONFIGURE)
   cme_port_field(source_only ${port} SOURCE_ONLY)
+  # Which machine the result of this port is for. Unset means the one this
+  # build is aimed at, which is what a library is; "build" means the one
+  # doing the building, which is what a tool the build runs is.
+  cme_port_field(machine ${port} MACHINE)
   # Fetched and no more. What a library says about itself is in the tree, and
   # nothing can be decided about the library before it has been read -- which
   # means the tree cannot be configured by the same call that brings it.
@@ -4694,7 +4699,11 @@ function(cme_build_port port package version exact)
   # anything is asked to compile it.
   cme_place_trees(${port} "${${port}_SOURCE_DIR}")
 
-  if(imported)
+  if(machine STREQUAL "build")
+    # A program this build runs rather than a library it links: its steps
+    # come into this graph with the compiler they name.
+    cme_build_machine_build(${port} "${${port}_SOURCE_DIR}")
+  elseif(imported)
     if(imported STREQUAL "cmake")
       cme_cmake_build(${port} "${${port}_SOURCE_DIR}")
     elseif(imported STREQUAL "meson")
