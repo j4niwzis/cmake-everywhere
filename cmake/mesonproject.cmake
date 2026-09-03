@@ -127,6 +127,86 @@ function(cme_meson_machine_file port out_file out_kind)
   set(${out_kind} "${kind}" PARENT_SCOPE)
 endfunction()
 
+# What this port is built against, in the only language meson asks in.
+#
+# A meson project resolves its own dependencies -- dependency('libffi'),
+# dependency('expat') -- and it asks pkg-config, not this. So a port built
+# here against another port built here would have been compiled against
+# whatever the machine happened to have, or told there is nothing at all.
+#
+# The same answer as the GN ports get, in a different spelling: there the
+# include directories of a dependency go into the project's own extra_cflags
+# and its libraries are resolved from the names it links; here a .pc file is
+# written for each name a dependency port answers to, and meson is pointed
+# at the directory holding them before anything the machine has.
+#
+# What is in that file is the include directories and the bare names the
+# dependency answers to -- "-lexpat" -- and not paths to archives. The name
+# is the same thing a GN project puts in libs and a Makefile puts on a link
+# line, and it is resolved the same way at the end: LINK_NAMES turns it into
+# the target that was actually built. A path written here would be a second
+# statement of where a library is, in a file, next to the one the graph
+# already has.
+function(cme_meson_dependency_pkgconfig port out)
+  set(directory "${CMAKE_BINARY_DIR}/_cme/${port}-pc")
+  file(MAKE_DIRECTORY "${directory}")
+  cme_gn_dependency_ports(${port} deps)
+  set(written "")
+  foreach(dep IN LISTS deps)
+    # Every name the dependency answers to, which is what the port already
+    # says for the sake of pkg_check_modules calls that come this way.
+    cme_port_field(names ${dep} PKGCONFIG_NAMES)
+    cme_port_field(mapping ${dep} SYSTEM_PKGCONFIG)
+    foreach(pair IN LISTS mapping)
+      if(pair MATCHES "^([^:]+):")
+        set(module "${CMAKE_MATCH_1}")
+      else()
+        set(module "${pair}")
+      endif()
+      string(REPLACE "|" ";" alternatives "${module}")
+      list(APPEND names ${alternatives})
+    endforeach()
+    if(NOT names)
+      continue()
+    endif()
+    list(REMOVE_DUPLICATES names)
+
+    cme_gn_target_includes(includes ${dep})
+    set(flags "")
+    foreach(one IN LISTS includes)
+      string(APPEND flags " -I${one}")
+    endforeach()
+    set(libs "")
+    cme_port_field(link ${dep} LINK_NAMES)
+    foreach(pair IN LISTS link)
+      if(pair MATCHES "^([^=]+)=")
+        string(APPEND libs " -l${CMAKE_MATCH_1}")
+      endif()
+    endforeach()
+    cme_effective_version(${dep} dep_version)
+    if(NOT dep_version)
+      set(dep_version "0")
+    endif()
+    foreach(module IN LISTS names)
+      file(WRITE "${directory}/${module}.pc"
+           "# Written by cmake-everywhere for ${port}, about ${dep}.\n"
+           "Name: ${module}\n"
+           "Description: ${dep}, as this build has it\n"
+           "Version: ${dep_version}\n"
+           "Cflags:${flags}\n"
+           "Libs:${libs}\n")
+      list(APPEND written "${module}")
+    endforeach()
+  endforeach()
+  if(written)
+    list(JOIN written ", " listed)
+    message(STATUS
+      "cmake-everywhere: ${port} is offered ${listed} as this build has "
+      "them, before anything the machine has")
+  endif()
+  set(${out} "${directory}" PARENT_SCOPE)
+endfunction()
+
 # Where the project is configured so that it can be asked. Nothing is built
 # there; it exists to hold the answer and the files the answer refers to --
 # Meson writes config headers at setup time, and every target compiled here
@@ -182,9 +262,16 @@ function(cme_meson_probe port source out_build)
     list(APPEND arguments "-D${name}=${value}")
   endforeach()
 
+  cme_meson_dependency_pkgconfig(${port} pkgconfig)
+  set(path "${pkgconfig}")
+  if(DEFINED ENV{PKG_CONFIG_PATH})
+    set(path "${pkgconfig}:$ENV{PKG_CONFIG_PATH}")
+  endif()
+
   message(STATUS "cmake-everywhere: asking ${port} what it would build")
   execute_process(
     COMMAND ${CMAKE_COMMAND} -E env "NINJA=${CME_NINJA}"
+            "PKG_CONFIG_PATH=${path}"
             "${CME_MESON}" ${arguments}
     RESULT_VARIABLE code OUTPUT_VARIABLE output ERROR_VARIABLE output)
   if(NOT code EQUAL 0)

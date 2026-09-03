@@ -1051,6 +1051,20 @@ a library from outside the project is named. What is not there:
 A target written in a language CMake has no compiler for is skipped and said
 out loud, as is a name two targets share.
 
+**What the project is built against** is resolved by the project, not by
+this: a Meson project writes `dependency('expat')` and that asks pkg-config.
+So the ports it depends on are handed to it in the only language it asks in
+-- a `.pc` file per name each dependency answers to, in a directory put
+before anything the machine has. What is in that file is the include
+directories and the bare names the library answers to, `-lexpat`, which is
+the same thing a GN project puts in `libs`: the name is resolved at the end
+by `LINK_NAMES`, into the target that was actually built. A path to an
+archive written into a `.pc` would be a second statement of where a library
+is, in a file, beside the one the graph already has.
+
+A dependency with no port is still meson's to find, and it finds it on the
+machine.
+
 `registry/basu` is the worked example: sd-bus taken out of systemd, so a
 program that talks to D-Bus can be built on a machine that runs none of it.
 Its port asks the system for `basu`, `libelogind` and `libsystemd` in that
