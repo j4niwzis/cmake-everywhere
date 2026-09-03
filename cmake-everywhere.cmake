@@ -3378,31 +3378,14 @@ function(cme_system_has_features out package port features)
   # cannot link it is not a copy this build can use whatever else it has.
   cme_port_field(whole ${port} SYSTEM_CODE)
   if(whole)
-    # try_compile rather than check_cxx_source_compiles, for one reason: the
-    # output. A program that does not build says why, and the reason is not
-    # always the one that was expected -- a missing header reads nothing like
-    # an undefined symbol, and a message that names a cause it did not
-    # observe is worse than no message.
-    try_compile(cme_usable
-      SOURCE_FROM_VAR "cme_${port}_usable.cc" whole
-      LINK_LIBRARIES ${libraries}
-      CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${includes}"
-      OUTPUT_VARIABLE cme_usable_output)
-    if(NOT cme_usable)
+    include(CheckCXXSourceCompiles)
+    string(MAKE_C_IDENTIFIER "cme_${package}_usable" variable)
+    check_cxx_source_compiles("${whole}" ${variable})
+    if(NOT ${variable})
       message(STATUS
-        "cmake-everywhere: a program of this build's own does not build "
-        "against the ${package} installed here, so it is built here instead")
-      string(REPLACE "\n" ";" cme_usable_lines "${cme_usable_output}")
-      set(cme_shown 0)
-      foreach(cme_line IN LISTS cme_usable_lines)
-        if(cme_line MATCHES "(error|Error|undefined reference)")
-          message(STATUS "    ${cme_line}")
-          math(EXPR cme_shown "${cme_shown} + 1")
-          if(cme_shown GREATER_EQUAL 4)
-            break()
-          endif()
-        endif()
-      endforeach()
+        "cmake-everywhere: the ${package} installed here cannot be linked "
+        "against by this build -- a different C++ standard library, or a "
+        "different ABI -- so it is built here instead")
       set(${out} FALSE PARENT_SCOPE)
       return()
     endif()
