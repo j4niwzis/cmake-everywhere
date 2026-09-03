@@ -3059,8 +3059,25 @@ function(cme_build_port port package version exact)
   # What was actually fetched, rather than what was asked for. A tag moves,
   # a branch certainly moves, and an archive at a URL can be replaced; the
   # commit and the digest are what a build can be held to.
+  # Where it came from, beside what came. A lock that says which commit and
+  # not which repository is half an answer, and the other half is what
+  # anything reading the lock -- a mirror, a distribution's packaging, a
+  # sandboxed build that has to fetch beforehand -- needs first.
+  foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY URL)
+    cme_port_field(where ${port} ${field})
+    if(where)
+      if(field STREQUAL "GITHUB_REPOSITORY")
+        set(where "https://github.com/${where}.git")
+      elseif(field STREQUAL "GITLAB_REPOSITORY")
+        set(where "https://gitlab.com/${where}.git")
+      endif()
+      cme_lock_fact("${port}" "url" "${where}")
+    endif()
+  endforeach()
   if(listed)
+    get_property(url GLOBAL PROPERTY CME_SOURCE_${port}_${port_version}_URL)
     get_property(hash GLOBAL PROPERTY CME_SOURCE_${port}_${port_version}_HASH)
+    cme_lock_fact("${port}" "url" "${url}")
     cme_lock_fact("${port}" "archive" "${hash}")
   else()
     cme_port_field(url ${port} URL)

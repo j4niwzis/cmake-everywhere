@@ -1,0 +1,4 @@
+A lock with one of each kind of source in it: a repository at a commit, an
+archive with a digest, and a port that has neither because nothing fetched it.
+The generators are run against this so that they keep working when the shape
+of the lock changes -- a generated file nobody reads rots quietly.

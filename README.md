@@ -1321,6 +1321,48 @@ cmake -S . -B build -G Ninja \
 `CME_OFFLINE` refuses to fetch rather than failing to: what is not in the
 cache is an error naming what is missing, not a timeout.
 
+Both halves are checked on a machine with no `/usr`. Nothing here looks for a
+library by path -- the system is asked through `find_package` and pkg-config,
+which read `CMAKE_PREFIX_PATH` and `PKG_CONFIG_PATH` -- and Nix, where every
+package lives in a directory of its own with a hash in the name, is where
+that stops being a claim: a build with a `/usr` in it anywhere fails there
+and nowhere else. The offline half runs in a network namespace of its own, so
+"it did not reach for the network" is a fact rather than a hope. Guix asks
+the same two questions weekly.
+
+### The lock is the list a sandbox needs
+
+A build that cannot reach the network has to be handed its sources by
+whatever is running it, and what that wants is exactly what the lock already
+holds: where each library came from, at which commit, or which archive with
+which digest.
+
+```sh
+python3 tools/lock-to-nix.py cme-lock.json > sources.nix
+python3 tools/lock-to-guix.py cme-lock.json > sources.scm
+```
+
+A repository comes out as `builtins.fetchGit`, which needs no separate hash
+because a full revision pins it; an archive comes out as `fetchurl` with the
+digest the lock has. Guix wants the digest of a checkout's *contents* for a
+repository, and nothing but fetching produces that, so those come out with
+the place to put it and the command that says what to put there. A generated
+file that filled it in with something plausible would be worse than one that
+says it does not know.
+
+With the source cache at hand both fill in the digest of the contents, which
+is the thing neither a commit nor an archive digest can be turned into:
+`tools/nar-hash.py` computes it the way Nix and Guix do, and a repository
+then comes out as a complete `fetchgit` or a complete `git-fetch` origin.
+
+That computation is somebody else's format, so it is compared with theirs
+rather than trusted: the Nix job checks it against `nix hash path` and the
+Guix job against `guix hash -r`, on a tree with a subdirectory, an executable
+and a symlink, because those are the three things the format says something
+about. And the generated file is then handed to Nix, which fetches every
+source in it and checks every digest itself -- so a hash computed wrongly is
+a build failure rather than a plausible string in a file nobody ran.
+
 The same project, the same code, both ways round -- which is the point. A
 project should not need one dependency arrangement for a normal build and
 another one for a builder that unplugs the network.

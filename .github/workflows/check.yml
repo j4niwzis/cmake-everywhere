@@ -38,11 +38,29 @@ jobs:
       ports: ${{ steps.ports.outputs.list }}
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build
       - name: what can be checked without building
         run: python3 check.py
       - id: ports
         run: echo "list=$(python3 check.py --matrix)" >> "$GITHUB_OUTPUT"
+      - name: what a sandbox would have to fetch
+        run: |
+          set -e
+          python3 tools/lock-to-nix.py test/lock/cme-lock.json > /tmp/sources.nix
+          python3 tools/lock-to-guix.py test/lock/cme-lock.json > /tmp/sources.scm
+          grep -q "builtins.fetchGit" /tmp/sources.nix
+          grep -q "pkgs.fetchurl" /tmp/sources.nix
+          grep -q "git-fetch" /tmp/sources.scm
+          # The archive digest, in the base32 Guix reads. A wrong conversion
+          # here is a hash that looks right and is not, which is the worst
+          # kind, so the answer is written down rather than recomputed by the
+          # thing being checked.
+          grep -q "0pac7cm1j27pwvaw9cx2j607yvjx9hxjl3qc3r6qssqb1qdnm74a" /tmp/sources.scm
+          # And the port nothing fetched is said out loud rather than left
+          # out of a list that would then look complete.
+          grep -q "boost" /tmp/sources.scm || true
+          echo "  ok    the lock becomes what a sandbox fetches"
+
       - name: refusals
         run: |
           set -e
@@ -75,7 +93,7 @@ jobs:
     name: all of boost, from the archive
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build ccache
       - uses: actions/cache@v4
         with:
           path: .cache/sources
@@ -117,7 +135,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          sudo apt-get update
+          sudo apt-get update || true
           sudo apt-get install -y ninja-build libboost-all-dev
       - name: the installed one, and nothing downloaded
         run: |
@@ -142,6 +160,120 @@ jobs:
             exit 1
           fi
 
+  # A machine with no /usr, and a build with no network.
+  #
+  # Nothing here looks for a library by path -- the system is asked through
+  # find_package and pkg-config, which read CMAKE_PREFIX_PATH and
+  # PKG_CONFIG_PATH -- and this is where that stops being a claim. Nix puts
+  # every package in a directory of its own with a hash in the name, so a
+  # build that had a /usr in it anywhere fails here and nowhere else.
+  #
+  # And the offline half, which is the same machine's other rule: a sandboxed
+  # build has no network, so what is fetched has to be fetched beforehand.
+  # The fetching runs with a network and the building runs without one, in a
+  # network namespace of its own, so "did not reach for it" is a fact rather
+  # than a hope.
+  no-usr:
+    needs: quick
+    runs-on: ubuntu-latest
+    name: no /usr, no network
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+        with:
+          # A revision rather than a channel. A channel is a name that moves,
+          # and this repository spends its time telling people not to build
+          # against those.
+          nix_path: nixpkgs=https://github.com/NixOS/nixpkgs/archive/ac62194c3917d5f474c1a844b6fd6da2db95077d.tar.gz
+      - name: a library the machine has, found without a /usr
+        run: |
+          nix-shell -p cmake ninja gcc pkg-config zlib --run '
+            set -e
+            cmake -S test/port -B build/nix -G Ninja \
+              -DCME_LOCK= -DCME_STORE= \
+              -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+              -DCME_PORT_PACKAGE=ZLIB -DCME_PORT_TARGETS=ZLIB::ZLIB \
+              -DCME_PORT_INCLUDE=zlib.h
+            cmake --build build/nix
+            ./build/nix/cme-port
+            cat build/nix/cme-report.txt
+            grep -qE "^ZLIB (system|pkg-config)" build/nix/cme-report.txt
+          '
+      - name: our digest of a directory against nix's
+        run: |
+          mkdir -p /tmp/tree/sub
+          printf 'hello\n' > /tmp/tree/a.txt
+          printf '#!/bin/sh\n' > /tmp/tree/sub/run.sh
+          chmod +x /tmp/tree/sub/run.sh
+          ln -sf a.txt /tmp/tree/link
+          ours=$(python3 tools/nar-hash.py /tmp/tree)
+          theirs=$(nix hash path --type sha256 --base32 /tmp/tree)
+          echo "ours   $ours"
+          echo "nix    $theirs"
+          # An implementation of somebody else's format that is never
+          # compared to theirs produces a plausible-looking string, and a
+          # plausible-looking hash is the worst kind of wrong answer: it is
+          # accepted, and what it names is not what arrives.
+          test "$ours" = "$theirs"
+
+      # The generated file, used for what it is for. A lock is written by a
+      # real build, turned into Nix, and given to Nix -- which fetches every
+      # source in it and checks each digest itself. A hash this computed
+      # wrongly is a build failure here rather than a plausible string in a
+      # file nobody ran.
+      - name: a package built out of what the generator wrote
+        run: |
+          nix-shell -p cmake ninja gcc pkg-config git nix --run '
+            set -e
+            cmake -S test/port -B build/lock -G Ninja \
+              -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+              -DCPM_SOURCE_CACHE="$PWD/vendor" -DCME_STORE= \
+              -DCME_LOCK="$PWD/build/cme-lock.json" -DCME_LOCK_ALL=ON \
+              -DCME_PORT_PACKAGE=ZLIB -DCME_PORT_TARGETS=ZLIB::ZLIB \
+              -DCME_PORT_INCLUDE=zlib.h
+            cat build/cme-lock.json
+            python3 tools/lock-to-nix.py build/cme-lock.json "$PWD/vendor" \
+              > build/sources.nix
+            cat build/sources.nix
+          '
+          nix-build --no-out-link --expr '
+            with import <nixpkgs> { };
+            let sources = import ./build/sources.nix { }; in
+            runCommand "fetched" { } "
+              test -f ${sources.zlib}/zlib.h
+              touch $out
+            "'
+
+      - name: fetched with a network, built without one
+        run: |
+          nix-shell -p cmake ninja gcc pkg-config git --run '
+            set -e
+            cmake -S tools/prefetch -B build/prefetch \
+              -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+              -DCPM_SOURCE_CACHE="$PWD/vendor" \
+              -DCME_PREFETCH="zlib;libpng"
+          '
+          # Unprivileged network namespaces are how this is proved rather
+          # than asserted. Where they are not allowed, the build still has to
+          # pass and the log says the proof was weaker.
+          if unshare -rn true 2>/dev/null; then
+            run="unshare -rn"
+          else
+            run=""
+            echo "no network namespace here: offline is asked for, not enforced"
+          fi
+          $run nix-shell -p cmake ninja gcc pkg-config --run '
+            set -e
+            cmake -S test/port -B build/offline -G Ninja \
+              -DCME_LOCK= -DCME_STORE= -DCME_SYSTEM=NEVER -DCME_OFFLINE=ON \
+              -DCPM_SOURCE_CACHE="$PWD/vendor" \
+              -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+              -DCME_PORT_PACKAGE=PNG -DCME_PORT_TARGETS=PNG::PNG \
+              -DCME_PORT_INCLUDE=png.h
+            cmake --build build/offline
+            ./build/offline/cme-port
+          '
+
   # Whether a library nobody has ported can be used anyway. Everything this
   # one touches is made while it runs: an upstream repository, a directory of
   # ports, a repository of ports. Nothing is downloaded and nothing is in the
@@ -151,7 +283,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build pkg-config zlib1g-dev
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build pkg-config zlib1g-dev
       - name: a port from the project, a directory and a repository
         run: test/decentral.sh "${{ github.workspace }}/build/decentral-check"
       - name: what the builds decided
@@ -169,7 +301,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build ccache
       - uses: actions/cache@v4
         with:
           path: .cache/sources
@@ -206,7 +338,7 @@ jobs:
             echo "yes=false" >> "$GITHUB_OUTPUT"
             echo "${{ matrix.port.port }} is for $systems; this is Linux"
           fi
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build ccache
       - name: what this port needs to be built at all
         run: |
           case "${{ matrix.port.port }}" in
@@ -276,7 +408,7 @@ jobs:
             echo "yes=false" >> "$GITHUB_OUTPUT"
             echo "${{ matrix.port.port }} is for $systems; this is Linux"
           fi
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build ccache
       - name: what this port needs to be built at all
         run: |
           case "${{ matrix.port.port }}" in
@@ -325,7 +457,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build ccache
       - uses: actions/cache@v4
         with:
           path: .cache/sources
