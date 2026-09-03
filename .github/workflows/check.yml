@@ -856,4 +856,17 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build/skia
           ./build/skia/cme-skia
+      # The other backend, and the other half of what a Vulkan build needs:
+      # the allocator sources, which Skia will not build a Vulkan backend
+      # without and does not fetch here.
+      - name: skia with graphite on vulkan, from source
+        run: |
+          cmake -S test/skia -B build/skia-graphite -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_SYSTEM=NEVER \
+            -DCME_FEATURES_skia="graphite-vulkan" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build/skia-graphite
+          ./build/skia-graphite/cme-skia
       - run: ccache --show-stats

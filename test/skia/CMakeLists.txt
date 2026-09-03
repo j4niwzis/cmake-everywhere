@@ -50,4 +50,12 @@ if("harfbuzz" IN_LIST CME_FEATURES_skia)
     CME_EXPECT_HARFBUZZ="${harfbuzz_VERSION}")
 endif()
 
+# The Graphite backend on Vulkan, which is asked for by name here because
+# what it needs from a consumer -- a Vulkan device and an allocator -- is not
+# something a test can be handed on a runner with no GPU. What is checked is
+# that the calls are in the library.
+if("graphite-vulkan" IN_LIST CME_FEATURES_skia)
+  target_compile_definitions(cme-skia PRIVATE CME_EXPECT_GRAPHITE_VULKAN)
+endif()
+
 cme_report()
