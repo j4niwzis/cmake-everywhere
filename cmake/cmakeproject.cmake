@@ -102,6 +102,17 @@ function(cme_cmake_import port description)
   include("${description}")
   cme_gn_link_map(${port} link_map)
 
+  # A command that runs a tool the project builds itself runs it from the
+  # directory the description came from, where nothing was built. Nothing
+  # here can fix that, so it is said before the build says something else.
+  if(CMAKE_IMPORT_GENERATED_BY_TOOLS)
+    list(JOIN CMAKE_IMPORT_GENERATED_BY_TOOLS ", " tools)
+    message(WARNING
+      "cmake-everywhere: ${port} generates sources with tools it builds "
+      "itself (${tools}), and those commands name them in "
+      "${CMAKE_IMPORT_BUILD}, where they are not built")
+  endif()
+
   # The commands first: a source that is generated has to have something
   # that generates it before anything can be told to compile it.
   #
@@ -128,6 +139,33 @@ function(cme_cmake_import port description)
         COMMENT "${comment}"
         VERBATIM)
     endforeach()
+  endif()
+
+  # Every generated header, made before anything is compiled.
+  #
+  # A generated source is already a source of the target that compiles it,
+  # so the graph waits for it. A generated header is a source of nothing:
+  # the compile that includes it finds it or does not, depending on the
+  # order two independent things happened in. One target that makes all of
+  # them, that every imported target depends on, is what makes that order
+  # the same every time.
+  #
+  # Only headers, because a command whose output nothing reads is a command
+  # that does not have to run: several of libjpeg-turbo's make test images
+  # with tools it builds for its own tests.
+  set(generated "")
+  if(CMAKE_IMPORT_COMMANDS GREATER 0)
+    math(EXPR last "${CMAKE_IMPORT_COMMANDS} - 1")
+    foreach(index RANGE ${last})
+      foreach(output IN LISTS CMAKE_IMPORT_COMMAND${index}_OUTPUTS)
+        if(output MATCHES "\\.(h|hh|hpp|hxx|inc|ipp|def)$")
+          list(APPEND generated "${output}")
+        endif()
+      endforeach()
+    endforeach()
+  endif()
+  if(generated)
+    add_custom_target(${port}_generated DEPENDS ${generated})
   endif()
 
   set(made "")
@@ -223,19 +261,51 @@ function(cme_cmake_import port description)
       endforeach()
     endif()
 
-    if(NOT kind STREQUAL "INTERFACE_LIBRARY")
-      foreach(fragment IN LISTS ${prefix}_LINK)
-        cme_cmake_resolve_link(resolved ${port} "${fragment}"
-                               "${CMAKE_IMPORT_ARTIFACT_PATHS}"
-                               "${CMAKE_IMPORT_ARTIFACT_OWNERS}")
-        if(NOT resolved)
-          continue()
-        endif()
-        if(NOT TARGET ${resolved})
-          cme_gn_resolve_lib(resolved "${resolved}" "${link_map}")
-        endif()
-        target_link_libraries(${target} PRIVATE ${resolved})
-      endforeach()
+    if(kind STREQUAL "INTERFACE_LIBRARY")
+      set(link_scope INTERFACE)
+    else()
+      set(link_scope PRIVATE)
+    endif()
+    # What it links, and what is known about the order.
+    #
+    # A description that says LINK_GROUP says which libraries belong
+    # together and not what order the linker has to see them in -- meson
+    # states what a static library is built against nowhere, so an archive
+    # that needs a symbol from another archive can arrive after it. The
+    # linker is told to rescan the set instead of being told an order that
+    # was guessed. Whether it can is CMake's answer, not ours.
+    set(grouped "")
+    foreach(fragment IN LISTS ${prefix}_LINK)
+      cme_cmake_resolve_link(resolved ${port} "${fragment}"
+                             "${CMAKE_IMPORT_ARTIFACT_PATHS}"
+                             "${CMAKE_IMPORT_ARTIFACT_OWNERS}")
+      if(NOT resolved)
+        continue()
+      endif()
+      if(NOT TARGET ${resolved})
+        cme_gn_resolve_lib(resolved "${resolved}" "${link_map}")
+      endif()
+      if(${prefix}_LINK_GROUP AND TARGET ${resolved})
+        list(APPEND grouped ${resolved})
+      else()
+        target_link_libraries(${target} ${link_scope} ${resolved})
+      endif()
+    endforeach()
+    if(grouped)
+      list(REMOVE_DUPLICATES grouped)
+      list(LENGTH grouped count)
+      set(feature "${${prefix}_LINK_GROUP}")
+      if(count GREATER 1 AND CMAKE_LINK_GROUP_USING_${feature}_SUPPORTED)
+        list(JOIN grouped "," inside)
+        target_link_libraries(${target} ${link_scope}
+                              "$<LINK_GROUP:${feature},${inside}>")
+      else()
+        target_link_libraries(${target} ${link_scope} ${grouped})
+      endif()
+    endif()
+
+    if(generated AND NOT kind STREQUAL "INTERFACE_LIBRARY")
+      add_dependencies(${target} ${port}_generated)
     endif()
 
     foreach(dependency IN LISTS ${prefix}_DEPENDS)

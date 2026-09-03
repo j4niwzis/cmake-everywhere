@@ -73,12 +73,17 @@ def unescape_ninja(text):
     return "".join(out)
 
 
-def read_custom_commands(build):
+def read_custom_commands(build, rules=("CUSTOM_COMMAND",)):
     """Every custom command in the generated build, by what it produces.
 
     build.ninja states them as a build edge using the CUSTOM_COMMAND rule
     with a COMMAND variable. That is the only place they are written down in
     a form anything else can read: the File API does not carry them.
+
+    Which rules mean "a custom command" is the generator's business, so it
+    is a parameter: meson writes CUSTOM_COMMAND_DEP as well, for the ones
+    that leave a depfile. So is how far a variable line is indented -- CMake
+    writes two spaces and meson writes one.
     """
     path = os.path.join(build, "build.ninja")
     if not os.path.exists(path):
@@ -88,15 +93,30 @@ def read_custom_commands(build):
     text = re.sub(r"\$\n\s*", " ", text)
 
     commands = {}
-    for match in re.finditer(
-            r"^build ([^\n]*?): CUSTOM_COMMAND([^\n]*)\n((?:  [^\n]*\n)*)",
-            text, re.M):
-        outputs = [unescape_ninja(o) for o in match.group(1).split(" ") if o]
+    pattern = r"^build ([^\n]*?): (?:{})(?=[ \n])([^\n]*)\n((?:[ \t]+[^\n]*\n)*)".format(
+        "|".join(re.escape(rule) for rule in rules))
+    for match in re.finditer(pattern, text, re.M):
+        # An edge can have implicit outputs, which ninja writes after a |
+        # in the same list. They are outputs; the bar is not one, and
+        # passing it on as a file name is a build file that ninja will not
+        # read.
+        outputs = [unescape_ninja(o) for o in match.group(1).split(" ")
+                   if o and o not in ("|", "||")]
         inputs = [unescape_ninja(i) for i in match.group(2).split(" ")
                   if i and i not in ("|", "||")]
+        # A name to type at a build tool is not a file that something
+        # makes. CMake writes install, test, edit_cache and every utility
+        # target as an edge producing <name>.util that nothing reads;
+        # meson writes them with PHONY among the inputs. Neither generates
+        # anything, and both name inputs that no rule makes.
+        if "PHONY" in inputs or any(o.startswith("meson-internal__")
+                                    for o in outputs):
+            continue
+        if outputs and all(o.endswith(".util") for o in outputs):
+            continue
         body = match.group(3)
-        command = re.search(r"^  COMMAND = (.*)$", body, re.M)
-        description = re.search(r"^  DESC = (.*)$", body, re.M)
+        command = re.search(r"^[ \t]+COMMAND = (.*)$", body, re.M)
+        description = re.search(r"^[ \t]+DESC = (.*)$", body, re.M)
         if not command:
             continue
         commands[tuple(outputs)] = {

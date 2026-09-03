@@ -46,6 +46,8 @@ jobs:
       - run: sudo apt-get update || true; sudo apt-get install -y ninja-build
       - name: what can be checked without building
         run: python3 check.py
+      - name: what a meson project's answer becomes
+        run: python3 test/meson-import.py
       - id: ports
         run: echo "list=$(python3 check.py --matrix)" >> "$GITHUB_OUTPUT"
       - name: what a sandbox would have to fetch
@@ -453,6 +455,30 @@ jobs:
           cmake --build build/pkgconfig
           ./build/pkgconfig/cme-pkgconfig
 
+  # Whether a project that builds with Meson can be a port. Nothing here
+  # installs basu: it is fetched, configured by meson, read, and built in
+  # this build with this toolchain, and the program links against what came
+  # out. CME_SYSTEM=NEVER so that an installed libsystemd cannot answer
+  # instead and leave the import untested.
+  meson:
+    needs: quick
+    runs-on: ubuntu-latest
+    name: a meson project, built here
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update || true
+          sudo apt-get install -y ninja-build meson gperf pkg-config
+      - run: |
+          cmake -S test/meson -B build/meson -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_SYSTEM=NEVER -DCME_LOCK= -DCME_STORE=
+          cmake --build build/meson
+          ./build/meson/cme-meson
+      - name: what the build decided
+        if: always()
+        run: cat build/meson/cme-report.txt || true
+
   # Whether a library nobody has ported can be used anyway. Everything this
   # one touches is made while it runs: an upstream repository, a directory of
   # ports, a repository of ports. Nothing is downloaded and nothing is in the
@@ -525,6 +551,9 @@ jobs:
             # is a window library for.
             glfw) sudo apt-get install -y xorg-dev libwayland-dev \
                     libxkbcommon-dev wayland-protocols ;;
+            # A port that is imported from meson needs meson to read it,
+            # and basu generates part of itself with gperf.
+            basu) sudo apt-get install -y meson gperf ;;
           esac
       - uses: actions/cache@v4
         with:
@@ -595,6 +624,9 @@ jobs:
             # is a window library for.
             glfw) sudo apt-get install -y xorg-dev libwayland-dev \
                     libxkbcommon-dev wayland-protocols ;;
+            # A port that is imported from meson needs meson to read it,
+            # and basu generates part of itself with gperf.
+            basu) sudo apt-get install -y meson gperf ;;
           esac
       - uses: actions/cache@v4
         with:

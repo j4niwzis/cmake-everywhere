@@ -997,6 +997,50 @@ way is guessing.
 `EXTERNAL YES` still exists and is the escape hatch: configure, build and
 install on its own, and take the install prefix. Nothing uses it now.
 
+### A library that builds with Meson
+
+```cmake
+IMPORT meson
+IMPORT_TARGETS "basu=basu::basu"
+```
+
+The same mechanism, for a project with no CMake at all. `meson setup` runs
+at configure time -- with your compiler, your flags and, when you are
+cross-compiling, a cross file written from your toolchain -- and writes down
+what it would build in `meson-info`. That is read into the same description
+the CMake importer produces, so the targets are made in one place for both:
+ordinary CMake targets in your graph, built by your generator.
+
+What Meson states and what it does not is the whole difficulty. Every
+target's sources and the exact parameters each group of them is compiled
+with are there, and so are the parameters its *linker* gets, which is where
+a library from outside the project is named. What is not there:
+
+- **What an archive is built against.** Meson does not put a static
+  library's dependencies on its own command line; it appends them where the
+  library is used. What the archive holds is read from the edge that
+  archives it, so a static library built against another one still links
+  against it here. What it needs from outside the project is written down
+  nowhere, and the port says it -- `registry/basu` is the worked example.
+- **Custom commands**, which are read out of `build.ninja` by the same
+  reader the CMake importer uses. A name to type at a build tool -- `test`,
+  `install`, a run target -- is written the same way there and is not a file
+  anything makes, so it is skipped.
+- **A library with no sources of its own.** `library()` with everything in
+  it coming from static libraries it bundles is common; Meson puts those
+  targets' *objects* in the archive, and the objects say which target they
+  were compiled for by the directory they are in. Such a target becomes an
+  interface library over the ones it is made of.
+
+A target written in a language CMake has no compiler for is skipped and said
+out loud, as is a name two targets share.
+
+`registry/basu` is the worked example: sd-bus taken out of systemd, so a
+program that talks to D-Bus can be built on a machine that runs none of it.
+Its port asks the system for `basu`, `libelogind` and `libsystemd` in that
+order first -- an installed one answers, and only a machine with none of
+the three builds anything.
+
 ### A GN project
 
 ```cmake

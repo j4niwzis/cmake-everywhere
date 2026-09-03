@@ -348,6 +348,7 @@ list(APPEND CMAKE_PROJECT_INCLUDE_BEFORE "${CME_DIR}/cmake/source-ports.cmake")
 include("${CME_DIR}/cmake/CPM.cmake")
 include("${CME_DIR}/cmake/gn.cmake")
 include("${CME_DIR}/cmake/cmakeproject.cmake")
+include("${CME_DIR}/cmake/mesonproject.cmake")
 
 set(CME_REGISTRY "${CME_DIR}/registry" CACHE PATH
   "The ports that come with this. Overlays are searched before it.")
@@ -2091,7 +2092,10 @@ function(cme_pkgconfig_port out module)
       else()
         set(named "${pair}")
       endif()
-      if(named STREQUAL module)
+      # An entry can name several modules that are the same library, and
+      # a call asking for any one of them is asking for this port.
+      string(REPLACE "|" ";" alternatives "${named}")
+      if(module IN_LIST alternatives)
         set(${out} "${port}" PARENT_SCOPE)
         return()
       endif()
@@ -2788,7 +2792,10 @@ endfunction()
 # find_package for any of them fails on a machine that has the library
 # installed, and the port would be built for nothing. A port that says
 # SYSTEM_PKGCONFIG names the modules to ask pkg-config for instead, and the
-# target each one answers to.
+# target each one answers to. Every entry has to be found, because a library
+# that is there in parts is not there; several names in one entry, separated
+# by |, are one library under different names and the first that answers is
+# the answer.
 function(cme_try_pkgconfig found port package version exact)
   set(${found} FALSE PARENT_SCOPE)
   cme_port_field(mapping ${port} SYSTEM_PKGCONFIG)
@@ -2813,16 +2820,29 @@ function(cme_try_pkgconfig found port package version exact)
       set(module "${pair}")
       set(alias "")
     endif()
-    set(query "${module}")
-    if(version AND index EQUAL 0)
-      if(exact)
-        set(query "${module} = ${version}")
-      else()
-        set(query "${module} >= ${version}")
-      endif()
-    endif()
+    # Several modules in one entry, separated by |, are the same library
+    # under different names: sd-bus is carried by basu, by libelogind and
+    # by libsystemd, and a machine that has any one of them has it. They
+    # are asked about in the order the port wrote them, and the first one
+    # that answers is the answer -- which is how a port names the smallest
+    # of them first and the largest last.
+    string(REPLACE "|" ";" alternatives "${module}")
     set(prefix CME_PC_${port}_${index})
-    pkg_check_modules(${prefix} QUIET IMPORTED_TARGET GLOBAL "${query}")
+    set(${prefix}_FOUND FALSE)
+    foreach(alternative IN LISTS alternatives)
+      set(query "${alternative}")
+      if(version AND index EQUAL 0)
+        if(exact)
+          set(query "${alternative} = ${version}")
+        else()
+          set(query "${alternative} >= ${version}")
+        endif()
+      endif()
+      pkg_check_modules(${prefix} QUIET IMPORTED_TARGET GLOBAL "${query}")
+      if(${prefix}_FOUND)
+        break()
+      endif()
+    endforeach()
     if(NOT ${prefix}_FOUND)
       return()
     endif()
@@ -3323,12 +3343,15 @@ function(cme_build_port port package version exact)
   endif()
 
   if(imported)
-    if(NOT imported STREQUAL "cmake")
+    if(imported STREQUAL "cmake")
+      cme_cmake_build(${port} "${${port}_SOURCE_DIR}")
+    elseif(imported STREQUAL "meson")
+      cme_meson_build(${port} "${${port}_SOURCE_DIR}")
+    else()
       message(FATAL_ERROR
-        "cmake-everywhere: ${port} says IMPORT ${imported}, and the only "
-        "thing that can be imported that way is cmake")
+        "cmake-everywhere: ${port} says IMPORT ${imported}, and what can be "
+        "imported that way is cmake or meson")
     endif()
-    cme_cmake_build(${port} "${${port}_SOURCE_DIR}")
   elseif(external)
     cme_store_entry(entry ${port} "${port_version}")
     if(NOT entry)
