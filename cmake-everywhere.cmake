@@ -3871,10 +3871,29 @@ function(cme_system_has_features out package port features)
       message(STATUS
         "cmake-everywhere: a program of this build's own does not build "
         "against the ${package} installed here, so it is built here instead")
+      # The error lines, and the include chain that leads to the first of
+      # them.
+      #
+      # "type_traits:897: expected unqualified-id" says what the compiler
+      # could not parse and nothing about why, and the why here was that the
+      # header came from one standard library while its configuration came
+      # from another. What answers that is the "In file included from" lines
+      # above the error, which name every file on the way in and where each
+      # was found -- so they are printed too, and only for the first error,
+      # because after that they repeat.
       string(REPLACE "\n" ";" cme_usable_lines "${cme_usable_output}")
       set(cme_shown 0)
+      set(cme_chain "")
       foreach(cme_line IN LISTS cme_usable_lines)
+        if(cme_line MATCHES "^ *(In file included from|from )")
+          list(APPEND cme_chain "${cme_line}")
+          continue()
+        endif()
         if(cme_line MATCHES "(error|Error|undefined reference)")
+          foreach(cme_step IN LISTS cme_chain)
+            message(STATUS "    ${cme_step}")
+          endforeach()
+          set(cme_chain "")
           message(STATUS "    ${cme_line}")
           math(EXPR cme_shown "${cme_shown} + 1")
           if(cme_shown GREATER_EQUAL 4)
