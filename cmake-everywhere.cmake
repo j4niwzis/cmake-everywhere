@@ -2250,11 +2250,28 @@ function(cme_store_write port package entry)
       # about the compile that has to happen first, which is why an entry
       # written that way failed on `import std` and then, once told about
       # that, on the library's own module.
+      # Which dialect, not only which standard.
+      #
+      # cxx_std_23 means gnu++23 or c++23 depending on a property the
+      # synthesized target does not inherit, and a module compiled in one
+      # cannot read a module compiled in the other: "GNU extensions was
+      # disabled in precompiled file std.pcm but is currently enabled". So
+      # when this build has them off, the entry says so in the flags, where
+      # nothing can default it back on.
+      get_target_property(extensions ${target} CXX_EXTENSIONS)
+      if(extensions STREQUAL "extensions-NOTFOUND")
+        set(extensions "${CMAKE_CXX_EXTENSIONS}")
+      endif()
+      set(module_options "${options}")
+      if(NOT extensions)
+        list(APPEND module_options "-std=c++${standard}")
+      endif()
+      list(JOIN module_options ";" module_options)
       string(APPEND text
         "set_target_properties(${alias} PROPERTIES\n"
         "  IMPORTED_CXX_MODULES_INCLUDE_DIRECTORIES \"${includes}\"\n"
         "  IMPORTED_CXX_MODULES_COMPILE_DEFINITIONS \"${defines}\"\n"
-        "  IMPORTED_CXX_MODULES_COMPILE_OPTIONS \"${options}\"\n"
+        "  IMPORTED_CXX_MODULES_COMPILE_OPTIONS \"${module_options}\"\n"
         "  IMPORTED_CXX_MODULES_COMPILE_FEATURES \"cxx_std_${standard}\"\n"
         "  IMPORTED_CXX_MODULES_LINK_LIBRARIES \"${rest}\")\n")
       string(APPEND text
