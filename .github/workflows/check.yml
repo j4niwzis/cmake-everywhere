@@ -1,0 +1,180 @@
+# What is checked, and how often.
+#
+# The expensive thing here is not the download, it is the compiling: a
+# from-source build of every library is half an hour of the same objects
+# nobody changed. So three things are reused. Sources are kept in a cache
+# keyed by the pins, so a library is fetched once until its port changes.
+# Object files are kept by ccache, so a rebuild of an unchanged library is a
+# cache hit rather than a compile. And the runs that cannot reuse anything --
+# every library from source, and Skia -- happen on a schedule rather than on
+# every push.
+#
+# One job per library, so a port that has rotted is named rather than being
+# one line in somebody else's log.
+
+name: check
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # Monday morning. This is the one that finds a library whose upstream
+    # moved under a port that nobody touched.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/sources
+  CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+  CCACHE_MAXSIZE: 2G
+
+jobs:
+  # Nothing is fetched and nothing is built: a name that is called and never
+  # defined, a port that says nothing about what it produces, and every
+  # refusal the registry is supposed to make.
+  quick:
+    runs-on: ubuntu-latest
+    outputs:
+      ports: ${{ steps.ports.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: what can be checked without building
+        run: python3 check.py
+      - id: ports
+        run: echo "list=$(python3 check.py --matrix)" >> "$GITHUB_OUTPUT"
+      - name: refusals
+        run: |
+          set -e
+          for case in unknown-feature conflicting-features refused-feature \
+                      licence missing-port; do
+            if cmake -S "test/cases/$case" -B "build/$case" \
+                 -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+                 -DCME_REGISTRY="$PWD/test/registry" >"build/$case.log" 2>&1
+            then
+              echo "$case configured and should not have"; exit 1
+            fi
+            echo "  refused: $case"
+          done
+
+  # Every library on its own, taking what the runner already has where it
+  # can. Cheap enough to run on a push.
+  ports:
+    needs: quick
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        port: ${{ fromJSON(needs.quick.outputs.ports) }}
+    name: ${{ matrix.port.port }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - uses: actions/cache@v4
+        with:
+          path: .cache/sources
+          key: sources-${{ matrix.port.port }}-${{ hashFiles(format('registry/{0}/*.cmake', matrix.port.port)) }}
+          restore-keys: sources-${{ matrix.port.port }}-
+      - uses: actions/cache@v4
+        with:
+          path: .cache/ccache
+          key: ccache-${{ matrix.port.port }}-${{ github.sha }}
+          restore-keys: ccache-${{ matrix.port.port }}-
+      - name: gn
+        if: matrix.port.port == 'skia'
+        run: |
+          curl -sSL -o gn.zip "https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest"
+          mkdir -p "$HOME/.local/bin" && unzip -o -j gn.zip gn -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/gn" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: build it on its own
+        run: |
+          cmake -S test/port -B build/port -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_PORT_PACKAGE="${{ matrix.port.package }}" \
+            -DCME_PORT_TARGETS="${{ matrix.port.targets }}" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build/port
+          ./build/port/cme-port
+      - run: ccache --show-stats
+
+  # The same, with nothing taken from the runner. This is the run that says
+  # whether the ports can still build what they claim to, and it is the one
+  # that costs, so it is weekly.
+  from-source:
+    needs: quick
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        port: ${{ fromJSON(needs.quick.outputs.ports) }}
+    name: ${{ matrix.port.port }} from source
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - uses: actions/cache@v4
+        with:
+          path: .cache/sources
+          key: sources-${{ matrix.port.port }}-${{ hashFiles(format('registry/{0}/*.cmake', matrix.port.port)) }}
+          restore-keys: sources-${{ matrix.port.port }}-
+      - uses: actions/cache@v4
+        with:
+          path: .cache/ccache
+          key: ccache-source-${{ matrix.port.port }}-${{ github.sha }}
+          restore-keys: ccache-source-${{ matrix.port.port }}-
+      - name: gn
+        if: matrix.port.port == 'skia'
+        run: |
+          curl -sSL -o gn.zip "https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest"
+          mkdir -p "$HOME/.local/bin" && unzip -o -j gn.zip gn -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/gn" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: build it and everything under it
+        run: |
+          cmake -S test/port -B build/port -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_SYSTEM=NEVER \
+            -DCME_PORT_PACKAGE="${{ matrix.port.package }}" \
+            -DCME_PORT_TARGETS="${{ matrix.port.targets }}" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build/port
+          ./build/port/cme-port
+      - run: ccache --show-stats
+
+  # The one that proves the libraries reached are the ones this registry
+  # built, rather than something the linker found. Weekly, because it is
+  # Skia with three features from source.
+  skia-features:
+    needs: quick
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+      - uses: actions/cache@v4
+        with:
+          path: .cache/sources
+          key: sources-skia-${{ hashFiles('registry/*/*.cmake') }}
+          restore-keys: sources-skia-
+      - uses: actions/cache@v4
+        with:
+          path: .cache/ccache
+          key: ccache-skia-features-${{ github.sha }}
+          restore-keys: ccache-skia-features-
+      - name: gn
+        run: |
+          curl -sSL -o gn.zip "https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest"
+          mkdir -p "$HOME/.local/bin" && unzip -o -j gn.zip gn -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/gn" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: skia with gl, png and freetype, from source
+        run: |
+          cmake -S test/skia -B build/skia -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_SYSTEM=NEVER \
+            -DCME_FEATURES_skia="gl;png;freetype" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build/skia
+          ./build/skia/cme-skia
+      - run: ccache --show-stats

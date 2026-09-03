@@ -614,9 +614,21 @@ build system entirely -- and enough to prove the interesting case:
 
 ## Checking it
 
+There is a build that runs one job per library, so a port that has rotted is
+named rather than being one line in somebody else's log. It reuses three
+things, because the expensive part is compiling rather than downloading:
+sources are cached against the port's pins, object files are cached by
+ccache, and the runs that can reuse nothing -- every library from source, and
+Skia with features -- happen weekly rather than on every push. The weekly one
+is the point: it is what finds a library whose upstream moved under a port
+nobody touched.
+
+Locally:
+
 ```sh
+python3 check.py          # nothing is fetched: names, licences, targets
 test/run.sh               # everything that needs no more than a compiler
-test/run.sh --with-skia   # and the one that needs gn and a long wait
+test/run.sh --with-skia-features   # and the ones that need gn and a wait
 ```
 
 Two kinds of check. The refusals configure a project against a registry of

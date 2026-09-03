@@ -13,6 +13,9 @@ cme_declare_port(
   GIT_TAG ea99364f61c14656440e8d77e9c233ccf3124633
   OVERLAY overlay
   LICENSE CC0-1.0
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS minimp3::minimp3
 )
 
 function(cme_adapt_minimp3 source binary)

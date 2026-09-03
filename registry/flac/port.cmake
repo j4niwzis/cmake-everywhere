@@ -22,6 +22,9 @@ cme_declare_port(
   # with a path.
   LINK_NAMES
     "FLAC=FLAC::FLAC"
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS FLAC::FLAC
 )
 
 # libFLAC can be built with or without Ogg, and which one a system copy is

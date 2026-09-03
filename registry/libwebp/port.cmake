@@ -24,6 +24,9 @@ cme_declare_port(
   # with a path.
   LINK_NAMES
     "webp=WebP::webp"
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS WebP::webp
 )
 
 function(cme_adapt_libwebp source binary)

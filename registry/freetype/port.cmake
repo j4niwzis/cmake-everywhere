@@ -23,6 +23,9 @@ cme_declare_port(
   # with a path.
   LINK_NAMES
     "freetype=Freetype::Freetype"
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS Freetype::Freetype
 )
 
 # Colour bitmap glyphs are PNGs inside the font file, and reading them is the

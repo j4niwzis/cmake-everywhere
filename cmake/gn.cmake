@@ -63,6 +63,13 @@ function(cme_gn_substitute out text)
   string(REPLACE "@CC@" "${CMAKE_C_COMPILER}" value "${value}")
   string(REPLACE "@CXX@" "${CMAKE_CXX_COMPILER}" value "${value}")
   string(REPLACE "@AR@" "${CMAKE_AR}" value "${value}")
+  # Empty when there is none, which is what a project's own default for this
+  # is anyway.
+  if(CME_COMPILER_CACHE STREQUAL "OFF")
+    string(REPLACE "@CC_WRAPPER@" "" value "${value}")
+  else()
+    string(REPLACE "@CC_WRAPPER@" "${CME_COMPILER_CACHE}" value "${value}")
+  endif()
   string(REPLACE "@SYSROOT@" "${CMAKE_SYSROOT}" value "${value}")
   string(REPLACE "@PREFIX@" "${CMAKE_INSTALL_PREFIX}" value "${value}")
   string(REPLACE "@BUILD_TYPE@" "${CMAKE_BUILD_TYPE}" value "${value}")

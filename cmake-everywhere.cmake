@@ -11,6 +11,38 @@ cmake_minimum_required(VERSION 3.24)
 include_guard(GLOBAL)
 
 set(CME_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "cmake-everywhere root")
+
+# Sources are kept outside the build directory, so a second build directory
+# does not fetch Skia's 65 MiB again, and deleting one does not throw the
+# fetching away. CPM reads this; a value already set anywhere is left alone.
+if(NOT CPM_SOURCE_CACHE AND NOT DEFINED ENV{CPM_SOURCE_CACHE})
+  if(DEFINED ENV{XDG_CACHE_HOME})
+    set(CPM_SOURCE_CACHE "$ENV{XDG_CACHE_HOME}/cmake-everywhere/sources"
+        CACHE PATH "Where fetched sources are kept")
+  elseif(DEFINED ENV{HOME})
+    set(CPM_SOURCE_CACHE "$ENV{HOME}/.cache/cmake-everywhere/sources"
+        CACHE PATH "Where fetched sources are kept")
+  endif()
+endif()
+
+# Compiling is the expensive part, not fetching. A compiler cache makes a
+# second build of the same library a copy rather than a compile, which is the
+# difference between a minute and half an hour on something like Skia. Ports
+# are given it; the project doing the consuming is left exactly as it
+# configured itself.
+set(CME_COMPILER_CACHE "AUTO" CACHE STRING
+  "A compiler cache for ports: AUTO to use ccache when it is there, OFF, or \
+the name of one")
+if(CME_COMPILER_CACHE STREQUAL "AUTO")
+  find_program(CME_CCACHE NAMES ccache sccache)
+  if(CME_CCACHE)
+    set(CME_COMPILER_CACHE "${CME_CCACHE}" CACHE STRING "" FORCE)
+    message(STATUS "cmake-everywhere: ports are compiled through ${CME_CCACHE}")
+  else()
+    set(CME_COMPILER_CACHE "OFF" CACHE STRING "" FORCE)
+  endif()
+endif()
+
 include("${CME_DIR}/cmake/CPM.cmake")
 include("${CME_DIR}/cmake/gn.cmake")
 
@@ -47,7 +79,7 @@ function(cme_declare_port)
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
-           LINK_NAMES
+           LINK_NAMES TARGETS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
@@ -986,6 +1018,11 @@ function(cme_build_port port package version exact)
   # going to happen. Several projects take the same four switches -- zlib
   # started it and libpng and freetype followed -- and a project that has
   # never heard of them ignores them.
+  if(NOT CME_COMPILER_CACHE STREQUAL "OFF")
+    set(CMAKE_C_COMPILER_LAUNCHER "${CME_COMPILER_CACHE}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CME_COMPILER_CACHE}")
+  endif()
+
   set(SKIP_INSTALL_ALL ON)
   set(SKIP_INSTALL_HEADERS ON)
   set(SKIP_INSTALL_LIBRARIES ON)

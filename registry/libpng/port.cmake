@@ -24,6 +24,9 @@ cme_declare_port(
   LINK_NAMES
     "png=PNG::PNG"
     "png16=PNG::PNG"
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS PNG::PNG
 )
 
 # libpng looks for zlib with find_package(ZLIB) inside its own CMakeLists,

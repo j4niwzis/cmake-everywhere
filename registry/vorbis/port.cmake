@@ -20,6 +20,9 @@ cme_declare_port(
     "vorbis=Vorbis::vorbis"
     "vorbisenc=Vorbis::vorbisenc"
     "vorbisfile=Vorbis::vorbisfile"
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS Vorbis::vorbis Vorbis::vorbisenc Vorbis::vorbisfile
 )
 
 function(cme_adapt_vorbis source binary)

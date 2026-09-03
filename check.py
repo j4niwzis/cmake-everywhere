@@ -1,10 +1,64 @@
-"""Every cme_ command that is called has to be defined somewhere.
+"""What can be checked about this registry without building anything.
 
-Written after an edit removed a function and left its calls behind: the
-configure that found it had already fetched Skia and run gn, which is a long
-way to go to be told about a typo.
+Every cme_ command that is called has to be defined somewhere -- written
+after an edit removed a function and left its calls behind, which took a
+download, a gn run and a configure to find out. Every port has to say what it
+is under and what it produces, because nothing else will notice a port that
+forgets.
+
+With --matrix it prints the ports as JSON instead, for a build that runs one
+job per library.
 """
-import glob, re, sys
+import glob, json, re, shlex, sys
+
+
+def declaration_keywords():
+    """The words cme_declare_port treats as keys, read from where it says so.
+
+    Guessing them by shape does not work: LICENSE MIT, LICENSE FTL and
+    LICENSE IJG all have a value that looks exactly like a keyword, and this
+    read three ports as having no licence at all.
+    """
+    text = open("cmake-everywhere.cmake").read()
+    body = text[text.index("function(cme_declare_port"):]
+    body = body[:body.index("endfunction")]
+    words = set()
+    for match in re.finditer(r"set\((?:one|many)\s+(.*?)\)", body, re.S):
+        words |= set(match.group(1).split())
+    return words
+
+
+def ports():
+    """Each port as its directory, the name to look for, and its targets."""
+    keywords = declaration_keywords()
+    found = []
+    for path in sorted(glob.glob("registry/*/port.cmake")):
+        text = re.sub(r"#[^\n]*", "", open(path).read())
+        call = re.search(r"cme_declare_port\s*\((.*?)\n\)", text, re.S)
+        if not call:
+            continue
+        tokens = shlex.split(call.group(1))
+        fields = {}
+        key = None
+        for token in tokens:
+            if token in keywords:
+                key = token
+                fields.setdefault(key, [])
+            elif key:
+                fields[key].append(token)
+        found.append({
+            "port": path.split("/")[1],
+            "package": (fields.get("PROVIDES") or [path.split("/")[1]])[0],
+            "targets": ";".join(fields.get("TARGETS", [])),
+            "licence": " ".join(fields.get("LICENSE", [])),
+        })
+    return found
+
+
+if "--matrix" in sys.argv:
+    print(json.dumps([p for p in ports()]))
+    raise SystemExit(0)
+
 
 defined = set()
 called = {}
@@ -28,5 +82,13 @@ for path in files:
     if text.count("(") != text.count(")"):
         print(f"  unbalanced parentheses: {path}")
         problems += 1
+
+# A port that says nothing about what it produces cannot be checked by
+# anything but a person reading it.
+for entry in ports():
+    for field in ("targets", "licence"):
+        if not entry[field]:
+            print(f"  {entry['port']} says nothing about its {field}")
+            problems += 1
 print(f"{len(defined)} commands defined, {len(called)} called, {problems} problems")
 sys.exit(1 if problems else 0)

@@ -42,6 +42,9 @@ cme_declare_port(
     "is_component_build=false"
     "cc=\"@CC@\""
     "cxx=\"@CXX@\""
+    # Skia's own name for a compiler cache. Without it a second build of the
+    # same Skia is five hundred compiles again.
+    "cc_wrapper=\"@CC_WRAPPER@\""
     "target_os=\"@TARGET_OS@\""
     "target_cpu=\"@TARGET_CPU@\""
     # No GPU. Ganesh and Graphite are both backends, and a backend is a
@@ -104,6 +107,9 @@ cme_declare_port(
   GN_CONFIRM
     "is_official_build=true"
   LICENSE BSD-3-Clause
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS Skia::skia
 )
 
 # The names below are ours. Skia has no find_package convention to obey

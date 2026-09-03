@@ -20,6 +20,9 @@ cme_declare_port(
   LINK_NAMES
     "jpeg=JPEG::JPEG"
     "turbojpeg=JPEG::JPEG"
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS JPEG::JPEG
 )
 
 function(cme_adapt_libjpeg-turbo source binary)

@@ -19,6 +19,9 @@ cme_declare_port(
   # with a path.
   LINK_NAMES
     "ogg=Ogg::ogg"
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS Ogg::ogg
 )
 
 # The variables are exported because FLAC and libsndfile look for OGG_LIBRARY

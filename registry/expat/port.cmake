@@ -23,6 +23,9 @@ cme_declare_port(
   # with a path.
   LINK_NAMES
     "expat=EXPAT::EXPAT"
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS EXPAT::EXPAT
 )
 
 function(cme_adapt_expat source binary)

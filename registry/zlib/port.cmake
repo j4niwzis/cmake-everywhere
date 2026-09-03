@@ -17,6 +17,9 @@ cme_declare_port(
   # with a path.
   LINK_NAMES
     "z=ZLIB::ZLIB"
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS ZLIB::ZLIB
 )
 
 # zlib's own CMake builds targets called zlib and zlibstatic and offers no

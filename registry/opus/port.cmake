@@ -19,6 +19,9 @@ cme_declare_port(
   # with a path.
   LINK_NAMES
     "opus=Opus::opus"
+  # What a consumer links. Said here so that something other than a
+  # human can check that the port still produces it.
+  TARGETS Opus::opus
 )
 
 function(cme_adapt_opus source binary)
