@@ -43,4 +43,11 @@ if("freetype" IN_LIST CME_FEATURES_skia)
     CME_EXPECT_FREETYPE="${Freetype_VERSION}")
 endif()
 
+if("harfbuzz" IN_LIST CME_FEATURES_skia)
+  find_package(harfbuzz REQUIRED)
+  target_link_libraries(cme-skia PRIVATE harfbuzz::harfbuzz)
+  target_compile_definitions(cme-skia PRIVATE
+    CME_EXPECT_HARFBUZZ="${harfbuzz_VERSION}")
+endif()
+
 cme_report()

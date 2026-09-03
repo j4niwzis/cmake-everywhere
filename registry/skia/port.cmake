@@ -442,6 +442,27 @@ cme_port_feature(skia optimize-size
   GN_ARGS "skia_enable_optimize_size=true"
   GN_CONFIRM "skia_enable_optimize_size=true")
 
+# Laying out a run of text: which glyph, where.
+#
+# Two libraries and one decision. HarfBuzz answers the first question --
+# given characters, a font and a script, which glyphs and at what offsets --
+# and it is a port beside this one, so a machine that has it is used.
+#
+# The second is what SkUnicode is for: where a word ends, which direction a
+# run goes, where a line may break. Skia offers four sources for that -- ICU,
+# a client-supplied ICU, libgrapheme, and ICU4X -- and they are not
+# interchangeable in size: ICU is tens of megabytes of tables, libgrapheme is
+# a few hundred kilobytes of the Unicode algorithms this needs, ICU4X is
+# Rust. So the source is a feature of its own rather than something this one
+# decides, and shaping without one gives SkShaper what it can do with glyph
+# runs alone.
+cme_port_feature(skia harfbuzz
+  SUMMARY "SkShaper, which turns characters into positioned glyphs"
+  IMPLIES freetype
+  DEPENDS harfbuzz
+  GN_ARGS "skia_use_harfbuzz=true" "skia_use_system_harfbuzz=true"
+  GN_CONFIRM "skia_use_system_harfbuzz=true")
+
 # What this port does not offer, and what each would take.
 #
 # A port that says nothing about a thing it does not have is indistinguishable
@@ -454,12 +475,12 @@ cme_port_feature(skia optimize-size
 #                          registry has no port for, and a feature that
 #                          cannot be built is worse than a feature that is
 #                          named as absent.
-#   text shaping           SkShaper and SkParagraph need harfbuzz for shaping
-#                          and one of icu, icu4x or libgrapheme for the
-#                          Unicode properties. Four ports, and a decision
-#                          about which Unicode backend a registry should
-#                          prefer, which is not a decision to make in a
-#                          hurry.
+#   unicode properties     SkUnicode needs one of icu, client icu, libgrapheme
+#                          or icu4x. Shaping is offered above; what is not
+#                          here yet is a port for any of those four, and they
+#                          differ by two orders of magnitude in size, so the
+#                          one this registry should prefer is a decision
+#                          worth making deliberately.
 #   fontations             A font backend written in Rust, built with cargo.
 #                          Nothing else here needs a Rust toolchain.
 #   dawn, angle            Each is a graphics stack of its own, vendored into

@@ -11,6 +11,9 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #endif
+#ifdef CME_EXPECT_HARFBUZZ
+#include <harfbuzz/hb.h>
+#endif
 
 // The skia/ in front of the headers is this port's doing. Skia includes
 // itself as "include/core/SkCanvas.h", a path with nothing in it to say
@@ -54,6 +57,9 @@ int main() {
     ok = same("freetype", version, CME_EXPECT_FREETYPE) && ok;
     FT_Done_FreeType(library);
   }
+#endif
+#ifdef CME_EXPECT_HARFBUZZ
+  ok = same("harfbuzz", hb_version_string(), CME_EXPECT_HARFBUZZ) && ok;
 #endif
 
   // A CPU raster surface, one rectangle, one pixel read back. No codec, no

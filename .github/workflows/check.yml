@@ -738,12 +738,12 @@ jobs:
           curl -sSL -o gn.zip "https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest"
           mkdir -p "$HOME/.local/bin" && unzip -o -j gn.zip gn -d "$HOME/.local/bin"
           chmod +x "$HOME/.local/bin/gn" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: skia with gl, png and freetype, from source
+      - name: skia with gl, png, freetype and shaping, from source
         run: |
           cmake -S test/skia -B build/skia -G Ninja \
             -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
             -DCME_SYSTEM=NEVER \
-            -DCME_FEATURES_skia="gl;png;freetype" \
+            -DCME_FEATURES_skia="gl;png;freetype;harfbuzz" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build/skia
