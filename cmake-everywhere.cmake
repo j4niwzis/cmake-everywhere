@@ -398,7 +398,18 @@ set(CME_EXPORT_DESTINATION "share/cmake-everywhere/ports" CACHE STRING
 set(CME_LOCK "${CMAKE_SOURCE_DIR}/cme-lock.json" CACHE FILEPATH
   "Where the resolved commits and digests are kept, or empty for none")
 set(CME_LOCK_UPDATE OFF CACHE BOOL
-  "Take what this build resolved to as the new lock")
+  "Take what this build resolved to as the new lock, for everything")
+# Updating one library should not re-pin the others.
+#
+# A blanket update takes whatever every library happens to be today and
+# writes all of it down as intended, in one commit, under the heading of
+# updating one thing. Anything that moved underneath -- another library's
+# tag repointed, a port file edited in an overlay -- is re-pinned in the same
+# breath and reviewed as part of somebody else's change. So an update names
+# what it is updating, and everything else is still held to what the lock
+# says.
+set(CME_RELOCK "" CACHE STRING
+  "Ports this build may write new facts about; the rest are held to the lock")
 # Writing the lock is its own run, because an ordinary build does not fetch
 # what it does not need: a library the system has is never downloaded, and
 # one that is already in the store is not either. A lock written by such a
@@ -411,7 +422,12 @@ set(CME_LOCK_ALL OFF CACHE BOOL
   "Ignore the system and the store, fetch everything, and write the lock")
 if(CME_LOCK_ALL)
   set(CME_SYSTEM "NEVER")
-  set(CME_LOCK_UPDATE ON)
+  # Reaching everything and re-pinning everything are two decisions. With
+  # CME_RELOCK given, this run fetches all of it -- so the lock comes out
+  # whole -- and only the named ports may come out different.
+  if(NOT CME_RELOCK)
+    set(CME_LOCK_UPDATE ON)
+  endif()
 endif()
 
 set(CME_UNLOCKED "" CACHE STRING
@@ -605,7 +621,16 @@ function(cme_lock_fact port kind value)
       list(APPEND said "${CMAKE_MATCH_1}")
     endif()
   endforeach()
-  if(NOT said OR "${value}" IN_LIST said OR CME_LOCK_UPDATE)
+  if(NOT said)
+    return()
+  endif()
+  if("${value}" IN_LIST said)
+    return()
+  endif()
+  if(CME_LOCK_UPDATE OR "${port}" IN_LIST CME_RELOCK)
+    list(JOIN said " or " expected)
+    message(STATUS
+      "cmake-everywhere: ${port} ${kind} was ${expected} and is now ${value}")
     return()
   endif()
   list(JOIN said " or " expected)
@@ -614,9 +639,10 @@ function(cme_lock_fact port kind value)
     "this build has ${value}.\n"
     "Something that is not in this project changed under it: a library moved, "
     "an archive was replaced, or a port file was edited somewhere else. If "
-    "that was meant, configure once with -DCME_LOCK_UPDATE=ON and commit the "
-    "difference. If ${port} is one you are deliberately following rather than "
-    "pinning, put it in CME_UNLOCKED.")
+    "that was meant, configure once with -DCME_RELOCK=${port}, which writes "
+    "down the new answer for ${port} and holds everything else to what the "
+    "lock already says. If ${port} is one you are deliberately following "
+    "rather than pinning, put it in CME_UNLOCKED.")
 endfunction()
 
 # The digest of a port file that came from outside this project, recorded
@@ -643,8 +669,15 @@ function(cme_lock_write)
   # pin less every time it was written.
   set(replaced "")
   foreach(line IN LISTS kept)
+    string(REGEX REPLACE "^([^ ]+) .*$" "\\1" port "${line}")
     string(REGEX REPLACE "^([^ ]+ [^ ]+) .*$" "\\1" subject "${line}")
-    list(APPEND replaced "${subject}")
+    # A fact only supersedes the one in the lock if this run was allowed to
+    # write new facts about that port. For everything else the two are the
+    # same anyway -- a difference would have stopped the build -- and saying
+    # so here is what keeps an update of one library from rewriting the rest.
+    if(CME_LOCK_UPDATE OR port IN_LIST CME_RELOCK)
+      list(APPEND replaced "${subject}")
+    endif()
   endforeach()
   set(all "${kept}")
   foreach(line IN LISTS locked)

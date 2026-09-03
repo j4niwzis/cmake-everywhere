@@ -350,6 +350,48 @@ else
   failed=$((failed + 1))
 fi
 
+# Eleven: updating one library writes down the new answer for that one and
+# leaves the rest of the lock exactly as it was. The lock is given a fact
+# about a library this build never touches, and it has to survive.
+python3 - "$work/moved.lock" "$work/relock.lock" <<'PY_ADD'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["ports"]["untouched"] = {"commit": "1" * 40, "version": "9.9.9"}
+json.dump(d, open(sys.argv[2], "w"), indent=2)
+PY_ADD
+rm -rf "$work/relock"
+if cmake -S "$here/port" -B "$work/relock" -G Ninja \
+     -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$provider" \
+     -DCME_REGISTRY="$here/registry" -DCME_SYSTEM=NEVER \
+     -DCME_STORE="$work/store" -DCME_PORT_PACKAGE=Hello \
+     -DCME_PORT_TARGETS=Hello::Hello \
+     -DCME_PORT_DECLARE="$work/declare-thin.cmake" \
+     -DCME_RELOCK=hello \
+     -DCME_LOCK="$work/relock.lock" >"$work/relock.log" 2>&1 &&
+   python3 - "$work/relock.lock" <<'PY_CHECK'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["ports"]["hello"]["commit"] != "0" * 40, "hello was not re-pinned"
+assert d["ports"]["untouched"]["commit"] == "1" * 40, "the rest was rewritten"
+assert d["ports"]["untouched"]["version"] == "9.9.9"
+PY_CHECK
+then
+  printf '  ok    %s\n' "one library is re-pinned and the rest is left alone"
+else
+  printf '  FAIL  %s  (see %s)\n' \
+    "one library is re-pinned and the rest is left alone" "$work/relock.log"
+  failed=$((failed + 1))
+fi
+
+# And the refusal says which flag to reach for.
+if grep -qF "configure once with -DCME_RELOCK=hello" "$work/moved.log"; then
+  printf '  ok    %s\n' "and a refusal names the way to accept it"
+else
+  printf '  FAIL  %s  (see %s)\n' "and a refusal names the way to accept it" \
+    "$work/moved.log"
+  failed=$((failed + 1))
+fi
+
 # Said in the declaration rather than on the command line.
 cat >"$work/declare-following.cmake" <<EOF
 cme_declare_port(NAME hello PROVIDES Hello UNLOCKED YES

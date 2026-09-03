@@ -326,9 +326,28 @@ cmake -S . -B build/lock -DCME_LOCK_ALL=ON \
 ```
 
 Nothing from the system, nothing from the store, every library fetched and
-every port read. Commit what it writes. `-DCME_LOCK_UPDATE=ON` on an
-ordinary build takes what that build resolved to as the new answer for the
-part of it that was reached; `-DCME_LOCK=` (empty) turns the whole thing off.
+every port read. Commit what it writes.
+
+**Updating one library does not re-pin the others.** A blanket update takes
+whatever every library happens to be today and writes all of it down as
+intended, in one commit, under the heading of updating one thing -- so a tag
+that was repointed under another library, or a port file edited in an
+overlay, is re-pinned in the same breath and reviewed as part of somebody
+else's change. So an update names what it is updating:
+
+```sh
+cmake -S . -B build -DCME_RELOCK=hello   -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=.../cmake-everywhere.cmake
+```
+
+Only `hello` may come out different; everything else is still held to what
+the lock says, and the build stops if it is not. A refusal names that flag,
+so the way to accept a change is written in the message that reports it. The
+two combine: `-DCME_LOCK_ALL=ON -DCME_RELOCK=hello` reaches everything, so
+the lock comes out whole, and still lets only `hello` change.
+
+`-DCME_LOCK_UPDATE=ON` is the blanket version, for the first time a lock is
+written or when you mean all of it; `-DCME_LOCK=` (empty) turns the whole
+thing off.
 
 `-DCME_UNLOCKED=hello;wibble` says those two are being followed rather than
 pinned. The same thing said where the port is written, which is usually the
@@ -1296,7 +1315,8 @@ cmake -S test/skia -B build/skia -G Ninja \
 | `CME_EXPORT_DESTINATION` | where, under the prefix |
 | `CME_LOCK` | the lock file to write and be held to |
 | `CME_LOCK_ALL` | reach everything and write a whole lock |
-| `CME_LOCK_UPDATE` | take what this build resolved to as the new lock |
+| `CME_LOCK_UPDATE` | take what this build resolved to as the new lock, for everything |
+| `CME_RELOCK` | the ports this build may write new facts about |
 | `CME_UNLOCKED` | ports being followed rather than pinned |
 | `CME_LOCK_FILE` | where the report of one build is written |
 | `CME_STORE` | where built libraries are kept, or empty for none |
