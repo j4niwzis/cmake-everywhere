@@ -69,6 +69,16 @@ jobs:
     name: ${{ matrix.port.port }}
     steps:
       - uses: actions/checkout@v4
+      - name: is this port for this machine
+        id: applies
+        run: |
+          systems="${{ matrix.port.systems }}"
+          if [ -z "$systems" ] || echo "$systems" | grep -q "Linux"; then
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "yes=false" >> "$GITHUB_OUTPUT"
+            echo "${{ matrix.port.port }} is for $systems; this is Linux"
+          fi
       - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
       - uses: actions/cache@v4
         with:
@@ -87,6 +97,7 @@ jobs:
           mkdir -p "$HOME/.local/bin" && unzip -o -j gn.zip gn -d "$HOME/.local/bin"
           chmod +x "$HOME/.local/bin/gn" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: build it on its own
+        if: steps.applies.outputs.yes == 'true'
         run: |
           cmake -S test/port -B build/port -G Ninja \
             -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
@@ -112,6 +123,16 @@ jobs:
     name: ${{ matrix.port.port }} from source
     steps:
       - uses: actions/checkout@v4
+      - name: is this port for this machine
+        id: applies
+        run: |
+          systems="${{ matrix.port.systems }}"
+          if [ -z "$systems" ] || echo "$systems" | grep -q "Linux"; then
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "yes=false" >> "$GITHUB_OUTPUT"
+            echo "${{ matrix.port.port }} is for $systems; this is Linux"
+          fi
       - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
       - uses: actions/cache@v4
         with:
@@ -130,6 +151,7 @@ jobs:
           mkdir -p "$HOME/.local/bin" && unzip -o -j gn.zip gn -d "$HOME/.local/bin"
           chmod +x "$HOME/.local/bin/gn" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: build it and everything under it
+        if: steps.applies.outputs.yes == 'true'
         run: |
           cmake -S test/port -B build/port -G Ninja \
             -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \

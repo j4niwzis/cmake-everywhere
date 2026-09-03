@@ -9,6 +9,11 @@ cme_declare_port(
   GIT_TAG 1.9.0
   GIT_TAG_TEMPLATE "@VERSION@"
   LICENSE Apache-2.0
+  # Oboe is Android's, and its build says so: it compiles with warning flags
+  # only Clang has. Asking for it anywhere else is a mistake worth catching
+  # at the point it is made rather than at the first flag the compiler does
+  # not know.
+  SYSTEMS Android
   LINK_NAMES "oboe=oboe::oboe"
   TARGETS oboe::oboe
   OPTIONS

@@ -81,7 +81,33 @@ is still being decided, and a port whose pin is lower is built at the version
 that satisfies everyone -- provided it says how a version becomes a tag.
 Nothing is built twice and nothing ends up older than something else needed.
 
-### Headers under the name they are used by
+### A library that refuses to be a subdirectory
+
+Some libraries will not be added to another build. libjpeg-turbo says so in
+as many words and stops: an upstream build system cannot anticipate every
+downstream one, and it would rather not try. That is a fair position, and it
+needs a different mechanism rather than an argument.
+
+`EXTERNAL YES` on a port means it is configured, built and installed on its
+own, with everything that decides what the objects are passed through --
+toolchain file, build type, compilers, flags, sysroot -- because otherwise it
+is a different library to the one this build asked for. What comes back is an
+install prefix, which is also why it survives to the next build: the prefix
+is the store entry.
+
+## A port that is only for somewhere
+
+```cmake
+SYSTEMS Android
+```
+
+Oboe is Android's, and its build says so by compiling with warning flags only
+Clang has. A port that names the systems it is for is refused anywhere else,
+at the point somebody asks for it rather than at the first flag the compiler
+does not recognise. The build that checks the registry skips it rather than
+failing it.
+
+## Headers under the name they are used by
 
 A library's include directory in its own checkout and the same directory once
 it is installed are often not the same shape, and everything that consumes

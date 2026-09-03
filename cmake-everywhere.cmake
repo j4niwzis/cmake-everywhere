@@ -326,9 +326,9 @@ set(CME_POLICY_VERSION_MINIMUM "3.5" CACHE STRING
 function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
-          POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW)
+          POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
-           LINK_NAMES TARGETS
+           LINK_NAMES TARGETS SYSTEMS
            GN_ARGS GN_TARGETS GN_CONFIRM GN_IN_TREE)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
@@ -554,6 +554,104 @@ function(cme_build_includes target)
     target_include_directories(${target} PUBLIC
       "$<BUILD_INTERFACE:${directory}>")
   endforeach()
+endfunction()
+
+# A library built by a CMake of its own, configured and installed rather than
+# added to this build.
+#
+# Some libraries refuse to be a subdirectory. libjpeg-turbo says so in as many
+# words and stops: an upstream build system cannot anticipate every downstream
+# one, and it would rather not try. That is a fair position and it needs a
+# different mechanism, not an argument.
+#
+# So the library is configured, built and installed on its own, into the
+# store when there is one, and what comes back is an install prefix -- which
+# is also why the result survives to the next build for free.
+function(cme_build_external port package version entry)
+  if(EXISTS "${entry}/complete")
+    message(STATUS "cmake-everywhere: ${port} ${version} is already built")
+    cme_store_differences("${entry}")
+    return()
+  endif()
+  if(CME_OFFLINE)
+    # It would only be reached if the sources are there, but building is a
+    # separate question from fetching and this says which one failed.
+    message(STATUS "cmake-everywhere: building ${port} ${version} offline")
+  endif()
+
+  set(build "${CMAKE_BINARY_DIR}/_cme/${port}")
+  set(arguments
+    "-S" "${${port}_SOURCE_DIR}" "-B" "${build}" "-G" "${CMAKE_GENERATOR}"
+    "-DCMAKE_INSTALL_PREFIX=${entry}"
+    "-DCMAKE_INSTALL_LIBDIR=lib"
+    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+    "-DBUILD_SHARED_LIBS=OFF")
+  # Everything that decides what the objects are has to reach the other
+  # invocation, or it is a different library to the one this build wanted.
+  foreach(name CMAKE_TOOLCHAIN_FILE CMAKE_BUILD_TYPE CMAKE_C_COMPILER
+               CMAKE_CXX_COMPILER CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_SYSROOT
+               CMAKE_MAKE_PROGRAM CMAKE_PREFIX_PATH)
+    if(${name})
+      list(APPEND arguments "-D${name}=${${name}}")
+    endif()
+  endforeach()
+  if(NOT CME_COMPILER_CACHE STREQUAL "OFF")
+    list(APPEND arguments
+      "-DCMAKE_C_COMPILER_LAUNCHER=${CME_COMPILER_CACHE}"
+      "-DCMAKE_CXX_COMPILER_LAUNCHER=${CME_COMPILER_CACHE}")
+  endif()
+  cme_enabled_features(${port} features)
+  cme_port_field(options ${port} OPTIONS)
+  foreach(feature IN LISTS features)
+    cme_feature_field(extra ${port} ${feature} OPTIONS)
+    list(APPEND options ${extra})
+  endforeach()
+  list(APPEND options ${CME_OPTIONS_${port}})
+  foreach(option IN LISTS options)
+    string(REGEX REPLACE "^([^ ]+) +(.*)$" "\\1" name "${option}")
+    string(REGEX REPLACE "^([^ ]+) +(.*)$" "\\2" value "${option}")
+    list(APPEND arguments "-D${name}=${value}")
+  endforeach()
+
+  message(STATUS "cmake-everywhere: building ${port} ${version} on its own")
+  execute_process(COMMAND ${CMAKE_COMMAND} ${arguments}
+                  RESULT_VARIABLE code OUTPUT_VARIABLE output
+                  ERROR_VARIABLE output)
+  if(NOT code EQUAL 0)
+    message(FATAL_ERROR
+      "cmake-everywhere: configuring ${port} on its own failed\n${output}")
+  endif()
+  execute_process(
+    COMMAND ${CMAKE_COMMAND} --build "${build}" --parallel --target install
+    RESULT_VARIABLE code OUTPUT_VARIABLE output ERROR_VARIABLE output)
+  if(NOT code EQUAL 0)
+    message(FATAL_ERROR
+      "cmake-everywhere: building ${port} on its own failed\n${output}")
+  endif()
+
+  cme_environment_pairs(pairs)
+  list(JOIN pairs "\n" recorded)
+  file(WRITE "${entry}/environment.txt" "${recorded}\n")
+  file(TOUCH "${entry}/complete")
+  cme_note_decision("${port}" "built alone" "${version}")
+endfunction()
+
+# A library that was installed somewhere, as a target.
+function(cme_installed_library alias prefix library)
+  if(TARGET ${alias})
+    return()
+  endif()
+  file(GLOB found "${prefix}/lib/${library}" "${prefix}/lib64/${library}"
+                  "${prefix}/lib/*/${library}")
+  if(NOT found)
+    message(FATAL_ERROR
+      "cmake-everywhere: ${library} is not in ${prefix} after installing it")
+  endif()
+  list(GET found 0 found)
+  add_library(${alias} STATIC IMPORTED GLOBAL)
+  set_target_properties(${alias} PROPERTIES
+    IMPORTED_LOCATION "${found}"
+    INTERFACE_INCLUDE_DIRECTORIES "${prefix}/include")
 endfunction()
 
 # Headers under a name they are not under in the source tree.
@@ -949,6 +1047,12 @@ function(cme_require port version features reason)
   endif()
   set_property(GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port} TRUE)
 
+  cme_port_field(systems ${port} SYSTEMS)
+  if(systems AND NOT CMAKE_SYSTEM_NAME IN_LIST systems)
+    message(FATAL_ERROR
+      "cmake-everywhere: ${reason} needs ${port}, and ${port} is only for "
+      "${systems}. This is ${CMAKE_SYSTEM_NAME}.")
+  endif()
   cme_check_licence(${port} "${reason}")
   cme_enabled_features(${port} enabled)
   cme_check_feature_conflicts(${port})
@@ -1312,7 +1416,8 @@ function(cme_build_port port package version exact)
     set(CMAKE_POLICY_VERSION_MINIMUM "${policy}")
   endif()
 
-  if(CME_FETCH_ONLY)
+  cme_port_field(external ${port} EXTERNAL)
+  if(CME_FETCH_ONLY OR external)
     list(APPEND arguments DOWNLOAD_ONLY YES)
   endif()
 
@@ -1324,7 +1429,14 @@ function(cme_build_port port package version exact)
     return()
   endif()
 
-  if(gn_targets)
+  if(external)
+    cme_store_entry(entry ${port} "${port_version}")
+    if(NOT entry)
+      set(entry "${CMAKE_BINARY_DIR}/_cme/${port}-installed")
+    endif()
+    cme_build_external(${port} "${package}" "${port_version}" "${entry}")
+    set(CME_INSTALLED_${port} "${entry}" CACHE INTERNAL "" FORCE)
+  elseif(gn_targets)
     cme_gn_build(${port} "${${port}_SOURCE_DIR}")
   elseif(overlay)
     set(CME_UPSTREAM_SOURCE_DIR "${${port}_SOURCE_DIR}")

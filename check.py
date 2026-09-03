@@ -63,6 +63,9 @@ def ports():
             "package": (fields.get("PROVIDES") or [path.split("/")[1]])[0],
             "targets": ";".join(fields.get("TARGETS", [])),
             "licence": " ".join(fields.get("LICENSE", [])),
+            # Empty means anywhere. A build that is not one of these skips
+            # the port rather than failing it.
+            "systems": ";".join(fields.get("SYSTEMS", [])),
         })
     return found
 
