@@ -184,6 +184,54 @@ Explicit before ambient, and yours before anybody's: an overlay can correct a
 port here without waiting for us to merge anything, and a project can correct
 an overlay without waiting for whoever keeps it.
 
+### A lock you commit
+
+A port that came from somewhere else is two things this project does not
+contain: code the build reads, and a library the build fetches. Both can
+change without a line of this project changing -- a tag moves, a branch
+certainly moves, an archive is replaced, a port file is edited in the
+overlay it lives in. So both are written down, in `cme.lock` beside your
+CMakeLists:
+
+```
+hello commit 6f1c0e5a2b...          what was actually fetched, not the tag
+hello port 3f2a9c...                the digest of a port file from elsewhere
+hello version 1.0.0
+zlib archive SHA256=...
+```
+
+On the next build every one of those has to still be true, and if one is not
+the build stops and names it. `-DCME_LOCK_UPDATE=ON` takes what a build
+resolved to as the new answer; `-DCME_UNLOCKED=hello;wibble` says those two
+are being followed rather than pinned, which is what you want for a library
+you are working on at the same time.
+
+**Writing it is its own run.** An ordinary build does not fetch what it does
+not need: a library the system has is never downloaded, one in the store is
+not either, and a lock written by such a build has holes in it. So it says
+which holes it left, and there is a run that leaves none:
+
+```sh
+cmake -S . -B build/lock -DCME_LOCK_ALL=ON   -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=.../cmake-everywhere.cmake
+```
+
+Nothing from the system, nothing from the store, every library fetched and
+every port read. Commit what it writes.
+
+### A port from a URL
+
+One file, from anywhere:
+
+```cmake
+cme_port_from_url(https://example.invalid/ports/hello.cmake SHA256 3f2a9c...)
+```
+
+The digest is not optional, because that file is CMake this build reads from
+a machine that is not yours. `UNVERIFIED` takes it without one and is meant
+to be written while working something out and then removed. Either way the
+file's digest goes into the lock, so a file that changes under a project
+stops the build rather than changing it.
+
 ### The registry is the part that should shrink
 
 Everything above is what makes the registry in this repository a fallback.

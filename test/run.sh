@@ -42,6 +42,7 @@ expect_build() {
   rm -rf "$directory"
   if cmake -S "$source" -B "$directory" -G Ninja \
        -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$provider" \
+       -DCME_LOCK= \
        "$@" >"$out/$name.log" 2>&1 &&
      cmake --build "$directory" >>"$out/$name.log" 2>&1 &&
      run_if_built "$directory" >>"$out/$name.log" 2>&1; then
@@ -60,6 +61,7 @@ expect_refusal() {
   rm -rf "$directory"
   if cmake -S "$here/cases/$name" -B "$directory" \
        -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$provider" \
+       -DCME_LOCK= \
        -DCME_REGISTRY="$here/registry" >"$out/$name.log" 2>&1; then
     report 1 "$name  (configured, and should not have)"
   elif grep -qF "$because" "$out/$name.log"; then

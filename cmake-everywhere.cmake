@@ -382,6 +382,41 @@ set(CME_EXPORT_PORTS ON CACHE BOOL
   "Install the ports this project declares, beside this project")
 set(CME_EXPORT_DESTINATION "share/cmake-everywhere/ports" CACHE STRING
   "Where a port is installed to, under the prefix")
+
+# What this build resolved to, in a file meant to be committed.
+#
+# A port that came from somewhere else is code this build reads and a library
+# it fetches, and both can change under a project without a line of the
+# project changing. So both are written down: the commit a library was
+# fetched at, the digest of an archive, and the digest of every port file
+# read from an overlay, a prefix, a URL or a library's own tree. On the next
+# build they have to still be that, or the build stops and says which one
+# moved.
+#
+# Ports the project itself declares are not in it: they are in the project,
+# and the project is what the lock is for.
+set(CME_LOCK "${CMAKE_SOURCE_DIR}/cme.lock" CACHE FILEPATH
+  "Where the resolved commits and digests are kept, or empty for none")
+set(CME_LOCK_UPDATE OFF CACHE BOOL
+  "Take what this build resolved to as the new lock")
+# Writing the lock is its own run, because an ordinary build does not fetch
+# what it does not need: a library the system has is never downloaded, and
+# one that is already in the store is not either. A lock written by such a
+# build is a lock with holes in it, and a build that writes one says which
+# holes it left.
+#
+# This makes a run that has to reach everything: nothing from the system,
+# nothing from the store, every library fetched and every port read.
+set(CME_LOCK_ALL OFF CACHE BOOL
+  "Ignore the system and the store, fetch everything, and write the lock")
+if(CME_LOCK_ALL)
+  set(CME_SYSTEM "NEVER")
+  set(CME_LOCK_UPDATE ON)
+endif()
+
+set(CME_UNLOCKED "" CACHE STRING
+  "Ports that are deliberately not pinned: a branch you are following, or a \
+port you are editing")
 set(CME_SYSTEM "AUTO" CACHE STRING
   "AUTO: take a package from the system when it is there and new enough. \
 ALWAYS: refuse to build anything, the system must have it. \
@@ -402,6 +437,176 @@ set(CME_ACCEPT_LICENSES "" CACHE STRING
 # library being unusable. A port that needs a different floor says so.
 set(CME_POLICY_VERSION_MINIMUM "3.5" CACHE STRING
   "Policy floor for ported projects whose own cmake_minimum_required is older")
+
+# ---------------------------------------------------------------- the lock
+
+# Both of the things that are finished at the end of a configuration rather
+# than while it runs, because both are about the whole of it.
+function(cme_finish)
+  cme_finish_exports()
+  cme_lock_write()
+endfunction()
+
+function(cme_schedule_finish)
+  get_property(scheduled GLOBAL PROPERTY CME_FINISH_SCHEDULED)
+  if(scheduled)
+    return()
+  endif()
+  set_property(GLOBAL PROPERTY CME_FINISH_SCHEDULED TRUE)
+  cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL cme_finish)
+endfunction()
+
+function(cme_lock_read)
+  get_property(done GLOBAL PROPERTY CME_LOCK_READ)
+  if(done)
+    return()
+  endif()
+  set_property(GLOBAL PROPERTY CME_LOCK_READ TRUE)
+  if(NOT CME_LOCK OR NOT EXISTS "${CME_LOCK}")
+    return()
+  endif()
+  file(STRINGS "${CME_LOCK}" lines)
+  foreach(line IN LISTS lines)
+    if(line MATCHES "^#" OR line STREQUAL "")
+      continue()
+    endif()
+    set_property(GLOBAL APPEND PROPERTY CME_LOCKED "${line}")
+  endforeach()
+endfunction()
+
+# One fact about one port: checked against the lock if the lock has an
+# opinion about it, and kept so it can be written back out.
+function(cme_lock_fact port kind value)
+  if(NOT CME_LOCK OR NOT value)
+    return()
+  endif()
+  if("${port}" IN_LIST CME_UNLOCKED)
+    return()
+  endif()
+  cme_lock_read()
+  set(line "${port} ${kind} ${value}")
+  get_property(kept GLOBAL PROPERTY CME_LOCK_KEPT)
+  if("${line}" IN_LIST kept)
+    return()
+  endif()
+  set_property(GLOBAL APPEND PROPERTY CME_LOCK_KEPT "${line}")
+  get_property(locked GLOBAL PROPERTY CME_LOCKED)
+  set(said "")
+  foreach(other IN LISTS locked)
+    if(other MATCHES "^${port} ${kind} (.+)$")
+      list(APPEND said "${CMAKE_MATCH_1}")
+    endif()
+  endforeach()
+  if(NOT said OR "${value}" IN_LIST said OR CME_LOCK_UPDATE)
+    return()
+  endif()
+  list(JOIN said " or " expected)
+  message(FATAL_ERROR
+    "cmake-everywhere: ${CME_LOCK} says ${port} ${kind} is ${expected}, and "
+    "this build has ${value}.\n"
+    "Something that is not in this project changed under it: a library moved, "
+    "an archive was replaced, or a port file was edited somewhere else. If "
+    "that was meant, configure once with -DCME_LOCK_UPDATE=ON and commit the "
+    "difference. If ${port} is one you are deliberately following rather than "
+    "pinning, put it in CME_UNLOCKED.")
+endfunction()
+
+# The digest of a port file that came from outside this project, recorded
+# against the port it declared.
+function(cme_lock_port_file port)
+  get_property(file GLOBAL PROPERTY CME_PORT_FILE)
+  if(NOT file OR NOT EXISTS "${file}")
+    return()
+  endif()
+  file(SHA256 "${file}" digest)
+  cme_lock_fact("${port}" "port" "${digest}")
+endfunction()
+
+function(cme_lock_write)
+  if(NOT CME_LOCK)
+    return()
+  endif()
+  cme_lock_read()
+  get_property(kept GLOBAL PROPERTY CME_LOCK_KEPT)
+  get_property(locked GLOBAL PROPERTY CME_LOCKED)
+  # What was there stays there unless this build learned something else about
+  # the same thing. A build that took half its libraries from the system
+  # knows nothing about the other half, and a lock that forgot them would
+  # pin less every time it was written.
+  set(replaced "")
+  foreach(line IN LISTS kept)
+    string(REGEX REPLACE "^([^ ]+ [^ ]+) .*$" "\\1" subject "${line}")
+    list(APPEND replaced "${subject}")
+  endforeach()
+  set(all "${kept}")
+  foreach(line IN LISTS locked)
+    string(REGEX REPLACE "^([^ ]+) .*$" "\\1" port "${line}")
+    string(REGEX REPLACE "^([^ ]+ [^ ]+) .*$" "\\1" subject "${line}")
+    if(port IN_LIST CME_UNLOCKED)
+      continue()
+    endif()
+    # A port file is one of several a port can have, so those are added to
+    # rather than replaced.
+    if(subject IN_LIST replaced AND NOT line MATCHES "^[^ ]+ port ")
+      continue()
+    endif()
+    list(APPEND all "${line}")
+  endforeach()
+  if(NOT all)
+    return()
+  endif()
+
+  # What this build could not say anything about, because it never had to
+  # look. Said out loud rather than left as a lock that quietly covers less
+  # than it appears to.
+  get_property(reached GLOBAL PROPERTY CME_LOCK_REACHED)
+  get_property(used GLOBAL PROPERTY CME_TOUCHED)
+  set(missing "")
+  foreach(port IN LISTS used)
+    if(port IN_LIST reached OR port IN_LIST CME_UNLOCKED)
+      continue()
+    endif()
+    set(covered FALSE)
+    foreach(line IN LISTS all)
+      if(line MATCHES "^${port} ")
+        set(covered TRUE)
+      endif()
+    endforeach()
+    if(NOT covered)
+      list(APPEND missing "${port}")
+    endif()
+  endforeach()
+  if(missing AND NOT CME_LOCK_ALL)
+    list(REMOVE_DUPLICATES missing)
+    list(SORT missing)
+    list(JOIN missing ", " unsaid)
+    message(WARNING
+      "cmake-everywhere: the lock does not cover ${unsaid}. This build never "
+      "fetched them -- the system or the store answered instead -- so there "
+      "is nothing it can honestly write down about them. Configure once with "
+      "-DCME_LOCK_ALL=ON, which ignores both and reaches everything, to write "
+      "a lock that covers the whole build.")
+  endif()
+  list(REMOVE_DUPLICATES all)
+  list(SORT all)
+  list(JOIN all "\n" text)
+  set(header "# cmake-everywhere. Commit this file.\n")
+  string(APPEND header
+    "#\n# Every line is a fact about something outside this project that has "
+    "to stay\n# true: the commit a library was fetched at, the digest of an "
+    "archive, and the\n# digest of a port file that was read from somewhere "
+    "else. Configure with\n# -DCME_LOCK_UPDATE=ON to take what a build "
+    "resolved to as the new answer.\n\n")
+  set(whole "${header}${text}\n")
+  set(before "")
+  if(EXISTS "${CME_LOCK}")
+    file(READ "${CME_LOCK}" before)
+  endif()
+  if(NOT before STREQUAL whole)
+    file(WRITE "${CME_LOCK}" "${whole}")
+    message(STATUS "cmake-everywhere: ${CME_LOCK} written")
+  endif()
+endfunction()
 
 # ---------------------------------------------------------------- registry
 
@@ -478,6 +683,65 @@ function(cme_export_line port text)
   if(exported)
     file(APPEND "${exported}" "${text}\n")
   endif()
+endfunction()
+
+# A port file from a URL: one file, from anywhere, with nothing around it.
+#
+#   cme_port_from_url(https://example.invalid/ports/hello.cmake
+#                     SHA256 3f2a...)
+#
+# The digest is required, because this is code the build reads from a machine
+# that is not yours. UNVERIFIED takes it anyway, and is meant to be written
+# once while working something out and then removed: the file is fetched
+# again on a machine that has not seen it, and nothing says it is the same
+# file. Either way it is written into the lock, so a file that changes under
+# a project stops the build.
+function(cme_port_from_url url)
+  cmake_parse_arguments(FROM "UNVERIFIED" "SHA256;NAME" "" ${ARGN})
+  if(NOT FROM_SHA256 AND NOT FROM_UNVERIFIED)
+    message(FATAL_ERROR
+      "cmake-everywhere: cme_port_from_url(${url}) has no SHA256. That file "
+      "is CMake this build will read, from somewhere that is not this "
+      "project. Give its digest, or say UNVERIFIED and mean it.")
+  endif()
+  set(name "${FROM_NAME}")
+  if(NOT name)
+    get_filename_component(name "${url}" NAME)
+  endif()
+  string(SHA256 key "${url}")
+  string(SUBSTRING "${key}" 0 16 key)
+  set(file "${CME_OVERLAY_CACHE}/from-url/${key}-${name}")
+  if(NOT EXISTS "${file}")
+    file(MAKE_DIRECTORY "${CME_OVERLAY_CACHE}/from-url")
+    if(FROM_SHA256)
+      file(DOWNLOAD "${url}" "${file}" STATUS told
+           EXPECTED_HASH SHA256=${FROM_SHA256})
+    else()
+      file(DOWNLOAD "${url}" "${file}" STATUS told)
+    endif()
+    list(GET told 0 code)
+    if(NOT code EQUAL 0)
+      list(GET told 1 said)
+      file(REMOVE "${file}")
+      message(FATAL_ERROR
+        "cmake-everywhere: cannot read the port at ${url}: ${said}")
+    endif()
+  elseif(FROM_SHA256)
+    file(SHA256 "${file}" digest)
+    if(NOT digest STREQUAL FROM_SHA256)
+      file(REMOVE "${file}")
+      message(FATAL_ERROR
+        "cmake-everywhere: the copy of ${url} kept at ${file} is not the file "
+        "that was asked for. It has been removed; configure again.")
+    endif()
+  endif()
+  set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "the file at ${url}")
+  set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
+  set_property(GLOBAL PROPERTY CME_PORT_FILE "${file}")
+  include("${file}")
+  set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "")
+  set_property(GLOBAL PROPERTY CME_PORT_FILE "")
+  message(STATUS "cmake-everywhere: read the port at ${url}")
 endfunction()
 
 # Where a port's source is, said apart from what the port is.
@@ -588,6 +852,11 @@ function(cme_declare_port)
   if(NOT merging)
     set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_ORIGIN "${origin}")
   endif()
+  # A port that came from somewhere else is code this build reads, and it can
+  # be edited where it lives without a line of this project changing.
+  if(NOT origin STREQUAL "the project")
+    cme_lock_port_file("${PORT_NAME}")
+  endif()
   get_property(known_directory GLOBAL PROPERTY CME_PORT_${PORT_NAME}_DIR)
   if(directory AND NOT known_directory)
     # The adapters and the overlay of a port live beside its port.cmake, so a
@@ -651,12 +920,7 @@ function(cme_declare_port)
       # The install rule is made now, when the path is known. What goes in
       # the file is finished at the end of the configuration, when what this
       # project actually asked for is known.
-      get_property(scheduled GLOBAL PROPERTY CME_EXPORT_SCHEDULED)
-      if(NOT scheduled)
-        set_property(GLOBAL PROPERTY CME_EXPORT_SCHEDULED TRUE)
-        cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
-                       CALL cme_finish_exports)
-      endif()
+      cme_schedule_finish()
     endif()
   endif()
 
@@ -1340,10 +1604,12 @@ function(cme_include_ports where origin)
     get_filename_component(directory "${port}" DIRECTORY)
     set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "${origin}")
     set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "${directory}")
+    set_property(GLOBAL PROPERTY CME_PORT_FILE "${port}")
     include("${port}")
   endforeach()
   set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "")
   set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
+  set_property(GLOBAL PROPERTY CME_PORT_FILE "")
 endfunction()
 
 # Every prefix this configuration would look in, that has ports in it.
@@ -1761,6 +2027,7 @@ function(cme_require port version features reason)
   get_property(visited GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port})
   cme_remember_why(${port} "" "${reason}")
   set_property(GLOBAL APPEND PROPERTY CME_TOUCHED "${port}")
+  cme_schedule_finish()
   if(version AND (NOT have OR have VERSION_LESS version))
     set_property(GLOBAL PROPERTY CME_REQUIRED_VERSION_${port} "${version}")
     # A raised floor has to be pushed down again: what this port needs may
@@ -2040,9 +2307,11 @@ function(cme_source_ports port source)
     get_filename_component(directory "${file}" DIRECTORY)
     set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "the ${port} library itself")
     set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "${directory}")
+    set_property(GLOBAL PROPERTY CME_PORT_FILE "${file}")
     include("${file}")
     set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "")
     set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
+    set_property(GLOBAL PROPERTY CME_PORT_FILE "")
     message(STATUS "cmake-everywhere: ${port} carries ${name}")
   endforeach()
 endfunction()
@@ -2077,7 +2346,7 @@ endfunction()
 
 function(cme_store_hit out port package version features)
   set(${out} FALSE PARENT_SCOPE)
-  if(CME_FETCH_ONLY)
+  if(CME_FETCH_ONLY OR CME_LOCK_ALL)
     return()
   endif()
   cme_store_entry(entry ${port} "${version}")
@@ -2301,6 +2570,9 @@ function(cme_build_port port package version exact)
     return()
   endif()
 
+  if(CME_LOCK AND NOT DEFINED GIT_EXECUTABLE)
+    find_package(Git QUIET BYPASS_PROVIDER)
+  endif()
   cme_port_field(external ${port} EXTERNAL)
   cme_port_field(imported ${port} IMPORT)
   # Fetched and no more. What a library says about itself is in the tree, and
@@ -2336,6 +2608,30 @@ function(cme_build_port port package version exact)
   endif()
   CPMAddPackage(${arguments})
   set_property(GLOBAL PROPERTY CME_TREE_${port} "${${port}_SOURCE_DIR}")
+
+  # What was actually fetched, rather than what was asked for. A tag moves,
+  # a branch certainly moves, and an archive at a URL can be replaced; the
+  # commit and the digest are what a build can be held to.
+  cme_lock_fact("${port}" "version" "${port_version}")
+  if(listed)
+    get_property(hash GLOBAL PROPERTY CME_SOURCE_${port}_${port_version}_HASH)
+    cme_lock_fact("${port}" "archive" "${hash}")
+  else()
+    cme_port_field(url ${port} URL)
+    cme_port_field(url_hash ${port} URL_HASH)
+    if(url_hash)
+      cme_lock_fact("${port}" "archive" "${url_hash}")
+    elseif(NOT url AND GIT_EXECUTABLE)
+      execute_process(
+        COMMAND "${GIT_EXECUTABLE}" -C "${${port}_SOURCE_DIR}" rev-parse HEAD
+        OUTPUT_VARIABLE fetched OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET RESULT_VARIABLE told)
+      if(told EQUAL 0)
+        cme_lock_fact("${port}" "commit" "${fetched}")
+      endif()
+    endif()
+  endif()
+  set_property(GLOBAL APPEND PROPERTY CME_LOCK_REACHED "${port}")
 
   # And now the library speaks for itself.
   #

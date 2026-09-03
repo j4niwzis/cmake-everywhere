@@ -93,7 +93,8 @@ configure() {
     -DCME_STORE="$work/store" \
     -DCME_SYSTEM=NEVER \
     -DCME_PORT_PACKAGE=Hello \
-    -DCME_PORT_TARGETS=Hello::Hello \
+    -DCME_PORT_TARGETS=Hello::Hello  \
+    -DCME_LOCK="$work/$name.lock" \
     "$@" >"$work/$name.log" 2>&1 &&
     cmake --build "$work/$name" >>"$work/$name.log" 2>&1
 }
@@ -271,6 +272,61 @@ if grep -qF "hello carries cme-port.cmake" "$work/thin.log" &&
 else
   printf '  FAIL  %s  (see %s)\n' "and what it said is what was used" \
     "$work/thin.log"
+  failed=$((failed + 1))
+fi
+
+# Eight: the lock. A run that reaches everything writes down the commit that
+# was actually fetched -- not the tag, which moves -- and the digest of every
+# port file that came from somewhere other than this project.
+configure locked -DCME_PORT_DECLARE="$work/declare-thin.cmake" \
+  -DCME_LOCK_ALL=ON && code=0 || code=1
+check "a run that reaches everything writes a lock" "$code" "$work/locked.log"
+
+if grep -qE "^hello commit [0-9a-f]{40}$" "$work/locked.lock" &&
+   grep -qE "^hello port [0-9a-f]{64}$" "$work/locked.lock"; then
+  printf '  ok    %s\n' "and it has the commit and the port's digest in it"
+else
+  printf '  FAIL  %s  (see %s)\n' \
+    "and it has the commit and the port's digest in it" "$work/locked.lock"
+  failed=$((failed + 1))
+fi
+
+# And then it is a lock: something outside the project moved, and the build
+# stops rather than building something else.
+sed 's/^hello commit .*/hello commit 0000000000000000000000000000000000000000/' \
+  "$work/locked.lock" >"$work/moved.lock"
+rm -rf "$work/moved"
+if cmake -S "$here/port" -B "$work/moved" -G Ninja \
+     -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$provider" \
+     -DCME_REGISTRY="$here/registry" -DCME_SYSTEM=NEVER \
+     -DCME_STORE="$work/store" -DCME_PORT_PACKAGE=Hello \
+     -DCME_PORT_TARGETS=Hello::Hello \
+     -DCME_PORT_DECLARE="$work/declare-thin.cmake" \
+     -DCME_LOCK="$work/moved.lock" >"$work/moved.log" 2>&1; then
+  printf '  FAIL  %s\n' "a moved commit was built anyway"
+  failed=$((failed + 1))
+elif grep -qF "says hello commit is" "$work/moved.log"; then
+  printf '  ok    %s\n' "a commit that moved stops the build"
+else
+  printf '  FAIL  %s  (see %s)\n' "a commit that moved stops the build" \
+    "$work/moved.log"
+  failed=$((failed + 1))
+fi
+
+# Unless it is a library you are deliberately following rather than pinning.
+rm -rf "$work/unlocked"
+if cmake -S "$here/port" -B "$work/unlocked" -G Ninja \
+     -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$provider" \
+     -DCME_REGISTRY="$here/registry" -DCME_SYSTEM=NEVER \
+     -DCME_STORE="$work/store" -DCME_PORT_PACKAGE=Hello \
+     -DCME_PORT_TARGETS=Hello::Hello \
+     -DCME_PORT_DECLARE="$work/declare-thin.cmake" \
+     -DCME_UNLOCKED=hello \
+     -DCME_LOCK="$work/moved.lock" >"$work/unlocked.log" 2>&1; then
+  printf '  ok    %s\n' "a port named in CME_UNLOCKED is not held to it"
+else
+  printf '  FAIL  %s  (see %s)\n' \
+    "a port named in CME_UNLOCKED is not held to it" "$work/unlocked.log"
   failed=$((failed + 1))
 fi
 

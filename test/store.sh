@@ -30,6 +30,7 @@ configure() {
   shift
   cmake -S "$here/port" -B "$directory" -G Ninja \
     -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$provider" \
+    -DCME_LOCK= \
     -DCME_STORE="$store" \
     -DCME_SYSTEM=NEVER \
     -DCME_PORT_PACKAGE="$package" \
