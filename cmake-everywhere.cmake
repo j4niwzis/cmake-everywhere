@@ -1376,6 +1376,122 @@ function(cme_report)
   file(WRITE "${CME_LOCK_FILE}.report" "${text}")
 endfunction()
 
+# Deciding how a package is going to be answered, once.
+#
+# A function rather than part of the macro below, and that is the whole
+# reason it exists. The macro has no scope of its own: its variables are the
+# caller's. And the system search here reads somebody else's config file,
+# which is free to call find_package itself -- which comes straight back into
+# the provider, which is the same macro, which overwrites the variables of
+# the call still in progress. That is what it did: the port being resolved
+# became the empty string half way through, for whichever package expat's
+# config happened to look for.
+#
+# Inside a function the nested call has its own scope and cannot reach this
+# one.
+function(cme_resolve package port version exact features out_answer)
+  # A floor learned on an earlier run, so this one does not repeat it.
+  if(CME_REQUIRE_${package} AND
+     (NOT version OR version VERSION_LESS CME_REQUIRE_${package}))
+    set(version "${CME_REQUIRE_${package}}")
+  endif()
+
+  cme_require("${port}" "${version}" "${features}" "the project")
+
+  cme_system_allowed(try_system "${package}")
+  if(try_system)
+    # BYPASS_PROVIDER is what keeps this call from being routed straight back
+    # here. It is the one place the keyword is allowed.
+    find_package(${package} ${version} QUIET GLOBAL BYPASS_PROVIDER)
+    if(${package}_FOUND)
+      cme_enabled_features(${port} needed)
+      cme_system_has_features(usable "${package}" "${port}" "${needed}")
+      if(usable)
+        set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
+                     "${${package}_VERSION}")
+        cme_note_decision("${package}" "system" "${${package}_VERSION}")
+        set(${out_answer} "system" PARENT_SCOPE)
+        return()
+      endif()
+    endif()
+    cme_try_pkgconfig(by_pkgconfig "${port}" "${package}" "${version}"
+                      "${exact}")
+    if(by_pkgconfig)
+      cme_enabled_features(${port} needed)
+      cme_system_has_features(usable "${package}" "${port}" "${needed}")
+      if(usable)
+        set(${out_answer} "pkg-config" PARENT_SCOPE)
+        return()
+      endif()
+    endif()
+  endif()
+
+  if(CME_SYSTEM STREQUAL "ALWAYS")
+    message(FATAL_ERROR
+      "cmake-everywhere: CME_SYSTEM is ALWAYS and the system has no "
+      "${package}")
+  endif()
+  cme_build_port("${port}" "${package}" "${version}" "${exact}")
+  set(${out_answer} "port" PARENT_SCOPE)
+endfunction()
+
+# What a later caller asks for, against what is already here. Neither a
+# version nor a feature can be added to something already built, so the
+# request is written down and the run stops: the next configure starts with
+# it and resolves correctly from the beginning.
+function(cme_check_late package port version features)
+  get_property(built_features GLOBAL PROPERTY CME_BUILT_FEATURES_${port})
+  get_property(answered GLOBAL PROPERTY CME_ANSWERED_${package})
+  set(missing "")
+  foreach(feature IN LISTS features)
+    if(NOT feature IN_LIST built_features)
+      list(APPEND missing "${feature}")
+    endif()
+  endforeach()
+  if(missing AND answered STREQUAL "port")
+    set(learned "${CME_FEATURES_${port}}")
+    list(APPEND learned ${missing})
+    list(REMOVE_DUPLICATES learned)
+    list(JOIN missing ", " listed)
+    if("${learned}" STREQUAL "${CME_FEATURES_${port}}")
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} is already asked for with ${listed} and "
+        "was built without. Nothing else can explain that: look at the port.")
+    endif()
+    set(CME_FEATURES_${port} "${learned}" CACHE STRING
+      "Features wanted from the ${port} port" FORCE)
+    cme_note_decision("${package}" "needs feature" "${listed}")
+    message(FATAL_ERROR
+      "cmake-everywhere: ${package} is already here without ${listed}, and "
+      "something now asks for it. Written down -- run cmake again and it "
+      "will be built with it.")
+  endif()
+
+  get_property(have GLOBAL PROPERTY CME_PROVIDED_VERSION_${package})
+  if(version AND have AND have VERSION_LESS version)
+    if(CME_REQUIRE_${package} AND
+       NOT CME_REQUIRE_${package} VERSION_LESS version)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${package} ${version} is already required and "
+        "resolved to ${have} anyway. Nothing available satisfies it: raise "
+        "the port, or ask for less.")
+    endif()
+    set(CME_REQUIRE_${package} "${version}" CACHE STRING
+      "Lowest acceptable ${package}, learned from a later caller" FORCE)
+    cme_note_decision("${package}" "requires" "${version}")
+    message(FATAL_ERROR
+      "cmake-everywhere: ${package} is here as ${have} and something now asks "
+      "for ${version}, which is later than anything the registry was told "
+      "about. Written down -- run cmake again and it will be resolved at "
+      "${version} from the start.")
+  endif()
+endfunction()
+
+# The provider itself, which has to be a macro: what it sets -- <Pkg>_FOUND
+# and the variables a Find module would have set -- belongs to whoever called
+# find_package, and a function would have to know their names to pass them
+# back. So it stays small, and everything that could re-enter is in the
+# functions above.
 macro(cme_provider cme_method cme_package)
   if("${cme_method}" STREQUAL "FIND_PACKAGE")
     cme_load_registry()
@@ -1412,122 +1528,15 @@ macro(cme_provider cme_method cme_package)
         endif()
       endforeach()
 
-      # A floor learned on an earlier run, so this one does not repeat it.
-      if(CME_REQUIRE_${cme_package} AND
-         (NOT cme_wanted OR cme_wanted VERSION_LESS CME_REQUIRE_${cme_package}))
-        set(cme_wanted "${CME_REQUIRE_${cme_package}}")
-      endif()
-
       get_property(cme_answered GLOBAL PROPERTY CME_ANSWERED_${cme_package})
       if(NOT cme_answered)
-        cme_require("${cme_port}" "${cme_wanted}" "${cme_asked_features}"
-                    "the project")
-        set(cme_answered "port")
-        cme_system_allowed(cme_try_system "${cme_package}")
-        if(cme_try_system)
-          # BYPASS_PROVIDER is what keeps this call from being routed
-          # straight back here. It is the one place the keyword is allowed.
-          find_package(${cme_package} ${cme_wanted} QUIET GLOBAL
-                       BYPASS_PROVIDER)
-          if(${cme_package}_FOUND)
-            cme_enabled_features(${cme_port} cme_needed)
-            cme_system_has_features(cme_usable "${cme_package}" "${cme_port}"
-                                    "${cme_needed}")
-          else()
-            set(cme_usable FALSE)
-          endif()
-          if(${cme_package}_FOUND AND cme_usable)
-            set(cme_answered "system")
-            set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${cme_package}
-                         "${${cme_package}_VERSION}")
-            cme_note_decision("${cme_package}" "system"
-                              "${${cme_package}_VERSION}")
-          else()
-            cme_try_pkgconfig(cme_by_pc "${cme_port}" "${cme_package}"
-                              "${cme_wanted}" "${cme_exact}")
-            if(cme_by_pc)
-              cme_enabled_features(${cme_port} cme_needed)
-              cme_system_has_features(cme_usable "${cme_package}"
-                                      "${cme_port}" "${cme_needed}")
-              if(cme_usable)
-                set(cme_answered "pkg-config")
-              endif()
-            endif()
-          endif()
-        endif()
-        if(cme_answered STREQUAL "port")
-          if(CME_SYSTEM STREQUAL "ALWAYS")
-            message(FATAL_ERROR
-              "cmake-everywhere: CME_SYSTEM is ALWAYS and the system has no "
-              "${cme_package}")
-          endif()
-          cme_build_port("${cme_port}" "${cme_package}" "${cme_wanted}"
-                         "${cme_exact}")
-        endif()
+        cme_resolve("${cme_package}" "${cme_port}" "${cme_wanted}"
+                    "${cme_exact}" "${cme_asked_features}" cme_answered)
         set_property(GLOBAL PROPERTY CME_ANSWERED_${cme_package}
                      "${cme_answered}")
-      endif()
-
-      # A package is resolved once and cannot be resolved again: whatever was
-      # built or found is already part of this configuration. When the
-      # registry knew the requirement in advance this never happens -- that
-      # is what the constraints are for. What is left is a requirement the
-      # registry could not know: one the consuming project makes itself,
-      # after the package is already here.
-      #
-      # So it is written down and the run stops. The next configure starts
-      # with the floor raised and resolves it correctly from the beginning.
-      # Once per requirement, not once per call: it is in the cache
-      # afterwards.
-      # The same for a feature asked for after the library is already here.
-      # A feature cannot be added to something already built either.
-      get_property(cme_built_features GLOBAL PROPERTY
-                   CME_BUILT_FEATURES_${cme_port})
-      set(cme_missing "")
-      foreach(cme_feature IN LISTS cme_asked_features)
-        if(NOT cme_feature IN_LIST cme_built_features)
-          list(APPEND cme_missing "${cme_feature}")
-        endif()
-      endforeach()
-      if(cme_missing AND cme_answered STREQUAL "port")
-        set(cme_learned "${CME_FEATURES_${cme_port}}")
-        list(APPEND cme_learned ${cme_missing})
-        list(REMOVE_DUPLICATES cme_learned)
-        list(JOIN cme_missing ", " cme_listed)
-        if("${cme_learned}" STREQUAL "${CME_FEATURES_${cme_port}}")
-          message(FATAL_ERROR
-            "cmake-everywhere: ${cme_port} is already asked for with "
-            "${cme_listed} and was built without. Nothing else can explain "
-            "that: look at the port.")
-        endif()
-        set(CME_FEATURES_${cme_port} "${cme_learned}" CACHE STRING
-          "Features wanted from the ${cme_port} port" FORCE)
-        cme_note_decision("${cme_package}" "needs feature" "${cme_listed}")
-        message(FATAL_ERROR
-          "cmake-everywhere: ${cme_package} is already here without "
-          "${cme_listed}, and something now asks for it. Written down -- run "
-          "cmake again and it will be built with it.")
-      endif()
-
-      get_property(cme_have GLOBAL PROPERTY
-                   CME_PROVIDED_VERSION_${cme_package})
-      if(cme_wanted AND cme_have AND cme_have VERSION_LESS cme_wanted)
-        if(CME_REQUIRE_${cme_package} AND
-           NOT CME_REQUIRE_${cme_package} VERSION_LESS cme_wanted)
-          message(FATAL_ERROR
-            "cmake-everywhere: ${cme_package} ${cme_wanted} is already "
-            "required and resolved to ${cme_have} anyway. Nothing available "
-            "satisfies it: raise the port, or ask for less.")
-        endif()
-        set(CME_REQUIRE_${cme_package} "${cme_wanted}" CACHE STRING
-          "Lowest acceptable ${cme_package}, learned from a later caller"
-          FORCE)
-        cme_note_decision("${cme_package}" "requires" "${cme_wanted}")
-        message(FATAL_ERROR
-          "cmake-everywhere: ${cme_package} is here as ${cme_have} and "
-          "something now asks for ${cme_wanted}, which is later than anything "
-          "the registry was told about. Written down -- run cmake again and "
-          "it will be resolved at ${cme_wanted} from the start.")
+      else()
+        cme_check_late("${cme_package}" "${cme_port}" "${cme_wanted}"
+                       "${cme_asked_features}")
       endif()
 
       if(cme_answered STREQUAL "system")
