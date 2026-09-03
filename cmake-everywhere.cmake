@@ -2339,6 +2339,13 @@ endfunction()
 # They are appended after the port's own, so they win. A package taken from
 # the system is taken as it is: nothing here can change how it was built, and
 # saying so is better than appearing to.
+# Everything a rejected answer said about itself, taken back. The variables
+# are handed to the consumer at the end, so what is written here is what it
+# reads: an answer that was not taken must leave nothing.
+function(cme_forget_exports package)
+  set_property(GLOBAL PROPERTY CME_EXPORT_${package} "")
+endfunction()
+
 function(cme_options port)
   set(CME_OPTIONS_${port} "${ARGN}" CACHE STRING
     "Extra build options for the ${port} port" FORCE)
@@ -4543,9 +4550,6 @@ function(cme_try_pkgconfig found port package version exact)
     if(NOT ${prefix}_FOUND)
       return()
     endif()
-    if(alias AND NOT TARGET ${alias})
-      add_library(${alias} ALIAS PkgConfig::${prefix})
-    endif()
     if(alias)
       list(APPEND aliases "${alias}")
     endif()
@@ -4556,16 +4560,59 @@ function(cme_try_pkgconfig found port package version exact)
 
   string(TOUPPER "${package}" upper)
   list(REMOVE_DUPLICATES includes)
+
+  # Found, and not yet taken.
+  #
+  # What pkg-config answered still has to be asked whether it has the
+  # features this build wants, and that question is asked with the variables
+  # below -- so they are set, and the things that cannot be taken back are
+  # not. Aliasing Skia::skia to the machine's copy here meant that a copy
+  # which then failed the feature check was still what every consumer
+  # linked, while the port was built beside it and used by nobody: two
+  # Skias in one program, one of them compiled for nothing.
+  #
+  # Names that belong to the port -- the alias, the version it provides, the
+  # line in the report, the port's own word about an installed copy -- are
+  # given in cme_take_pkgconfig, which runs when the answer is taken.
   cme_export_variable(${package} ${package}_FOUND TRUE)
   cme_export_variable(${package} ${upper}_FOUND TRUE)
-  cme_export_variable(${package} ${upper}_LIBRARIES "${aliases}")
-  cme_export_variable(${package} ${upper}_LIBRARY "${aliases}")
+  cme_export_variable(${package} ${upper}_LIBRARIES "${imported}")
+  cme_export_variable(${package} ${upper}_LIBRARY "${imported}")
   cme_export_variable(${package} ${upper}_INCLUDE_DIRS "${includes}")
   cme_export_variable(${package} ${upper}_INCLUDE_DIR "${includes}")
   cme_export_variable(${package} ${upper}_VERSION "${CME_PC_${port}_0_VERSION}")
-  set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
+  # pkg_check_modules is a macro, so what it set is in this function and
+  # nowhere else: the half of this that runs later reads it from here.
+  set_property(GLOBAL PROPERTY CME_PC_TAKE_${port}_VERSION
                "${CME_PC_${port}_0_VERSION}")
-  cme_note_decision("${package}" "pkg-config" "${CME_PC_${port}_0_VERSION}")
+  set_property(GLOBAL PROPERTY CME_PC_TAKE_${port}_ALIASES "${aliases}")
+  set_property(GLOBAL PROPERTY CME_PC_TAKE_${port}_IMPORTED "${imported}")
+  set_property(GLOBAL PROPERTY CME_PC_TAKE_${port}_INCLUDES "${includes}")
+  set(${found} TRUE PARENT_SCOPE)
+endfunction()
+
+# The other half: what is done once the machine's copy is the answer.
+function(cme_take_pkgconfig port package)
+  get_property(aliases GLOBAL PROPERTY CME_PC_TAKE_${port}_ALIASES)
+  get_property(imported GLOBAL PROPERTY CME_PC_TAKE_${port}_IMPORTED)
+  get_property(includes GLOBAL PROPERTY CME_PC_TAKE_${port}_INCLUDES)
+  get_property(found_version GLOBAL PROPERTY CME_PC_TAKE_${port}_VERSION)
+  set(index 0)
+  foreach(alias IN LISTS aliases)
+    list(GET imported ${index} target)
+    if(NOT TARGET ${alias})
+      add_library(${alias} ALIAS ${target})
+    endif()
+    math(EXPR index "${index} + 1")
+  endforeach()
+  string(TOUPPER "${package}" upper)
+  if(aliases)
+    cme_export_variable(${package} ${upper}_LIBRARIES "${aliases}")
+    cme_export_variable(${package} ${upper}_LIBRARY "${aliases}")
+  endif()
+  set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
+               "${found_version}")
+  cme_note_decision("${package}" "pkg-config" "${found_version}")
 
   # What the port has to say about the machine's copy.
   #
@@ -4578,7 +4625,6 @@ function(cme_try_pkgconfig found port package version exact)
   if(COMMAND cme_adapt_${port}_system)
     cmake_language(CALL cme_adapt_${port}_system "${includes}" "${imported}")
   endif()
-  set(${found} TRUE PARENT_SCOPE)
 endfunction()
 
 # What a project changes in a library it did not write.
@@ -5748,12 +5794,18 @@ is being built at" FORCE)
       cme_enabled_features(${port} needed)
       cme_system_has_features(usable "${package}" "${port}" "${needed}")
       if(usable)
+        cme_take_pkgconfig("${port}" "${package}")
         cme_alias_system_targets("${port}")
         cme_check_promised("${port}" "${package}" "through pkg-config")
         cme_family_settled("${port}" "${package}" "system")
         set(${out_answer} "pkg-config" PARENT_SCOPE)
         return()
       endif()
+      # It answered and it will not do. What it said is dropped rather than
+      # left behind: the port is about to be built, and a consumer reading
+      # ${upper}_INCLUDE_DIRS would otherwise be handed the machine's
+      # headers to compile against the library built here.
+      cme_forget_exports("${package}")
     endif()
   endif()
 
