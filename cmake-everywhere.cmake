@@ -1654,22 +1654,33 @@ function(cme_store_keep_headers out ok port entry directories)
       list(APPEND result "${directory}")
       continue()
     endif()
-    file(GLOB_RECURSE headers "${directory}/*.h" "${directory}/*.hpp"
-                              "${directory}/*.hh" "${directory}/*.inc")
+    file(GLOB_RECURSE headers "${directory}/*")
     if(NOT headers AND directory MATCHES "^${CMAKE_BINARY_DIR}")
-      # Nothing there yet, which means this library writes its headers while
-      # it builds rather than while it configures. Keeping the rest would
-      # keep a library that cannot be compiled against.
+      # Nothing there at all, which means this library writes its headers
+      # while it builds rather than while it configures. Keeping the rest
+      # would keep a library that cannot be compiled against.
       message(STATUS
         "cmake-everywhere: ${port} is not kept: ${directory} has no headers "
         "yet, so it makes them while building")
       set(${ok} FALSE PARENT_SCOPE)
       return()
     endif()
+    # All of it, rather than the extensions somebody thought of.
+    #
+    # An include directory is a directory of things a compiler may be told to
+    # include, and what those are called is the library's business: Boost
+    # writes .ipp beside .hpp, libstdc++ writes .tcc, and the C++ standard
+    # library headers have no extension at all. A list of patterns here is a
+    # list of the ways this has been wrong so far -- .ipp was the first, and
+    # it failed as a missing file in a copy that looked complete.
+    #
+    # Module interface units come with it, which is what a consumer's build
+    # needs to make its own BMI. A binary module interface is not kept and
+    # could not be: CMake can install one and nothing consumes it, and
+    # reusing one is left to a future that needs help from compilers.
     set(kept "${entry}/generated/${index}")
     file(COPY "${directory}/" DESTINATION "${kept}"
-         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.hh"
-                        PATTERN "*.inc")
+         PATTERN "CMakeFiles" EXCLUDE PATTERN ".git" EXCLUDE)
     list(APPEND result "\${CMAKE_CURRENT_LIST_DIR}/generated/${index}")
     math(EXPR index "${index} + 1")
   endforeach()
