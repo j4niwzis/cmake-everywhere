@@ -3412,6 +3412,19 @@ function(cme_build_port port package version exact)
     endforeach()
     if(port_tag)
       list(APPEND arguments GIT_TAG "${port_tag}")
+      # One commit rather than every commit, unless the port said
+      # otherwise. Nothing here reads a library's history: what is wanted is
+      # the tree at one revision, and Boost is a hundred and fifty
+      # repositories of history that is downloaded, written to disk and
+      # never opened.
+      #
+      # Only for a name -- a tag or a branch. A raw commit can be fetched
+      # shallowly from a server that allows it and not from one that does
+      # not, and a clone that fails is worse than a clone that is large.
+      cme_port_field(shallow ${port} GIT_SHALLOW)
+      if(NOT shallow AND NOT port_tag MATCHES "^[0-9a-f][0-9a-f][0-9a-f][0-9a-f]+$")
+        list(APPEND arguments GIT_SHALLOW ON)
+      endif()
     endif()
   endif()
   if(port_version)
