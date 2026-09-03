@@ -622,10 +622,19 @@ name of everything above zlib.
 
 ```
 store/skia/153-4f2b9c1ea3d07e58/
-  use.cmake     what the library is and how to use it
-  lib/          the archives
-  complete      written last, and the only thing a later build looks for
+  use.cmake        what the library is and how to use it
+  lib/*.a          the archives
+  environment.txt  what it was built with, in full
+  complete         written last, and the only thing a later build looks for
 ```
+
+Static archives, not object files -- but *all* of the archives. A static
+library does not contain the other static libraries it links and a group
+contains nothing at all, so what is kept is worked out by walking what the
+exported target links: every archive from this port is copied, and anything
+from outside it is written down by name and resolved again by whoever reads
+the entry. Object files are the exception and are not kept, because they are
+already inside the archive of whatever linked them.
 
 A later configure that computes the same name reads `use.cmake` and has its
 targets in a second: no fetch, no `gn gen`, no five hundred compiles.

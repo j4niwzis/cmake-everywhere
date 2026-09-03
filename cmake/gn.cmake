@@ -541,6 +541,73 @@ endfunction()
 # the archives arrive at the end of the build, and the entry counts as
 # present only when they have. An interrupted build therefore leaves an entry
 # that is not used rather than one that is half true.
+# Everything an exported target actually needs, gathered by walking what it
+# links.
+#
+# A static library does not contain the other static libraries it links, and
+# a group contains nothing at all. So keeping only the archive of the target
+# a port exports keeps a piece: the rest of the graph is CMake targets that
+# will not exist next time, and the entry fails either with a target that is
+# not there or with undefined symbols, which is worse because it happens
+# later.
+#
+# Object libraries are the exception and are not collected: their objects are
+# already inside the archive of whatever linked them.
+function(cme_gn_flatten port target out_archives out_links)
+  set(archives "${${out_archives}}")
+  set(links "${${out_links}}")
+  get_target_property(linked ${target} INTERFACE_LINK_LIBRARIES)
+  get_target_property(private_linked ${target} LINK_LIBRARIES)
+  foreach(list_name linked private_linked)
+    if("${${list_name}}" STREQUAL "${list_name}-NOTFOUND")
+      set(${list_name} "")
+    endif()
+  endforeach()
+  foreach(item IN LISTS linked private_linked)
+    # A generator expression around a link is how CMake writes "for linking
+    # only"; the name inside it is what matters here.
+    string(REGEX REPLACE "^\\$<LINK_ONLY:(.*)>$" "\\1" item "${item}")
+    if(NOT TARGET ${item})
+      if(item AND NOT item IN_LIST links)
+        list(APPEND links "${item}")
+      endif()
+      continue()
+    endif()
+    if(NOT item MATCHES "^${port}_")
+      # Something outside this port: another library in the registry, or a
+      # target the consumer already has. Named rather than copied, and
+      # resolved again by whoever reads the entry.
+      if(NOT item IN_LIST links)
+        list(APPEND links "${item}")
+      endif()
+      continue()
+    endif()
+    if(item IN_LIST archives)
+      continue()
+    endif()
+    get_target_property(kind ${item} TYPE)
+    if(kind STREQUAL "STATIC_LIBRARY")
+      list(APPEND archives "${item}")
+    endif()
+    if(kind STREQUAL "STATIC_LIBRARY" OR kind STREQUAL "OBJECT_LIBRARY"
+       OR kind STREQUAL "INTERFACE_LIBRARY")
+      set(${out_archives} "${archives}" PARENT_SCOPE)
+      set(${out_links} "${links}" PARENT_SCOPE)
+      cme_gn_flatten(${port} ${item} ${out_archives} ${out_links})
+      set(archives "${${out_archives}}")
+      set(links "${${out_links}}")
+    endif()
+  endforeach()
+  set(${out_archives} "${archives}" PARENT_SCOPE)
+  set(${out_links} "${links}" PARENT_SCOPE)
+endfunction()
+
+# What a built copy of a GN project looks like in the store: the archives it
+# produced, and a file describing how to use them. The description is written
+# while the real targets exist, because that is when what to say is known;
+# the archives arrive at the end of the build, and the entry counts as
+# present only when they have. An interrupted build therefore leaves an entry
+# that is not used rather than one that is half true.
 function(cme_gn_store_write port entry)
   cme_port_field(exports ${port} GN_TARGETS)
   file(MAKE_DIRECTORY "${entry}/lib")
@@ -557,33 +624,54 @@ function(cme_gn_store_write port entry)
     endif()
 
     get_target_property(includes ${target} INTERFACE_INCLUDE_DIRECTORIES)
-    get_target_property(links ${target} INTERFACE_LINK_LIBRARIES)
     get_target_property(defines ${target} INTERFACE_COMPILE_DEFINITIONS)
-    foreach(property includes links defines)
-      if(${property} STREQUAL "${property}-NOTFOUND")
+    foreach(property includes defines)
+      if("${${property}}" STREQUAL "${property}-NOTFOUND")
         set(${property} "")
       endif()
     endforeach()
-    # A link to another port is written as the name that port answers to,
-    # not as a path: the dependency is resolved again by whoever reads this,
-    # and may itself come out of the store.
+
+    set(archives "${target}")
+    set(links "")
+    cme_gn_flatten(${port} ${target} archives links)
+
+    # The first archive is the target; the rest are what it needs and are
+    # linked after it, which is the order a linker that reads archives once
+    # requires.
+    set(locations "")
+    set(rest "")
+    foreach(archive IN LISTS archives)
+      if(archive STREQUAL target)
+        continue()
+      endif()
+      list(APPEND rest "\${CMAKE_CURRENT_LIST_DIR}/lib/lib${archive}.a")
+    endforeach()
+    list(APPEND rest ${links})
+    list(JOIN rest ";" rest)
+
     string(APPEND text
       "add_library(${alias} STATIC IMPORTED GLOBAL)\n"
       "set_target_properties(${alias} PROPERTIES\n"
       "  IMPORTED_LOCATION \"\${CMAKE_CURRENT_LIST_DIR}/lib/lib${target}.a\"\n"
       "  INTERFACE_INCLUDE_DIRECTORIES \"${includes}\"\n"
-      "  INTERFACE_LINK_LIBRARIES \"${links}\"\n"
+      "  INTERFACE_LINK_LIBRARIES \"${rest}\"\n"
       "  INTERFACE_COMPILE_DEFINITIONS \"${defines}\")\n")
 
-    # The archive is copied when it exists, which is after everything that
-    # makes it. The stamp is written last and is what a later configure
-    # looks for.
+    # Every archive is copied when it exists, which is after everything that
+    # makes it. The stamp is written last and is what a later configure looks
+    # for.
+    foreach(archive IN LISTS archives)
+      add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:${archive}>" "${entry}/lib/lib${archive}.a"
+        COMMENT "cmake-everywhere: keeping ${archive} in the store"
+        VERBATIM)
+    endforeach()
     add_custom_command(TARGET ${target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-              "$<TARGET_FILE:${target}>" "${entry}/lib/lib${target}.a"
       COMMAND ${CMAKE_COMMAND} -E touch "${entry}/complete"
-      COMMENT "cmake-everywhere: keeping ${alias} in the store"
       VERBATIM)
+    list(LENGTH archives count)
+    message(STATUS "cmake-everywhere: ${alias} is ${count} archive(s)")
   endforeach()
   file(WRITE "${entry}/use.cmake" "${text}")
   # What this was built with, in full, whatever part of it the name was made
