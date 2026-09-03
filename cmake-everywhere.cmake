@@ -113,7 +113,16 @@ endif()
 # rather than copying them, which is cheap and true where it was built. A
 # store that travels -- to another machine, into a container, between two CI
 # jobs -- needs those headers inside it, and pays for them in disk.
-set(CME_STORE_PORTABLE OFF CACHE BOOL
+# On, because an entry that points outside itself is not an entry.
+#
+# It was off: an entry named the include directory in the source cache and
+# was true on the machine that wrote it. Which is cheap, and which fails the
+# moment anything moves -- another machine, another CI job, a source cache
+# that was cleaned -- and fails as a miss, so the library is built again and
+# a fresh copy of the same pointing entry is written beside the old one.
+#
+# The cost is disk, and disk is the cheap side of that trade.
+set(CME_STORE_PORTABLE ON CACHE BOOL
   "Copy every header an entry needs into it, so the entry can be used \
 somewhere the sources are not")
 
@@ -2120,6 +2129,57 @@ function(cme_store_write port package entry)
       "  INTERFACE_LINK_LIBRARIES \"${rest}\"\n"
       "  INTERFACE_COMPILE_OPTIONS \"${options}\"\n"
       "  INTERFACE_COMPILE_DEFINITIONS \"${defines}\")\n")
+
+    # The module interface units, which are sources and stay sources.
+    #
+    # A module library is two things at once. Its implementation units are
+    # compiled into the archive and nobody outside ever needs them again --
+    # that is what the store was already keeping. Its interface units are
+    # what a consumer compiles its own binary module interface from, because
+    # a BMI belongs to one compiler and one set of flags and cannot be
+    # shipped. Keeping only the archive gave an entry that linked and could
+    # not be imported: "module 'skia' not found".
+    #
+    # So they are copied in beside it, and the entry offers them the way an
+    # installed module library does -- an interface file set on the imported
+    # target, which is what install(EXPORT CXX_MODULES_DIRECTORY) writes too.
+    set(module_files "")
+    foreach(property CXX_MODULE_SETS INTERFACE_CXX_MODULE_SETS)
+      get_target_property(module_sets ${target} ${property})
+      if(NOT module_sets)
+        continue()
+      endif()
+      foreach(set_name IN LISTS module_sets)
+        if(set_name STREQUAL "")
+          get_target_property(files ${target} CXX_MODULE_SET)
+        else()
+          get_target_property(files ${target} CXX_MODULE_SET_${set_name})
+        endif()
+        if(files)
+          list(APPEND module_files ${files})
+        endif()
+      endforeach()
+    endforeach()
+    if(module_files)
+      list(REMOVE_DUPLICATES module_files)
+      set(listed "")
+      foreach(file IN LISTS module_files)
+        get_filename_component(leaf "${file}" NAME)
+        # Under the directory it was in, so that two partitions with the same
+        # file name in different directories stay two files.
+        get_filename_component(where "${file}" DIRECTORY)
+        get_filename_component(where "${where}" NAME)
+        file(COPY "${file}" DESTINATION "${building}/modules/${where}")
+        list(APPEND listed
+             "\${CMAKE_CURRENT_LIST_DIR}/modules/${where}/${leaf}")
+      endforeach()
+      list(JOIN listed "\"\n    \"" spelled)
+      string(APPEND text
+        "target_sources(${alias} INTERFACE\n"
+        "  FILE_SET cme_modules TYPE CXX_MODULES\n"
+        "  BASE_DIRS \"\${CMAKE_CURRENT_LIST_DIR}/modules\"\n"
+        "  FILES\n    \"${spelled}\")\n")
+    endif()
 
     # And the name the library calls itself, once the target it points at
     # exists. Boost.Filesystem puts $<TARGET_PROPERTY:boost_filesystem,TYPE>
