@@ -6,6 +6,30 @@
 # So it is built its own way into a prefix, and the six libraries that come
 # out are targets here. What a consumer gets is what it would get from a
 # system FFmpeg, which is the point: the alternative is not having it.
+# What its configure has to be told when the compiler is emscripten.
+#
+# There is no operating system there and no architecture it has heard of:
+# "emscripten" is not one of its target-os values and wasm32 is not one of
+# its arches, and told either it stops before it compiles anything. What a
+# wasm build actually is, in its vocabulary, is no operating system, a
+# generic 32-bit machine, no assembly, nothing to strip and no threads --
+# which is also true, and is what every other project that builds it this way
+# says.
+set(cme_ffmpeg_machine
+    "--arch=@TARGET_CPU@"
+    "--target-os=@TARGET_OS_LOWER@"
+    "--strip=@STRIP@")
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  set(cme_ffmpeg_machine
+      "--target-os=none"
+      "--arch=x86_32"
+      "--disable-asm"
+      "--disable-stripping"
+      "--disable-pthreads"
+      "--disable-w32threads"
+      "--disable-os2threads")
+endif()
+
 cme_declare_port(
   NAME ffmpeg
   PROVIDES FFmpeg ffmpeg libav
@@ -77,8 +101,7 @@ cme_declare_port(
   CONFIGURE_CROSS
     "--enable-cross-compile"
     "--cross-prefix=@CROSS_PREFIX@"
-    "--arch=@TARGET_CPU@"
-    "--target-os=@TARGET_OS_LOWER@"
+    ${cme_ffmpeg_machine}
     # The tools that belong to that compiler rather than to this machine: a
     # host ar will put another architecture's objects in an archive and a
     # host strip will not read one.
@@ -88,7 +111,6 @@ cme_declare_port(
     # here rather than there.
     "--host-cc=@BUILD_MACHINE_CC@"
     "--nm=@NM@"
-    "--strip=@STRIP@"
 )
 
 # What can be written without anything else being installed, and what a

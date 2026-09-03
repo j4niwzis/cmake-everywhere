@@ -5,6 +5,22 @@
 # The same shape as the ffmpeg port beside it, and for the same reason: the
 # script is run, and then its make is asked what it would do rather than
 # told to do it. Every source it names is compiled in the consumer's graph.
+# What its configure has to be told when the compiler is emscripten.
+#
+# It reads the machine out of the triple it is given, and wasm32 is not a
+# machine it knows: told one, it writes a config for the machine it is
+# running on and the build assembles x86 into a wasm object. A generic
+# 32-bit host with no assembly is what there is, and saying that is what
+# every other project that builds it this way says. The sysroot is
+# emscripten's own and it knows where that is.
+set(cme_x264_machine
+    "--host=@TRIPLE@"
+    "--cross-prefix=@CROSS_PREFIX@"
+    "--sysroot=@SYSROOT@")
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  set(cme_x264_machine "--host=i686-gnu" "--disable-asm")
+endif()
+
 cme_declare_port(
   NAME x264
   PROVIDES x264 X264
@@ -61,9 +77,7 @@ cme_declare_port(
     # and that is what this check does.
     "--disable-opencl"
   CONFIGURE_CROSS
-    "--host=@TRIPLE@"
-    "--cross-prefix=@CROSS_PREFIX@"
-    "--sysroot=@SYSROOT@"
+    ${cme_x264_machine}
 )
 
 function(cme_adapt_x264 source binary)

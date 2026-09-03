@@ -141,7 +141,12 @@ def archive_of(words, root):
     if not words:
         return None
     name = os.path.basename(words[0])
-    if name not in ("ar", "gcc-ar", "llvm-ar") and not name.endswith("-ar"):
+    # emar among them, which is emscripten's and is spelled without the
+    # hyphen every other prefixed one has: without it a wasm build read 282
+    # compiles and no archives at all, and the port was told it produces a
+    # library its own description does not contain.
+    known = ("ar", "gcc-ar", "llvm-ar", "emar")
+    if name not in known and not name.endswith("-ar"):
         return None
     output = None
     objects = []
