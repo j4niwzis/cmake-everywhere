@@ -573,9 +573,18 @@ function(cme_require port version features reason)
   endif()
   # The same for features, and for the same reason: a feature can bring
   # dependencies of its own, and those have to be walked too.
+  cme_port_field(declared ${port} FEATURES)
+  # cme_features() is called before the registry is loaded, so its names can
+  # only be checked here.
+  foreach(feature IN LISTS CME_FEATURES_${port} CME_FEATURES_OFF_${port})
+    if(NOT feature IN_LIST declared)
+      message(FATAL_ERROR
+        "cmake-everywhere: this build names a feature ${feature} for ${port}, "
+        "and the port has none by that name. It has: ${declared}")
+    endif()
+  endforeach()
   get_property(known GLOBAL PROPERTY CME_REQUIRED_FEATURES_${port})
   foreach(feature IN LISTS features)
-    cme_port_field(declared ${port} FEATURES)
     if(NOT feature IN_LIST declared)
       message(FATAL_ERROR
         "cmake-everywhere: ${reason} asks ${port} for a feature called "
@@ -925,6 +934,17 @@ function(cme_build_port port package version exact)
     list(APPEND options ${CME_OPTIONS_${port}})
   endif()
 
+  # EXCLUDE_FROM_ALL stops a dependency's install rules from running, but
+  # CMake still checks an install(EXPORT) while generating, and one that names
+  # a target from another port fails there over an install that was never
+  # going to happen. Several projects take the same four switches -- zlib
+  # started it and libpng and freetype followed -- and a project that has
+  # never heard of them ignores them.
+  set(SKIP_INSTALL_ALL ON)
+  set(SKIP_INSTALL_HEADERS ON)
+  set(SKIP_INSTALL_LIBRARIES ON)
+  set(SKIP_INSTALL_FILES ON)
+
   # Read by cmake_minimum_required in the tree about to be added. A normal
   # variable, so it reaches that tree and stops at the end of this call.
   cme_port_field(policy ${port} POLICY_MINIMUM)
@@ -1034,7 +1054,17 @@ macro(cme_provider cme_method cme_package)
             set(cme_exact TRUE)
           endif()
         elseif(cme_components)
-          list(APPEND cme_asked_features "${cme_argument}")
+          # A third-party project asking for COMPONENTS means its own
+          # components: libsndfile asks Vorbis for Enc and File, which are
+          # not features of anything here. Only a name this port declares is
+          # read as a feature; the rest are answered as present, because a
+          # port that provides the library provides all of it.
+          cme_port_field(cme_declared "${cme_port}" FEATURES)
+          if("${cme_argument}" IN_LIST cme_declared)
+            list(APPEND cme_asked_features "${cme_argument}")
+          else()
+            set(${cme_package}_${cme_argument}_FOUND TRUE)
+          endif()
         elseif("${cme_argument}" MATCHES "^[0-9]+(\\.[0-9]+)*$" AND NOT cme_wanted)
           set(cme_wanted "${cme_argument}")
         endif()

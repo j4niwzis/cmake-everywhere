@@ -12,6 +12,7 @@ cme_declare_port(
   DEPENDS zlib
   SYSTEM_PKGCONFIG "freetype2:Freetype::Freetype"
   OPTIONS
+    "SKIP_INSTALL_ALL ON"
     "FT_DISABLE_HARFBUZZ ON"
     "FT_DISABLE_BROTLI ON"
     "FT_DISABLE_BZIP2 ON"

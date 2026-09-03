@@ -258,6 +258,14 @@ find_package(Skia COMPONENTS vulkan)
 cme_features(skia vulkan pdf)
 ```
 
+`COMPONENTS` is shared ground, though: it is also how a third-party project
+asks for parts of something in its own vocabulary -- libsndfile asks Vorbis
+for `Enc` and `File`, which are nobody's features. So a component that the
+port declares as a feature is read as one, and a component it does not is
+answered as present, because a port that supplies a library supplies all of
+it. `cme_features` is the unambiguous spelling: it is only ever about
+features, and a name that is not one is refused.
+
 and a port asks for them from another port in its dependency, which is where
 this earns its keep:
 
@@ -437,10 +445,13 @@ subdirectory or below will be ignored when installing the parent directory."
 A library this registry built is part of your build, not part of what you
 ship: `make install` on your project installs your project.
 
-It also removes a failure that has nothing to do with installing. libpng
-exports its targets, `png_static` links zlib, and zlib is in no export set of
-libpng's -- so a build that added both failed at generate time over an
-install neither of them was going to perform.
+That is not quite enough, though, and the difference is worth knowing.
+CMake still *checks* an `install(EXPORT)` while generating, even one it will
+never run -- so libpng, which exports its targets and links zlib, fails there
+because zlib is in no export set of libpng's. The rules would never have run;
+the check does not care. So ports are additionally given `SKIP_INSTALL_ALL`
+and its three companions, which zlib introduced and libpng and freetype
+followed. A project that has never heard of them ignores them.
 
 Their headers are added with `SYSTEM` as well. Their warnings are not yours.
 
