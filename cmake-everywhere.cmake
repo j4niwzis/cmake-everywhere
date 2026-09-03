@@ -448,6 +448,7 @@ include("${CME_DIR}/cmake/gn.cmake")
 include("${CME_DIR}/cmake/cmakeproject.cmake")
 include("${CME_DIR}/cmake/mesonproject.cmake")
 include("${CME_DIR}/cmake/configureproject.cmake")
+include("${CME_DIR}/cmake/cargoproject.cmake")
 
 set(CME_REGISTRY "${CME_DIR}/registry" CACHE PATH
   "The ports that come with this. Overlays are searched before it.")
@@ -1339,13 +1340,19 @@ function(cme_declare_port)
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
           PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
           CHECK_HEADER ARRANGEMENT SYSTEM_HEADER_TARGET CONFIGURE
-          INSTALLED_INCLUDE SOURCE_DIR)
+          INSTALLED_INCLUDE SOURCE_DIR
+          # What a crate is built as: which package of a workspace, which
+          # manifest, which target triple, where its generated headers land,
+          # and whether the features it has by default are wanted.
+          CARGO_PACKAGE CARGO_MANIFEST CARGO_TARGET CARGO_INCLUDE
+          CARGO_NO_DEFAULT_FEATURES)
   # SYSTEM_CODE is a program, and a program has semicolons in it.
   # cmake_parse_arguments splits every argument on semicolons, so a
   # one-value keyword would keep the text up to the first statement and drop
   # the rest -- which is what happened, and what the compiler then reported
   # as a missing brace on the last line it was given.
-  set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG PKGCONFIG_NAMES
+  set(many CARGO_FEATURES
+           PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG PKGCONFIG_NAMES
            SYSTEM_CODE
            EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS
@@ -4688,10 +4695,12 @@ function(cme_build_port port package version exact)
       cme_meson_build(${port} "${${port}_SOURCE_DIR}")
     elseif(imported STREQUAL "make")
       cme_configure_make_build(${port} "${${port}_SOURCE_DIR}")
+    elseif(imported STREQUAL "cargo")
+      cme_cargo_build(${port} "${${port}_SOURCE_DIR}")
     else()
       message(FATAL_ERROR
         "cmake-everywhere: ${port} says IMPORT ${imported}, and what can be "
-        "imported that way is cmake, meson or make")
+        "imported that way is cmake, meson, make or cargo")
     endif()
   elseif(external)
     cme_store_entry(entry ${port} "${port_version}")

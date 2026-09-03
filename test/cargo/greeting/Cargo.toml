@@ -1,0 +1,16 @@
+# A crate that exists to be linked, not to be useful.
+#
+# It is the smallest thing that proves the mechanism: a static library with a
+# C entry point, whose name a C++ program can call and whose answer it can
+# check. What it says is its own version, which is what a test compares.
+[package]
+name = "cme-greeting"
+version = "0.1.0"
+edition = "2018"
+
+[lib]
+name = "cme_greeting"
+crate-type = ["staticlib"]
+
+[profile.release]
+panic = "abort"

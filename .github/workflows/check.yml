@@ -482,6 +482,32 @@ jobs:
         if: always()
         run: cat build/meson/cme-report.txt || true
 
+  # A library written in Rust, linked into a C++ build.
+  #
+  # What is checked is the whole of the mechanism rather than the crate: that
+  # cargo is run, that what it built is read out of its own report rather
+  # than found by looking in likely places, that what the Rust side needs
+  # from the system is asked of rustc, and that a C++ program links the
+  # result and gets the answer the crate was pinned to give.
+  cargo:
+    needs: quick
+    runs-on: ubuntu-latest
+    name: a rust library, linked here
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update || true
+          sudo apt-get install -y ninja-build cargo rustc
+      - run: |
+          cmake -S test/cargo -B build/cargo -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_SYSTEM=NEVER -DCME_LOCK= -DCME_STORE=
+          cmake --build build/cargo
+          ./build/cargo/cme-cargo
+      - name: what the build decided
+        if: always()
+        run: cat build/cargo/cme-report.txt || true
+
   # Whether a library nobody has ported can be used anyway. Everything this
   # one touches is made while it runs: an upstream repository, a directory of
   # ports, a repository of ports. Nothing is downloaded and nothing is in the
