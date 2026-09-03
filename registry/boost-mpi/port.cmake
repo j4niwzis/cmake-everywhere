@@ -13,6 +13,7 @@ cme_declare_port(
   SYSTEM_PACKAGE boost_mpi
   TARGETS Boost::mpi
   DEPENDS boost-assert boost-config boost-core boost-foreach boost-function boost-graph boost-integer boost-iterator boost-lexical-cast boost-mpl boost-optional boost-serialization boost-smart-ptr boost-throw-exception boost-type-traits boost-utility
+  ARRANGEMENT BOOST_ENABLE_MPI
 )
 
 # Where the sources come from, which is the one thing about a Boost library

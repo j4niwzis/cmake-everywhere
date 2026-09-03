@@ -72,6 +72,9 @@ def ports():
             # port that does not is checked by linking alone, which is the
             # weaker question.
             "header": (fields.get("CHECK_HEADER") or [""])[0],
+            # What the machine has to have been told, when the library needs
+            # something no build can find out on its own.
+            "arrangement": (fields.get("ARRANGEMENT") or [""])[0],
         })
     return found
 
@@ -108,7 +111,17 @@ if "--boost-components" in sys.argv:
     # Every component the umbrella declares, which is every Boost library
     # there is a port for. What a build asking for all of Boost asks for.
     text = code("registry/boost/port.cmake")
-    names = re.findall(r"cme_port_feature\(boost\s+(\S+)", text)
+    # Without the ones that need an arrangement about the machine -- MPI,
+    # Python. Asking for all of Boost is asking for what a machine can have
+    # without being told anything, and those can still be asked for by name.
+    arranged = {p["port"] for p in ports() if p["arrangement"]}
+    names = []
+    for block in re.findall(r"cme_port_feature\(boost\s+(\S+)(.*?)\)", text, re.S):
+        feature, body = block
+        wanted = re.search(r"DEPENDS\s+(\S+)", body)
+        if wanted and wanted.group(1) in arranged:
+            continue
+        names.append(feature)
     print(";".join(sorted(set(names))))
     raise SystemExit(0)
 

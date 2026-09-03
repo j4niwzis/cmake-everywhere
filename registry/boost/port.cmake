@@ -265,7 +265,7 @@ cme_port_feature(boost iterator
   DEPENDS boost-iterator)
 cme_port_feature(boost graph_parallel
   SUMMARY "Boost.graph parallel"
-  IMPLIES assert concept_check config container_hash core detail dynamic_bitset filesystem foreach function graph iterator lexical_cast mpl optional property_map random serialization smart_ptr tuple type_traits variant
+  IMPLIES assert concept_check config container_hash core detail dynamic_bitset filesystem foreach function graph iterator lexical_cast mpi mpl optional property_map property_map_parallel random serialization smart_ptr tuple type_traits variant
   DEPENDS boost-graph-parallel)
 cme_port_feature(boost property_map
   SUMMARY "Boost.property map"
@@ -551,7 +551,7 @@ cme_port_feature(boost safe_numerics
   DEPENDS boost-safe-numerics)
 cme_port_feature(boost parameter_python
   SUMMARY "Boost.parameter python"
-  IMPLIES mpl parameter preprocessor
+  IMPLIES mpl parameter preprocessor python
   DEPENDS boost-parameter-python)
 cme_port_feature(boost headers
   SUMMARY "Boost.headers"
@@ -599,7 +599,7 @@ cme_port_feature(boost lambda2
   DEPENDS boost-lambda2)
 cme_port_feature(boost property_map_parallel
   SUMMARY "Boost.property map parallel"
-  IMPLIES assert bind concept_check config function mpl multi_index optional property_map serialization smart_ptr type_traits
+  IMPLIES assert bind concept_check config function mpi mpl multi_index optional property_map serialization smart_ptr type_traits
   DEPENDS boost-property-map-parallel)
 cme_port_feature(boost url
   SUMMARY "Boost.url"

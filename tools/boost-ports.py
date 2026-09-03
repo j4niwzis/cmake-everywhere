@@ -162,8 +162,15 @@ def graph(sources):
                 if target != "boost":
                     unresolved.add(target)
                 continue
-            if where != module and key(where) not in BY_ARRANGEMENT:
-                needs.add(where)
+            # An edge into one of those is dropped, unless it comes from
+            # one of them: property_map_parallel links Boost::mpi and means
+            # it, which is why they are a set rather than a list of things
+            # nobody may depend on.
+            if where == module:
+                continue
+            if key(where) in BY_ARRANGEMENT and key(module) not in BY_ARRANGEMENT:
+                continue
+            needs.add(where)
         edges[module] = sorted(needs)
     return edges, defines, unresolved
 
@@ -210,6 +217,15 @@ def main(version):
             print(f"{module}: no library target, no port")
             continue
         name = target(module, defines)
+        # A library that needs something of the machine's, said in the port
+        # rather than left for the build to discover. Boost will not build
+        # these unless it is told, and nothing that lists all of Boost should
+        # list them.
+        arrangement = ""
+        if key(module) in BY_ARRANGEMENT:
+            switch = "BOOST_ENABLE_PYTHON" if "python" in key(module) \
+                     else "BOOST_ENABLE_MPI"
+            arrangement = f"\n  ARRANGEMENT {switch}"
         depends = " ".join(port(other) for other in edges[module])
         text = f"""# Written by tools/boost-ports.py from what boostorg/{modules[module]}
 # declares. Do not edit: run the script again.
@@ -224,7 +240,7 @@ cme_declare_port(
   FAMILY boost
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_{key(module)}
-  TARGETS Boost::{name}
+  TARGETS Boost::{name}{arrangement}
 )
 
 # Where the sources come from, which is the one thing about a Boost library
@@ -401,6 +417,11 @@ endfunction()
     jobs = []
     for module in modules:
         if not defines.get(module):
+            continue
+        # No job for a library that needs MPI or Python: a runner has
+        # neither, and a red job for a machine that was never going to have
+        # what it needs says nothing about the port.
+        if key(module) in BY_ARRANGEMENT:
             continue
         needs = [port(other) for other in edges[module] if defines.get(other)]
         waits = ""
