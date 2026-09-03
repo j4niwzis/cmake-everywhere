@@ -446,16 +446,22 @@ happen, it would fail to find its sources.
 ## One way of building, for all of them at once
 
 ```cmake
-set(BUILD_SHARED_LIBS OFF)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 set(CMAKE_BUILD_TYPE Release)
 ```
 
 before `project()`, and every library the build reaches is built that way --
-static, with link-time optimisation, in release. Not each one configured by
-hand with whatever it happens to call the option, because a port is added
-inside this build and inherits it, one built on its own is handed it, and a
-GN project is told it in its own vocabulary.
+with link-time optimisation, in release. Not each one configured by hand with
+whatever it happens to call the option, because a port is added inside this
+build and inherits it, one built on its own is handed it, and a GN project is
+told it in its own vocabulary.
+
+A port is always a static archive, compiled position independent, and that
+one is not a choice. It is the only shape this can keep and hand back: a
+store entry is archives, and a shared library is a file that has to be found
+again at run time by something that installed it, which this does not do.
+Position independent because a consumer building a shared library out of
+these needs it and one that is not loses nothing.
 
 Both of those are part of what an entry in the store is named after: objects
 compiled for link-time optimisation are not the same objects, and a library

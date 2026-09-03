@@ -1675,6 +1675,22 @@ function(cme_build_port port package version exact)
     set(CMAKE_CXX_COMPILER_LAUNCHER "${CME_COMPILER_CACHE}")
   endif()
 
+  # A port is an archive, and it is compiled so that it can go into anything.
+  #
+  # Not because static is better, but because that is the only shape this can
+  # keep and hand back: a store entry is archives, and a shared library is a
+  # file that has to be found again at run time by something that installs
+  # it, which this does not do. Some libraries decide otherwise for
+  # themselves -- libzip turns BUILD_SHARED_LIBS on in its own CMakeLists --
+  # so it is said here rather than left to each of them.
+  #
+  # Position independent whatever the consumer is doing, since a consumer
+  # that is building a shared library out of these needs it and one that is
+  # not loses nothing by it. Without it the answer is a relocation error from
+  # the linker naming a symbol in zlib, which says nothing about any of this.
+  set(BUILD_SHARED_LIBS OFF)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
   set(SKIP_INSTALL_ALL ON)
   set(SKIP_INSTALL_HEADERS ON)
   set(SKIP_INSTALL_LIBRARIES ON)
