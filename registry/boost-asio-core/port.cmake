@@ -11,8 +11,9 @@ cme_declare_port(
   VERSION 1.92.0
   FAMILY boost
   LICENSE BSL-1.0
-  SYSTEM_PACKAGE boost_asio_core
+  SYSTEM_PACKAGE boost_asio
   TARGETS Boost::asio_core
+  LINK_NAMES "Boost::asio=Boost::asio_core"
   DEPENDS boost-align boost-assert boost-config boost-system boost-throw-exception
   OPTIONS "BOOST_ASIO_DEADLINE_TIMER OFF" "BOOST_ASIO_SPAWN OFF"
   PATCHES 0001-let-a-build-say-which-parts-of-asio-it-wants.patch

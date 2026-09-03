@@ -15,6 +15,14 @@ cme_declare_port(
   DEPENDS boost-assert boost-container-hash boost-core boost-headers boost-throw-exception boost-utility
 )
 
+function(cme_adapt_boost-static-string source binary)
+  get_target_property(target Boost::static_string ALIASED_TARGET)
+  if(NOT target)
+    set(target Boost::static_string)
+  endif()
+  target_link_libraries(${target} INTERFACE Boost::utility)
+endfunction()
+
 # Where the sources come from, which is the one thing about a Boost library
 # that is worth a choice. One repository each is the small download when a
 # project uses one or two of them; the release archive is one download of

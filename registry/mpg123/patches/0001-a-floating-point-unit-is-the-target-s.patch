@@ -9,8 +9,8 @@ the NEON one together, which its own header refuses:
 An answer given before the question is asked is kept, so that a build that
 knows what it is building for can say so.
 
---- a/ports/cmake/src/CMakeLists.txt
-+++ b/ports/cmake/src/CMakeLists.txt
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
 @@ -194,7 +194,9 @@
  check_cpu_arch_arm32(ARCH_IS_ARM32)
  check_cpu_arch_arm64(ARCH_IS_ARM64)

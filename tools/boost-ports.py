@@ -108,6 +108,11 @@ EXTRA = {
         "DEPENDS": ["zlib", "xz"],
         "OPTIONS": ['"BOOST_IOSTREAMS_HAS_LZMA_CPUTHREADS 0"'],
     },
+    # Its public header includes boost/utility/string_view.hpp, while its
+    # upstream CMake target neither names nor links Boost.Utility.
+    "static_string": {
+        "LINKS": ["Boost::utility"],
+    },
 }
 ALSO = {"test": ["prg_exec_monitor", "test_exec_monitor"]}
 
@@ -120,11 +125,11 @@ NOTES = {
 # Boost::asio itself is all three.
 #
 # Which of them Boost::asio is made of is a feature here, and the two that
-# cost another library are off unless they are asked for. Linking
-# Boost::asio_core instead would be the other way to say it, but it is not a
-# way anything gets to choose: Beast names Boost::asio, and a project that
-# uses Beast over a socket was building Boost.Context -- assembly per
-# architecture -- for coroutines nothing in it calls.""",
+# cost another library are off unless they are asked for.""",
+    "beast": """# Beast's upstream target links Boost::asio, the aggregate target, but uses
+# only its core. Keeping that spelling here would build Boost.Context and
+# Boost.Date_Time for coroutine and timer parts Beast never calls, so the
+# generated dependency is deliberately narrowed to Boost::asio_core.""",
 }
 
 # A library that is more than one library.
@@ -234,6 +239,26 @@ def port(module):
     return "boost-" + key(module).replace("_", "-")
 
 
+# A generated dependency normally retains exactly the target upstream names.
+# These are the cases where that target is an aggregate and the consumer uses
+# a smaller target that upstream publishes from the same library.
+#
+#   (consumer module, dependency module): (port, Boost component)
+DEPENDENCY_OVERRIDES = {
+    ("beast", "asio"): ("boost-asio-core", "asio_core"),
+}
+
+
+def dependency_port(module, other):
+    override = DEPENDENCY_OVERRIDES.get((module, other))
+    return override[0] if override else port(other)
+
+
+def dependency_target(module, other, defines):
+    override = DEPENDENCY_OVERRIDES.get((module, other))
+    return override[1] if override else target(other, defines)
+
+
 def target(module, defines):
     """The one a consumer links: the target named after the library."""
     if module in PRIMARY:
@@ -285,7 +310,8 @@ def main(version):
             switch = "BOOST_ENABLE_PYTHON" if "python" in key(module) \
                      else "BOOST_ENABLE_MPI"
             arrangement = f"\n  ARRANGEMENT {switch}"
-        depends = " ".join(port(other) for other in edges[module])
+        depends = " ".join(dependency_port(module, other)
+                           for other in edges[module])
         extra = EXTRA.get(module, {})
         if extra.get("DEPENDS"):
             depends = (depends + " " + " ".join(extra["DEPENDS"])).strip()
@@ -294,6 +320,18 @@ def main(version):
             added += f"\n  DEPENDS {depends}"
         if extra.get("OPTIONS"):
             added += "\n  OPTIONS " + " ".join(extra["OPTIONS"])
+        adaptation = ""
+        if extra.get("LINKS"):
+            links = " ".join(extra["LINKS"])
+            adaptation = f"""
+function(cme_adapt_{port(module)} source binary)
+  get_target_property(target Boost::{name} ALIASED_TARGET)
+  if(NOT target)
+    set(target Boost::{name})
+  endif()
+  target_link_libraries(${{target}} INTERFACE {links})
+endfunction()
+"""
         split = SPLIT.get(module)
         switches = ""
         patches = ""
@@ -329,6 +367,7 @@ def main(version):
   SYSTEM_PACKAGE boost_{key(module)}
   TARGETS Boost::{name}{arrangement}{virtual}{added}{switches}{patches}
 )
+{adaptation}
 
 # Where the sources come from, which is the one thing about a Boost library
 # that is worth a choice. One repository each is the small download when a
@@ -356,6 +395,12 @@ endif()
         patch, core_target, pieces = split
         core = f"{port(module)}-core"
         core_depends = " ".join(port(other) for other in edges[module])
+        # An installed Boost predates (or does not enable) this source-build
+        # split and exports the aggregate target. For the core, that target
+        # is still the same header-only library: alias it under the narrow
+        # name so system packages do not need a CME-specific config file.
+        system_package = f"boost_{key(module)}"
+        system_alias = f'\n  LINK_NAMES "Boost::{name}=Boost::{core_target}"'
         core_switches = " ".join(
             f'"{switch} OFF"' for _, _, _, switch in pieces)
         features = ""
@@ -382,8 +427,8 @@ cme_declare_port(
   VERSION {version}
   FAMILY boost
   LICENSE BSL-1.0
-  SYSTEM_PACKAGE boost_{core_target}
-  TARGETS Boost::{core_target}
+  SYSTEM_PACKAGE {system_package}
+  TARGETS Boost::{core_target}{system_alias}
   DEPENDS {core_depends}
   OPTIONS {core_switches}
   PATCHES {patch}
@@ -429,7 +474,8 @@ cme_declare_port(
     # needs it has to be told, and a refusal that is quietly worked around by
     # a dependency further down is not a refusal.
     def implied(module):
-        names = " ".join(target(other, defines) for other in edges[module]
+        names = " ".join(dependency_target(module, other, defines)
+                         for other in edges[module]
                          if defines.get(other))
         return f"\n  IMPLIES {names}" if names else ""
 
@@ -658,7 +704,8 @@ endfunction()
         # what it needs says nothing about the port.
         if key(module) in BY_ARRANGEMENT:
             continue
-        needs = [port(other) for other in edges[module] if defines.get(other)]
+        needs = [dependency_port(module, other) for other in edges[module]
+                 if defines.get(other)]
         waits = ""
         if needs:
             waits = "    needs: [" + ", ".join(sorted(needs)) + "]\n"
@@ -681,7 +728,7 @@ endfunction()
                 continue
             if chosen is not None and port(module) not in chosen:
                 continue
-            needs = [port(other) for other in edges[module]
+            needs = [dependency_port(module, other) for other in edges[module]
                      if defines.get(other)
                      and (chosen is None or port(other) in chosen)]
             waits = ""

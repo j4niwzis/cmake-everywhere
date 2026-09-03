@@ -1241,7 +1241,7 @@ jobs:
           package: boost_poly_collection
           target: Boost::poly_collection
   boost-beast:
-    needs: [boost-asio, boost-assert, boost-bind, boost-config, boost-container, boost-container-hash, boost-core, boost-endian, boost-headers, boost-intrusive, boost-logic, boost-mp11, boost-optional, boost-smart-ptr, boost-static-string, boost-system, boost-throw-exception, boost-type-index, boost-type-traits, boost-winapi]
+    needs: [boost-asio-core, boost-assert, boost-bind, boost-config, boost-container, boost-container-hash, boost-core, boost-endian, boost-headers, boost-intrusive, boost-logic, boost-mp11, boost-optional, boost-smart-ptr, boost-static-string, boost-system, boost-throw-exception, boost-type-index, boost-type-traits, boost-winapi]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

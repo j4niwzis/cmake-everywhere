@@ -561,7 +561,7 @@ cme_port_feature(boost poly_collection
   DEPENDS boost-poly-collection)
 cme_port_feature(boost beast
   SUMMARY "Boost.beast"
-  IMPLIES asio assert bind config container container_hash core endian headers intrusive logic mp11 optional smart_ptr static_string system throw_exception type_index type_traits winapi
+  IMPLIES asio_core assert bind config container container_hash core endian headers intrusive logic mp11 optional smart_ptr static_string system throw_exception type_index type_traits winapi
   DEPENDS boost-beast)
 cme_port_feature(boost mp11
   SUMMARY "Boost.mp11"

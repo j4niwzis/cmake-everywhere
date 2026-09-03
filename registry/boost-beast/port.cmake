@@ -4,6 +4,11 @@
 # One library out of Boost, on its own. FAMILY is what keeps it from being
 # half of one Boost and half of another: every Boost port in a build is
 # answered the same way, from the same place, at the same version.
+#
+# Beast's upstream target links Boost::asio, the aggregate target, but uses
+# only its core. Keeping that spelling here would build Boost.Context and
+# Boost.Date_Time for coroutine and timer parts Beast never calls, so the
+# generated dependency is deliberately narrowed to Boost::asio_core.
 cme_declare_port(
   NAME boost-beast
   PROVIDES boost_beast BoostBeast
@@ -12,7 +17,7 @@ cme_declare_port(
   LICENSE BSL-1.0
   SYSTEM_PACKAGE boost_beast
   TARGETS Boost::beast
-  DEPENDS boost-asio boost-assert boost-bind boost-config boost-container boost-container-hash boost-core boost-endian boost-headers boost-intrusive boost-logic boost-mp11 boost-optional boost-smart-ptr boost-static-string boost-system boost-throw-exception boost-type-index boost-type-traits boost-winapi
+  DEPENDS boost-asio-core boost-assert boost-bind boost-config boost-container boost-container-hash boost-core boost-endian boost-headers boost-intrusive boost-logic boost-mp11 boost-optional boost-smart-ptr boost-static-string boost-system boost-throw-exception boost-type-index boost-type-traits boost-winapi
 )
 
 # Where the sources come from, which is the one thing about a Boost library

@@ -201,7 +201,7 @@ jobs:
           package: boost_process
           target: Boost::process
   boost-beast:
-    needs: [boost-asio, boost-container, boost-mp11, boost-static-string, boost-system]
+    needs: [boost-asio-core, boost-container, boost-mp11, boost-static-string, boost-system]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
