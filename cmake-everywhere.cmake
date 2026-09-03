@@ -3131,7 +3131,26 @@ function(cme_report)
         if(refused)
           string(APPEND text "    no  ${feature} -- refused\n")
         else()
-          string(APPEND text "    off ${feature} -- ${summary}\n")
+          # A feature nobody asked for, whose library is in the build for a
+          # reason of its own: something else needs it, and needing is what
+          # a port's DEPENDS says while asking is what a feature says. They
+          # are two true statements about one graph, and printing only "off"
+          # here reads as "not here" while the library is right there.
+          set(anyway "")
+          cme_feature_field(depends ${port} ${feature} DEPENDS)
+          foreach(spec IN LISTS depends)
+            cme_split_requirement("${spec}" dep wanted wanted_features)
+            if(NOT anyway AND dep IN_LIST touched)
+              cme_why(who ${dep} "")
+              set(anyway "${dep} is in this build, asked for by ${who}")
+            endif()
+          endforeach()
+          if(anyway)
+            string(APPEND text
+              "    --  ${feature} -- not asked for, and ${anyway}\n")
+          else()
+            string(APPEND text "    off ${feature} -- ${summary}\n")
+          endif()
         endif()
       endif()
     endforeach()
