@@ -2486,17 +2486,23 @@ endfunction()
 # that link is what goes on the interface. Both spellings then work and the
 # checkout is untouched.
 function(cme_header_prefix out name directory)
-  # A directory of its own for every pair, rather than one directory keyed by
-  # the name alone.
+  # One root per directory offered, holding every name that directory is
+  # offered under.
   #
-  # Shared, the first caller to ask for a name kept it and every later one
-  # was handed somebody else's headers -- silently, because a symbolic link
-  # that already exists looks like the one that was wanted. With Skia
-  # installed, "include" and "skia" pointed at two different Skias, one 146
-  # and one 153, and a compile walked between them until it reached a header
-  # that had moved: include/private/SkAssert.h in one, private/base in the
-  # other.
-  string(SHA256 key "${name}|${directory}")
+  # Not keyed by the name: the first caller to ask for a name kept it and
+  # every later one was handed somebody else's headers -- silently, because a
+  # symbolic link that already exists looks like the one that was wanted.
+  # With Skia installed, "include" and "skia" pointed at two different Skias,
+  # one 146 and one 153, and a compile walked between them until it reached a
+  # header that had moved: include/private/SkAssert.h in one, private/base in
+  # the other.
+  #
+  # Not keyed by the pair either, which is what replaced that and broke basu.
+  # basu offers one directory under two names, because the three libraries
+  # that implement sd-bus disagree about which one their header goes under; a
+  # root per pair gave it two roots, the port put one of them on the include
+  # path, and <basu/sd-bus.h> was not found in the root that holds systemd.
+  string(SHA256 key "${directory}")
   string(SUBSTRING "${key}" 0 12 key)
   set(root "${CMAKE_BINARY_DIR}/cme-include/${key}")
   file(MAKE_DIRECTORY "${root}")

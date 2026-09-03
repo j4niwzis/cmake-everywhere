@@ -89,12 +89,30 @@ def contents(directory, commit=None):
     return answer.stdout.strip() if answer.returncode == 0 else ""
 
 
+def extension(url):
+    """What the file is, when the URL says so.
+
+    A name without one reaches Guix's unpacker as a name it cannot read, and
+    the answer is not to guess: a URL that ends in nothing recognisable gets
+    no extension here and the archive keeps whatever name the fetch gave it.
+    """
+    for suffix in (".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tgz",
+                   ".zip", ".tar"):
+        if url.endswith(suffix):
+            return suffix
+    return ""
+
+
 def main(path, cache=None):
     with open(path) as file:
         lock = json.load(file)
     print(f";; Written by tools/lock-to-guix.py from {path}.")
     print(";; Every one of these is a fact the lock is already holding the "
           "build to.")
+    print(";;")
+    print(";; A list of (port version origin): the name is what the port is")
+    print(";; called, so a package can name the input after it and write the")
+    print(";; declaration that says where its sources landed.")
     print("(list")
     for port, facts in sorted(lock.get("ports", {}).items()):
         url = facts.get("url")
@@ -107,15 +125,16 @@ def main(path, cache=None):
             # in here only when this machine has one.
             where = checkout(cache, port)
             digest = contents(where, facts.get("commit")) if where else ""
-            print(f'  ;; {port} {version}')
-            print(f'  (origin')
-            print(f'    (method git-fetch)')
-            print(f'    (uri (git-reference (url "{url}")')
-            print(f'                        (commit "{facts["commit"]}")))')
+            print(f'  (list "{port}" "{version}"')
+            print(f'    (origin')
+            print(f'      (method git-fetch)')
+            print(f'      (uri (git-reference (url "{url}")')
+            print(f'                          (commit "{facts["commit"]}")))')
+            print(f'      (file-name "{port}-{version}-checkout")')
             if not digest:
-                print(f'    ;; guix hash -rx . in a checkout of that commit,')
-                print(f'    ;; or run this again with the source cache')
-            print(f'    (sha256 (base32 "{digest}")))')
+                print(f'      ;; guix hash -rx . in a checkout of that commit,')
+                print(f'      ;; or run this again with the source cache')
+            print(f'      (sha256 (base32 "{digest}"))))')
         elif facts.get("archive"):
             digest = facts["archive"].split("=", 1)[-1]
             try:
@@ -123,11 +142,12 @@ def main(path, cache=None):
             except ValueError:
                 print(f'  ;; {port}: {facts["archive"]} is not a sha256')
                 continue
-            print(f'  ;; {port} {version}')
-            print(f'  (origin')
-            print(f'    (method url-fetch)')
-            print(f'    (uri "{url}")')
-            print(f'    (sha256 (base32 "{encoded}")))')
+            print(f'  (list "{port}" "{version}"')
+            print(f'    (origin')
+            print(f'      (method url-fetch)')
+            print(f'      (uri "{url}")')
+            print(f'      (file-name "{port}-{version}{extension(url)}")')
+            print(f'      (sha256 (base32 "{encoded}"))))')
         else:
             print(f'  ;; {port}: neither a commit nor a digest in the lock')
     print("  )")

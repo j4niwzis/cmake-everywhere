@@ -305,6 +305,22 @@ int main() {
 # other way, or assembles the interface itself out of the loader it already
 # has, is a program this has no business refusing. What it does say is that
 # asking for both is asking for one of them to be ignored.
+# Where Emscripten is, for a build that is going to WebAssembly.
+#
+# Skia builds for wasm against a copy of emsdk it expects under
+# third_party/externals, and puts
+# --sysroot=$skia_emsdk_dir/upstream/emscripten/cache/sysroot on every
+# compile and every link. This build never syncs Skia's dependencies, so
+# that directory holds nothing: the compiler is told to look for the C
+# library in an empty tree and <string.h> is not found. The SDK doing the
+# compiling is the one to name.
+#
+# A platform feature: nothing asks for it and nothing can refuse it, it is
+# on because this build is going to WebAssembly.
+cme_port_feature(skia wasm
+  SUMMARY "building against the Emscripten SDK that is doing the compiling"
+  GN_ARGS "skia_emsdk_dir=\"@EMSDK@\"")
+
 # Skia asks about EGL before it asks about X11 and takes the first answer,
 # so a build told both is a build where one of them was ignored. Which one
 # matters: a GL context made through GLX and an interface assembled through

@@ -71,6 +71,23 @@ function(cme_gn_needed name value why)
   endif()
 endfunction()
 
+# Where the Emscripten SDK is, when a project needs to be told rather than
+# asked. The compiler is inside it -- <emsdk>/upstream/emscripten/em++ --
+# and emsdk_env.sh exports the root, so both are tried and the one that
+# holds a sysroot is the answer.
+function(cme_emsdk_root out)
+  set(root "$ENV{EMSDK}")
+  if(NOT root)
+    get_filename_component(root "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(root "${root}" DIRECTORY)
+    get_filename_component(root "${root}" DIRECTORY)
+  endif()
+  if(NOT EXISTS "${root}/upstream/emscripten/cache/sysroot")
+    set(root "")
+  endif()
+  set(${out} "${root}" PARENT_SCOPE)
+endfunction()
+
 function(cme_gn_substitute out text)
   set(value "${text}")
   if(value MATCHES "@CC@")
@@ -127,6 +144,18 @@ function(cme_gn_substitute out text)
     string(REPLACE "@INCLUDE:${CMAKE_MATCH_1}@" "${directory}" value "${value}")
   endwhile()
   string(REPLACE "@DEP_LIBDIRS@" "${CME_GN_DEP_LIBDIRS}" value "${value}")
+  # @EMSDK@ -- the Emscripten SDK a WebAssembly build is being compiled with.
+  # A project that carries its own copy of emsdk points at that copy by
+  # default, and a checkout whose dependencies were never synced has an
+  # empty directory there: every compile gets a --sysroot with no headers
+  # under it, and the first #include <string.h> is not found.
+  if(value MATCHES "@EMSDK@")
+    cme_emsdk_root(cme_gn_emsdk)
+    cme_gn_needed(EMSDK "${cme_gn_emsdk}"
+      "Neither EMSDK in the environment nor the directory above the compiler "
+      "holds upstream/emscripten/cache/sysroot, so there is no SDK to name.")
+    string(REPLACE "@EMSDK@" "${cme_gn_emsdk}" value "${value}")
+  endif()
   # GN spells architectures its own way and so does everyone else.
   #
   # WebAssembly first, because there the processor CMake reports is the one
