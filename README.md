@@ -81,6 +81,42 @@ is still being decided, and a port whose pin is lower is built at the version
 that satisfies everyone -- provided it says how a version becomes a tag.
 Nothing is built twice and nothing ends up older than something else needed.
 
+### A library under a name of its own
+
+Skia includes itself as `"include/core/SkCanvas.h"`. That is a path with
+nothing in it to say whose include directory it is, and a consumer that
+writes it has not said which library it meant. So the port offers Skia's
+include directory a second time under a name:
+
+```cpp
+#include <skia/core/SkCanvas.h>
+```
+
+Skia is unchanged and still compiles against its own spelling. Nothing is
+copied and nothing is rewritten -- the name is a link, and the root of the
+checkout stays on the interface too, so what lives outside `include/`, such
+as `modules/skottie/include`, is still reachable.
+
+### Versions as archives
+
+A port can list its versions as archives with a digest of each, instead of
+being cloned:
+
+```cmake
+cme_port_version(skia 153
+  URL "https://codeload.github.com/google/skia/tar.gz/9d07e5ba..."
+  SHA512 9c1682...)
+```
+
+Skia is fetched that way. Its history is several gigabytes and none of it is
+read; an archive of one commit is 65 MiB and a fixed number of bytes that can
+be checked. Ten milestones are listed, `cme_version(skia 148)` takes another,
+and a number that is not listed is refused rather than guessed at -- there is
+no digest for it.
+
+Each line names a commit rather than the branch it was cut from. A branch
+moves, and a digest of what it pointed at yesterday is a digest of nothing.
+
 ### A GN project
 
 ```cmake

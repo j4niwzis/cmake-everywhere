@@ -45,7 +45,7 @@ set(CME_POLICY_VERSION_MINIMUM "3.5" CACHE STRING
 function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
-          POLICY_MINIMUM GIT_TAG_TEMPLATE)
+          POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW)
   set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
            GN_ARGS GN_TARGETS GN_CONFIRM)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
@@ -214,6 +214,36 @@ endfunction()
 function(cme_options port)
   set(CME_OPTIONS_${port} "${ARGN}" CACHE STRING
     "Extra build options for the ${port} port" FORCE)
+endfunction()
+
+# One version of a library, as an archive with a digest of it.
+#
+#   cme_port_version(skia 153
+#     URL "https://.../9d07e5ba.tar.gz"
+#     SHA512 9c1682...)
+#
+# A port that lists versions this way is fetched by download rather than by
+# clone, and what arrives is checked. Which also means a version that is not
+# listed cannot be conjured: there is no digest for it.
+function(cme_port_version port version)
+  cmake_parse_arguments(SOURCE "" "URL;SHA512;SHA256" "" ${ARGN})
+  if(NOT SOURCE_URL)
+    message(FATAL_ERROR "cmake-everywhere: ${port} ${version} has no URL")
+  endif()
+  if(NOT SOURCE_SHA512 AND NOT SOURCE_SHA256)
+    message(FATAL_ERROR
+      "cmake-everywhere: ${port} ${version} has no digest. An archive nobody "
+      "checked is an archive nobody knows.")
+  endif()
+  set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_VERSIONS "${version}")
+  set_property(GLOBAL PROPERTY CME_SOURCE_${port}_${version}_URL "${SOURCE_URL}")
+  if(SOURCE_SHA512)
+    set_property(GLOBAL PROPERTY CME_SOURCE_${port}_${version}_HASH
+                 "SHA512=${SOURCE_SHA512}")
+  else()
+    set_property(GLOBAL PROPERTY CME_SOURCE_${port}_${version}_HASH
+                 "SHA256=${SOURCE_SHA256}")
+  endif()
 endfunction()
 
 # Build a different version of a library than the port pins:
@@ -855,7 +885,16 @@ function(cme_build_port port package version exact)
   # much later as a missing symbol.
   cme_port_field(pinned ${port} VERSION)
   cme_effective_version(${port} port_version)
-  if(NOT port_version VERSION_EQUAL pinned)
+  get_property(listed GLOBAL PROPERTY CME_PORT_${port}_VERSIONS)
+  if(listed AND NOT port_version IN_LIST listed)
+    list(JOIN listed ", " available)
+    message(FATAL_ERROR
+      "cmake-everywhere: ${port} ${port_version} is not one of the versions "
+      "this port has an archive and a digest for. It has: ${available}")
+  endif()
+  if(listed)
+    # A listed version is fetched and checked, so there is no tag to work out.
+  elseif(NOT port_version VERSION_EQUAL pinned)
     cme_port_field(template ${port} GIT_TAG_TEMPLATE)
     if(NOT template)
       message(FATAL_ERROR
@@ -895,15 +934,21 @@ function(cme_build_port port package version exact)
   #
   # SYSTEM: their headers are not yours, so their warnings are not yours.
   set(arguments NAME ${port} EXCLUDE_FROM_ALL YES SYSTEM YES)
-  foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
-                URL URL_HASH)
-    cme_port_field(value ${port} ${field})
-    if(value)
-      list(APPEND arguments ${field} "${value}")
+  if(listed)
+    get_property(url GLOBAL PROPERTY CME_SOURCE_${port}_${port_version}_URL)
+    get_property(hash GLOBAL PROPERTY CME_SOURCE_${port}_${port_version}_HASH)
+    list(APPEND arguments URL "${url}" URL_HASH "${hash}")
+  else()
+    foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
+                  URL URL_HASH GIT_SHALLOW)
+      cme_port_field(value ${port} ${field})
+      if(value)
+        list(APPEND arguments ${field} "${value}")
+      endif()
+    endforeach()
+    if(port_tag)
+      list(APPEND arguments GIT_TAG "${port_tag}")
     endif()
-  endforeach()
-  if(port_tag)
-    list(APPEND arguments GIT_TAG "${port_tag}")
   endif()
   if(port_version)
     list(APPEND arguments VERSION "${port_version}")

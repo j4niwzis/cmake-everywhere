@@ -21,15 +21,18 @@
 # read back from GN afterwards rather than assumed. And since this build
 # never runs Skia's dependency sync, third_party/externals is empty: a
 # bundled path would not quietly happen, it would fail to find its sources.
+# The versions this port can build, as archives with a digest of each. Not a
+# clone: Skia's history is several gigabytes and none of it is read here, and
+# an archive of a commit is a fixed number of bytes that can be checked.
+include("${CMAKE_CURRENT_LIST_DIR}/versions.cmake")
+
 cme_declare_port(
   NAME skia
   PROVIDES Skia skia SKIA
-  VERSION 0.0.0
-  GITHUB_REPOSITORY google/skia
-  # Skia has no releases; it has milestone branches. A commit is what a port
-  # can pin, and this one is a placeholder until a milestone is chosen
-  # deliberately.
-  GIT_TAG main
+  # The newest milestone in versions.cmake. cme_version(skia 148) takes
+  # another; a number that is not listed is refused, because there is no
+  # digest for it.
+  VERSION 153
   GN_TARGETS "//:skia=Skia::skia"
   GN_ARGS
     "is_official_build=true"
@@ -186,13 +189,33 @@ cme_port_feature(skia skottie
   GN_ARGS "skia_enable_skottie=true")
 
 function(cme_adapt_skia source binary)
+  # Skia includes itself as "include/core/SkCanvas.h" -- a path relative to
+  # the root of its own checkout, with nothing in it to say whose include
+  # directory that is. In a project of any size that is a name waiting to
+  # collide, and a consumer that writes it has said nothing about which
+  # library it meant.
+  #
+  # So its include directory is offered a second time under a name of its
+  # own, and a consumer writes <skia/core/SkCanvas.h>. Skia itself is
+  # unchanged and still compiles against its own spelling, because the root
+  # of the checkout is on the interface as well -- which is also how the
+  # things outside include/, like modules/skottie/include, are still
+  # reachable. The name is a link rather than a copy.
+  set(named "${CMAKE_BINARY_DIR}/cme-include")
+  file(MAKE_DIRECTORY "${named}")
+  if(NOT EXISTS "${named}/skia")
+    file(CREATE_LINK "${source}/include" "${named}/skia" SYMBOLIC
+         RESULT status)
+    if(NOT status STREQUAL "0")
+      message(FATAL_ERROR
+        "cmake-everywhere: cannot put Skia's headers under a name: ${status}")
+    endif()
+  endif()
+  target_include_directories(skia_skia INTERFACE
+    "$<BUILD_INTERFACE:${named}>" "$<BUILD_INTERFACE:${source}>")
   cme_export_variable(Skia SKIA_FOUND TRUE)
   cme_export_variable(Skia SKIA_LIBRARY Skia::skia)
   cme_export_variable(Skia SKIA_LIBRARIES Skia::skia)
-  cme_export_variable(Skia SKIA_INCLUDE_DIR "${source}")
-  cme_export_variable(Skia SKIA_INCLUDE_DIRS "${source}")
-  # Skia is included as "include/core/SkCanvas.h", from the root of its own
-  # checkout, which is why the root is the include directory.
-  target_include_directories(skia_skia INTERFACE
-    "$<BUILD_INTERFACE:${source}>")
+  cme_export_variable(Skia SKIA_INCLUDE_DIR "${named};${source}")
+  cme_export_variable(Skia SKIA_INCLUDE_DIRS "${named};${source}")
 endfunction()

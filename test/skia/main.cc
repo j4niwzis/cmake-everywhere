@@ -1,10 +1,15 @@
-#include "include/core/SkBitmap.h"
-#include "include/core/SkCanvas.h"
-#include "include/core/SkPaint.h"
+#include <skia/core/SkBitmap.h>
+#include <skia/core/SkCanvas.h>
+#include <skia/core/SkPaint.h>
 #include <cstdio>
 
 // A CPU raster surface, one rectangle, one pixel read back. No codec, no
 // font, no GPU: exactly what a Skia with no features can do.
+//
+// The skia/ in front of the headers is this port's doing. Skia includes
+// itself as "include/core/SkCanvas.h", a path with nothing in it to say
+// whose include directory it is; the port offers that directory a second
+// time under a name, so a consumer can say which library it meant.
 int main() {
   SkBitmap bitmap;
   bitmap.allocN32Pixels(64, 64);
