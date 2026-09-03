@@ -611,8 +611,10 @@ jobs:
             # expat comes from the port beside it.
             wayland) sudo apt-get install -y meson libffi-dev ;;
             # A project with a configure script of its own needs the shell
-            # tools that script was written for. ffmpeg wants nasm on x86.
-            ffmpeg) sudo apt-get install -y nasm ;;
+            # tools that script was written for. On x86 both of these
+            # assemble their own code and refuse to build without it:
+            # "Found no assembler. Minimum version is nasm-2.13."
+            ffmpeg|x264) sudo apt-get install -y nasm ;;
           esac
       - uses: actions/cache@v4
         with:
@@ -690,8 +692,10 @@ jobs:
             # expat comes from the port beside it.
             wayland) sudo apt-get install -y meson libffi-dev ;;
             # A project with a configure script of its own needs the shell
-            # tools that script was written for. ffmpeg wants nasm on x86.
-            ffmpeg) sudo apt-get install -y nasm ;;
+            # tools that script was written for. On x86 both of these
+            # assemble their own code and refuse to build without it:
+            # "Found no assembler. Minimum version is nasm-2.13."
+            ffmpeg|x264) sudo apt-get install -y nasm ;;
           esac
       - uses: actions/cache@v4
         with:

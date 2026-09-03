@@ -185,6 +185,22 @@ function(cme_adapt_ffmpeg source binary)
         "$<BUILD_INTERFACE:${source}>" "$<BUILD_INTERFACE:${built}>")
     endif()
   endforeach()
+  # And what avcodec calls into, for whoever links avcodec.
+  #
+  # FFmpeg names libx264 on the link line of the programs it builds, and
+  # this port builds none of them -- so nothing in what was read said that
+  # the archive needs it, and the program that linked avcodec found out from
+  # the linker instead:
+  #
+  #   undefined symbol: x264_encoder_open_165
+  #   referenced by libx264.c ... in archive libffmpeg_avcodec.a
+  #
+  # A static library that calls into another one says so here.
+  cme_enabled_features(ffmpeg cme_ffmpeg_features)
+  if("x264" IN_LIST cme_ffmpeg_features AND TARGET ffmpeg_avcodec
+     AND TARGET x264::x264)
+    target_link_libraries(ffmpeg_avcodec INTERFACE x264::x264)
+  endif()
   cme_export_variable(FFmpeg FFMPEG_FOUND TRUE)
   cme_export_variable(FFmpeg FFMPEG_INCLUDE_DIRS "${source};${built}")
   cme_export_variable(FFmpeg FFMPEG_LIBRARIES

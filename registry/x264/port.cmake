@@ -29,16 +29,19 @@ cme_declare_port(
   LINK_NAMES "x264=x264::x264"
   TARGETS x264::x264
   CHECK_HEADER x264.h
+  # On x86 it assembles its own code and says so if it cannot: "Found no
+  # assembler. Minimum version is nasm-2.13." On aarch64 the assembly is
+  # .S files, which the compiler takes.
   CONFIGURE_ARGS
-    # The flags this build compiles with, said three times because its
-    # configure asks three different questions with them. The assembler one
-    # is the one that matters in a cross build: without the target on that
-    # command line its NEON check assembles aarch64 for this machine and
-    # fails, and what it then says is "no NEON support, try adding
-    # -mfpu=neon" -- advice about a compiler that was never asked the right
-    # question.
+    # The flags this build compiles with, for the two of its three
+    # questions that are asked with them. The assembler's are their own:
+    # where the assembly is .S the assembler is the C compiler and needs the
+    # target, or its NEON check assembles for this machine and the answer is
+    # "no NEON support, try adding -mfpu=neon" -- advice about a question
+    # asked wrong; where the assembly is .asm the assembler is nasm, which
+    # takes none of a compiler's flags.
     "--extra-cflags=@CFLAGS@"
-    "--extra-asflags=@CFLAGS@"
+    "--extra-asflags=@ASFLAGS@"
     "--extra-ldflags=@LDFLAGS@"
     # An encoder to link, not a program to run.
     "--enable-static"

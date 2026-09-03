@@ -164,6 +164,20 @@ function(cme_configure_substitute out port value)
     endif()
   endforeach()
   string(REPLACE "@CFLAGS@" "${cme_c_flags}" value "${value}")
+  # The flags the assembler takes, which is a different question.
+  #
+  # Where a project's assembly is .S files -- arm and aarch64 in both x264
+  # and FFmpeg -- the assembler is the C compiler, and it needs everything
+  # the C compiler needs: without the target its NEON check assembles for
+  # this machine and the project concludes the CPU has no NEON. Where the
+  # assembly is .asm the assembler is nasm, which takes none of that: hand
+  # it -fPIC -Wall and it fails its own check and the project reports the
+  # version of nasm it just found as too old.
+  set(cme_as_flags "")
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm|aarch64|ARM|AARCH64)")
+    set(cme_as_flags "${cme_c_flags}")
+  endif()
+  string(REPLACE "@ASFLAGS@" "${cme_as_flags}" value "${value}")
   string(REPLACE "@CXXFLAGS@" "${cme_cxx_flags}" value "${value}")
   string(REPLACE "@LDFLAGS@" "${cme_link_flags}" value "${value}")
   # And the tools that go with that compiler. A host ar can put aarch64
