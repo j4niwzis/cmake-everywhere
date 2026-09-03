@@ -6,7 +6,9 @@ cme_declare_port(
   VERSION 1.2.2
   GITHUB_REPOSITORY libsndfile/libsndfile
   GIT_TAG 1.2.2
-  DEPENDS ogg vorbis flac opus
+  # libsndfile's own CMake asks for Ogg 1.3, and saying so here is what
+  # lets that be known before anything is built.
+  DEPENDS "ogg>=1.3" vorbis flac opus
   OPTIONS
     "BUILD_PROGRAMS OFF"
     "BUILD_EXAMPLES OFF"

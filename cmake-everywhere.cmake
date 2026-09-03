@@ -171,6 +171,58 @@ function(cme_system_allowed out package)
   endif()
 endfunction()
 
+# A dependency may carry a floor: "ogg>=1.3" means this port does not work
+# with anything older. Constraints are data in the registry, so the whole
+# graph can be read before a single add_subdirectory has run.
+function(cme_split_requirement spec out_name out_version)
+  if(spec MATCHES "^([^><=]+)>=(.+)$")
+    set(${out_name} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    set(${out_version} "${CMAKE_MATCH_2}" PARENT_SCOPE)
+  else()
+    set(${out_name} "${spec}" PARENT_SCOPE)
+    set(${out_version} "" PARENT_SCOPE)
+  endif()
+endfunction()
+
+# Walks the graph raising the floor on every port in it. This is the whole
+# point of the constraints being data: a version asked for by something deep
+# in the graph is known before the shallow end is built, so nothing has to be
+# built twice and nothing ends up older than something else needed.
+function(cme_require port version)
+  get_property(have GLOBAL PROPERTY CME_REQUIRED_VERSION_${port})
+  get_property(visited GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port})
+  if(version AND (NOT have OR have VERSION_LESS version))
+    set_property(GLOBAL PROPERTY CME_REQUIRED_VERSION_${port} "${version}")
+    # A raised floor has to be pushed down again: what this port needs may
+    # need more of something else at the new version.
+    set(visited FALSE)
+  endif()
+  if(visited)
+    return()
+  endif()
+  set_property(GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port} TRUE)
+  cme_port_field(depends ${port} DEPENDS)
+  foreach(spec IN LISTS depends)
+    cme_split_requirement("${spec}" name wanted)
+    cme_require("${name}" "${wanted}")
+  endforeach()
+endfunction()
+
+# The version this port is going to be built at: what it pins, unless
+# something needs more, unless the project said otherwise.
+function(cme_effective_version port out)
+  cme_port_field(result ${port} VERSION)
+  if(CME_VERSION_${port})
+    set(result "${CME_VERSION_${port}}")
+  else()
+    get_property(required GLOBAL PROPERTY CME_REQUIRED_VERSION_${port})
+    if(required AND result VERSION_LESS required)
+      set(result "${required}")
+    endif()
+  endif()
+  set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
 # Most distributions ship a .pc file and no CMake config at all, and CMake
 # has no FindOgg, FindVorbis, FindFLAC or FindSndFile of its own. So a
 # find_package for any of them fails on a machine that has the library
@@ -252,10 +304,11 @@ function(cme_build_port port package version exact)
   set_property(GLOBAL PROPERTY CME_BUILT_${port} TRUE)
 
   cme_port_field(depends ${port} DEPENDS)
-  foreach(dep IN LISTS depends)
+  foreach(spec IN LISTS depends)
+    cme_split_requirement("${spec}" dep wanted)
     cme_port_field(names ${dep} PROVIDES)
     list(GET names 0 first)
-    find_package(${first} QUIET REQUIRED)
+    find_package(${first} ${wanted} QUIET REQUIRED)
   endforeach()
 
   cme_port_field(source_subdir ${port} SOURCE_SUBDIR)
@@ -268,24 +321,25 @@ function(cme_build_port port package version exact)
   # Building 1.3.5 because that is what the port happens to pin, while
   # something asked for 1.4, is the kind of quiet wrong answer that turns up
   # much later as a missing symbol.
-  if(CME_VERSION_${port})
+  cme_port_field(pinned ${port} VERSION)
+  cme_effective_version(${port} port_version)
+  if(NOT port_version VERSION_EQUAL pinned)
     cme_port_field(template ${port} GIT_TAG_TEMPLATE)
     if(NOT template)
       message(FATAL_ERROR
-        "cmake-everywhere: asked to build ${port} ${CME_VERSION_${port}}, but "
-        "the port does not say how a version becomes a tag. Add "
-        "GIT_TAG_TEMPLATE to registry/${port}/port.cmake.")
+        "cmake-everywhere: ${port} is pinned at ${pinned} and something needs "
+        "${port_version}, but the port does not say how a version becomes a "
+        "tag. Add GIT_TAG_TEMPLATE to registry/${port}/port.cmake.")
     endif()
-    set(port_version "${CME_VERSION_${port}}")
     string(REPLACE "@VERSION@" "${port_version}" port_tag "${template}")
-    message(STATUS "cmake-everywhere: ${port} at ${port_version} (asked for)")
+    message(STATUS
+      "cmake-everywhere: ${port} at ${port_version} rather than the pinned "
+      "${pinned}")
   endif()
   if(version AND port_version VERSION_LESS version)
     message(FATAL_ERROR
-      "cmake-everywhere: something asks for ${package} ${version} and the "
-      "${port} port is ${port_version}. Raise VERSION in "
-      "registry/${port}/port.cmake, or set CME_VERSION_${port} to a version "
-      "the port can check out.")
+      "cmake-everywhere: something asks for ${package} ${version} and ${port} "
+      "resolved to ${port_version}.")
   endif()
   if(exact AND NOT port_version VERSION_EQUAL version)
     message(FATAL_ERROR
@@ -392,8 +446,15 @@ macro(cme_provider cme_method cme_package)
         endif()
       endforeach()
 
+      # A floor learned on an earlier run, so this one does not repeat it.
+      if(CME_REQUIRE_${cme_package} AND
+         (NOT cme_wanted OR cme_wanted VERSION_LESS CME_REQUIRE_${cme_package}))
+        set(cme_wanted "${CME_REQUIRE_${cme_package}}")
+      endif()
+
       get_property(cme_answered GLOBAL PROPERTY CME_ANSWERED_${cme_package})
       if(NOT cme_answered)
+        cme_require("${cme_port}" "${cme_wanted}")
         set(cme_answered "port")
         cme_system_allowed(cme_try_system "${cme_package}")
         if(cme_try_system)
@@ -429,16 +490,35 @@ macro(cme_provider cme_method cme_package)
       endif()
 
       # A package is resolved once and cannot be resolved again: whatever was
-      # built or found is already in the build. So a later caller asking for
-      # more than that is told, rather than linked against something older
-      # than it asked for.
+      # built or found is already part of this configuration. When the
+      # registry knew the requirement in advance this never happens -- that
+      # is what the constraints are for. What is left is a requirement the
+      # registry could not know: one the consuming project makes itself,
+      # after the package is already here.
+      #
+      # So it is written down and the run stops. The next configure starts
+      # with the floor raised and resolves it correctly from the beginning.
+      # Once per requirement, not once per call: it is in the cache
+      # afterwards.
       get_property(cme_have GLOBAL PROPERTY
                    CME_PROVIDED_VERSION_${cme_package})
       if(cme_wanted AND cme_have AND cme_have VERSION_LESS cme_wanted)
+        if(CME_REQUIRE_${cme_package} AND
+           NOT CME_REQUIRE_${cme_package} VERSION_LESS cme_wanted)
+          message(FATAL_ERROR
+            "cmake-everywhere: ${cme_package} ${cme_wanted} is already "
+            "required and resolved to ${cme_have} anyway. Nothing available "
+            "satisfies it: raise the port, or ask for less.")
+        endif()
+        set(CME_REQUIRE_${cme_package} "${cme_wanted}" CACHE STRING
+          "Lowest acceptable ${cme_package}, learned from a later caller"
+          FORCE)
+        cme_note_decision("${cme_package}" "requires" "${cme_wanted}")
         message(FATAL_ERROR
-          "cmake-everywhere: ${cme_package} is already here as ${cme_have} and "
-          "something now asks for ${cme_wanted}. Raise the port, or the "
-          "version the earlier caller asked for.")
+          "cmake-everywhere: ${cme_package} is here as ${cme_have} and "
+          "something now asks for ${cme_wanted}, which is later than anything "
+          "the registry was told about. Written down -- run cmake again and "
+          "it will be resolved at ${cme_wanted} from the start.")
       endif()
 
       if(cme_answered STREQUAL "system")

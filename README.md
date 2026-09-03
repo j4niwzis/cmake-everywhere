@@ -65,6 +65,41 @@ which package came from where, and at what version.
 A newer version wins where there is a choice: the system copy is tried first,
 so an installed 1.5 is used rather than the 1.4 the port pins.
 
+### Requirements are read before anything is built
+
+A dependency can carry a floor, and that is data in the registry rather than
+something only discovered by running a third-party CMakeLists:
+
+```cmake
+DEPENDS "ogg>=1.3" vorbis flac opus
+```
+
+When a package is asked for, the whole graph under it is walked first and
+every floor in it raised, before a single `add_subdirectory` has run. So a
+version needed by something deep in the graph is known while the shallow end
+is still being decided, and a port whose pin is lower is built at the version
+that satisfies everyone -- provided it says how a version becomes a tag.
+Nothing is built twice and nothing ends up older than something else needed.
+
+### A requirement the registry could not have known
+
+What that leaves is a request the consuming project makes itself, after the
+package is already part of the configuration: `find_package(Ogg)` and then,
+later, `find_package(Ogg 1.4)`. By then ogg is built and CMake has one
+configure pass, so it cannot be un-built.
+
+It is written down and the run stops:
+
+```
+Ogg is here as 1.3.5 and something now asks for 1.4, which is later than
+anything the registry was told about. Written down -- run cmake again and it
+will be resolved at 1.4 from the start.
+```
+
+The floor goes into the cache and into `cme-lock.txt`, so the next configure
+resolves it correctly from the first call. Once per requirement, not once per
+call.
+
 To build a version other than the one the port pins:
 
 ```cmake
