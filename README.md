@@ -1391,10 +1391,13 @@ other can turn the other off and still have the library it can use.
 ## Not building the same thing twice
 
 A library that has been built before, from the same sources with the same
-features by the same compiler for the same target, is not built again. It is
-kept in `~/.cache/cmake-everywhere/store` under a name that is a hash of all
-of that -- and of everything underneath it, so a change to zlib changes the
-name of everything above zlib.
+features by the same compiler for the same target, is not built again -- when
+there is somewhere to keep it, which is asked for rather than assumed:
+`-DCME_STORE_ENABLED=ON` for `~/.cache/cmake-everywhere/store`, or
+`-DCME_STORE=/path` for somewhere else, or `CME_STORE` in the environment for
+a machine where every build should use one. What is kept is kept under a name
+that is a hash of all of that -- and of everything underneath it, so a change
+to zlib changes the name of everything above zlib.
 
 ```
 store/skia/153-4f2b9c1ea3d07e58/
@@ -1490,11 +1493,21 @@ is not kept at all -- it says so and is built each time, which is the honest
 answer, since keeping it would keep something that cannot be compiled
 against.
 
-Turn it off with `-DCME_STORE=` (empty), or point it somewhere else with
-`-DCME_STORE=/path`. There is a compiler cache as well, used when one is
-installed (`CME_COMPILER_CACHE`), but it is the smaller half: it makes
-compiling cheaper, while this skips the compiling, the generating and the
-linking together.
+Turn it off again with `-DCME_STORE=` (empty) and `-DCME_STORE_ENABLED=OFF`
+-- both, because a path in the cache is what wins. There is a compiler cache
+as well, used when one is installed (`CME_COMPILER_CACHE`), but it is the
+smaller half: it makes compiling cheaper, while this skips the compiling, the
+generating and the linking together.
+
+Fetched sources are the same shape of question and the same answer. They land
+in the build directory unless somewhere else is asked for:
+`-DCME_SOURCES_ENABLED=ON` keeps them in `~/.cache/cmake-everywhere/sources`,
+`-DCME_SOURCES=/path` keeps them where you say, and `CME_SOURCES` in the
+environment says it once for a machine. Kept, a second build directory does
+not fetch Skia's 65 MiB again and deleting one does not throw the fetching
+away; not kept, nothing outlives the build. Either way what is fetched is
+checked against a digest or named by a commit, so the risk a store has --
+reusing something that is not the same -- is not one this has.
 
 ## A build with no network
 
