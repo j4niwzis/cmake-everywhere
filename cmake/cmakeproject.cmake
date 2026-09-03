@@ -100,6 +100,7 @@ endfunction()
 
 function(cme_cmake_import port description)
   include("${description}")
+
   cme_gn_link_map(${port} link_map)
 
   if(CMAKE_IMPORT_GENERATED_BY_TOOLS)
@@ -172,6 +173,36 @@ function(cme_cmake_import port description)
     set(target "${port}_${name}")
     set(type "${${prefix}_TYPE}")
     set(sources "${${prefix}_SOURCES}")
+
+    # Assembly, given to the compiler this project gives it to.
+    #
+    # CMake picks a language by extension, so a .S among the sources is a
+    # target compiled with a language the consumer never enabled, and the
+    # generate step stops:
+    #
+    #   Missing variable is: CMAKE_ASM_COMPILE_OBJECT
+    #
+    # What the project's own build does -- and what the command lines read a
+    # moment ago say -- is hand it to the C compiler, which knows an
+    # assembler file when it sees one and preprocesses the capital-S ones.
+    # Said here, on the files themselves, because a consumer cannot enable a
+    # language for a library it has not looked inside.
+    foreach(cme_source IN LISTS sources)
+      if(cme_source MATCHES "[.]S$")
+        # Given to the C compiler, and told what it is. Saying only the
+        # language makes CMake write -x c, and then the C parser reads
+        # ".arch armv8-a" and says what a C parser says about it: "expected
+        # identifier or '('". The -x that comes last is the one that counts,
+        # and this one is the source's own.
+        set_source_files_properties("${cme_source}" PROPERTIES
+          LANGUAGE C COMPILE_OPTIONS "-x;assembler-with-cpp")
+      elseif(cme_source MATCHES "[.]s$")
+        # The lower-case one is assembly that has already been through the
+        # preprocessor, and saying so is how it stays that way.
+        set_source_files_properties("${cme_source}" PROPERTIES
+          LANGUAGE C COMPILE_OPTIONS "-x;assembler")
+      endif()
+    endforeach()
 
     if(type STREQUAL "STATIC_LIBRARY" OR type STREQUAL "SHARED_LIBRARY"
        OR type STREQUAL "MODULE_LIBRARY")

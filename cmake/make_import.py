@@ -28,8 +28,22 @@ from cmake_import import emit, quote  # noqa: E402
 
 COMPILED = (".c", ".cc", ".cpp", ".cxx", ".m", ".mm", ".S", ".s", ".asm")
 
+# Which compiler a source is given to, which is not the same question as
+# which language it is written in.
+#
+# Assembly is the case that differs. A project's own build hands its .S
+# files to the C compiler -- that is what the command lines read here say --
+# and the compiler knows an assembler file when it sees one, running the
+# preprocessor over the capital-S ones. Calling it ASM here would instead
+# ask the consumer's build for a language it never enabled, and CMake stops
+# at generate time over a variable nobody set:
+#
+#   Missing variable is: CMAKE_ASM_COMPILE_OBJECT
+#
+# A consumer cannot enable a language for a library it has not looked
+# inside, so it is not asked to.
 LANGUAGE = {".c": "C", ".cc": "CXX", ".cpp": "CXX", ".cxx": "CXX",
-            ".m": "OBJC", ".mm": "OBJCXX", ".S": "ASM", ".s": "ASM",
+            ".m": "OBJC", ".mm": "OBJCXX", ".S": "C", ".s": "C",
             ".asm": "ASM_NASM"}
 
 

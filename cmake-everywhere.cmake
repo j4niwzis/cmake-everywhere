@@ -144,9 +144,52 @@ set(CME_STORE_PORTABLE ON CACHE BOOL
   "Copy every header an entry needs into it, so the entry can be used \
 somewhere the sources are not")
 
-set(CME_STORE_MATCH "COMPATIBLE" CACHE STRING
+# How closely a stored library has to match the build asking for it.
+#
+#   EXACT       everything recorded, spelled the way it was spelled. Two
+#               builds that differ by a space in a flag are two libraries.
+#   COMPATIBLE  the machine, the compiler and what the flags do to an
+#               object. This is the default and it is the honest one: -O2
+#               and -O3 are not the same library, and neither are -flto and
+#               not, so changing them builds again.
+#   LOOSE       the machine and the compiler, and nothing about flags. For
+#               a build that knows its flags do not matter -- warnings,
+#               include paths, a define that only reaches its own sources --
+#               and would rather not rebuild the world to find out.
+#
+# Set it with -DCME_STORE_MATCH= or in the environment, which is where a CI
+# job that wants one answer for every step of it can put it once.
+set(cme_store_match "COMPATIBLE")
+if(DEFINED ENV{CME_STORE_MATCH} AND NOT "$ENV{CME_STORE_MATCH}" STREQUAL "")
+  set(cme_store_match "$ENV{CME_STORE_MATCH}")
+endif()
+set(CME_STORE_MATCH "${cme_store_match}" CACHE STRING
   "How closely a stored library has to match: EXACT, COMPATIBLE or LOOSE")
 set_property(CACHE CME_STORE_MATCH PROPERTY STRINGS EXACT COMPATIBLE LOOSE)
+if(NOT CME_STORE_MATCH MATCHES "^(EXACT|COMPATIBLE|LOOSE)$")
+  message(FATAL_ERROR
+    "cmake-everywhere: CME_STORE_MATCH is ${CME_STORE_MATCH}, and what it "
+    "can be is EXACT, COMPATIBLE or LOOSE.")
+endif()
+
+# Flags that do not change the object.
+#
+# A library compiled with -Wall and one compiled without are the same
+# library: warnings are what the compiler says, not what it emits. So are
+# the flags that decide where the dependency file goes, and how diagnostics
+# are coloured.
+#
+# Everything else counts. That is the deliberate direction of the mistake:
+# this cannot know what every optimisation flag implies -- the table is
+# hundreds of entries per compiler and it changes with each release, and a
+# claim that two sets of flags produce the same object is a claim this has
+# no way to check. So flags it does not recognise as harmless are treated as
+# significant, and the cost of being wrong is a rebuild rather than a
+# library that is not what the build asked for.
+set(CME_FLAGS_WITHOUT_EFFECT
+    "^-W" "^-w$" "^-pedantic" "^-M[MGPD]?$" "^-M[FTQ]$" "^-fdiagnostics"
+    "^-f(no-)?color-diagnostics$" "^-fmessage-length" "^-fno-caret"
+    "^--?verbose$" "^-v$" "^-fno-diagnostics" "^-Rpass" "^-fansi-escape")
 
 # Everything about this build that a compiled library could depend on, as
 # name and value, so that a difference can be named rather than counted.
@@ -205,6 +248,113 @@ function(cme_environment_pairs out)
   set(${out} "${pairs}" PARENT_SCOPE)
 endfunction()
 
+# What a set of flags does to an object, as a string two builds can compare.
+#
+# Three things are true of flags and none of them is obvious from the text:
+# their order mostly does not matter, the same flag twice is the same as
+# once, and within a family the last one wins -- -O1 -O2 is -O2, and
+# -fomit-frame-pointer -fno-omit-frame-pointer is the second one. A build
+# that spells the same thing differently should not rebuild the world, and a
+# build that spells a different thing should.
+#
+# So: what is known not to reach the object is dropped, the families are
+# collapsed to their last member, and what is left is sorted. What this does
+# not do is claim that two different flags mean the same thing. -O2 and -O3
+# are different here, as they are in the object.
+function(cme_significant_flags out text)
+  separate_arguments(cme_words UNIX_COMMAND "${text}")
+  set(cme_optimisation "")
+  set(cme_families "")
+  set(cme_chosen "")
+  set(cme_rest "")
+  # A flag whose value is the next word is one word here: sorted apart, an
+  # include directory and a macro could change places between two builds
+  # that are not the same build.
+  set(cme_takes_a_word -isystem -include -imacros -idirafter -iquote -I -D
+                       -U -Xclang -Xlinker -mllvm -B -L -l -T -u -z
+                       --sysroot -target)
+  # The ones that are written both ways: -DFOO and -D FOO are the same
+  # define, so they are the same word here.
+  set(cme_takes_a_word_closed -I -D -U -L -l)
+  set(cme_takes_a_word_and_says_nothing -MF -MT -MQ -o)
+  set(cme_glue "")
+  foreach(cme_word IN LISTS cme_words)
+    if(cme_glue STREQUAL "drop")
+      set(cme_glue "")
+      continue()
+    endif()
+    if(cme_glue)
+      if(cme_glue IN_LIST cme_takes_a_word_closed)
+        list(APPEND cme_rest "${cme_glue}${cme_word}")
+      else()
+        list(APPEND cme_rest "${cme_glue} ${cme_word}")
+      endif()
+      set(cme_glue "")
+      continue()
+    endif()
+    if(cme_word IN_LIST cme_takes_a_word_and_says_nothing)
+      set(cme_glue "drop")
+      continue()
+    endif()
+    if(cme_word IN_LIST cme_takes_a_word)
+      set(cme_glue "${cme_word}")
+      continue()
+    endif()
+    set(cme_drop FALSE)
+    foreach(cme_pattern IN LISTS CME_FLAGS_WITHOUT_EFFECT)
+      if(cme_word MATCHES "${cme_pattern}")
+        set(cme_drop TRUE)
+        break()
+      endif()
+    endforeach()
+    if(cme_drop)
+      continue()
+    endif()
+    # The optimisation level, of which there is one: the last.
+    if(cme_word MATCHES "^-O[0-9szg]?$" OR cme_word STREQUAL "-Ofast")
+      if(cme_word STREQUAL "-O")
+        set(cme_word "-O1")
+      endif()
+      set(cme_optimisation "${cme_word}")
+      continue()
+    endif()
+    # A switch and the switch that turns it off are one family; so are the
+    # settings written -fname=value.
+    if(cme_word MATCHES "^-(f|m)(no-)?([^=]+)(=.*)?$")
+      set(cme_family "${CMAKE_MATCH_1}${CMAKE_MATCH_3}")
+      list(FIND cme_families "${cme_family}" cme_at)
+      if(cme_at EQUAL -1)
+        list(APPEND cme_families "${cme_family}")
+        list(APPEND cme_chosen "${cme_word}")
+      else()
+        list(REMOVE_AT cme_chosen ${cme_at})
+        list(INSERT cme_chosen ${cme_at} "${cme_word}")
+      endif()
+      continue()
+    endif()
+    list(APPEND cme_rest "${cme_word}")
+  endforeach()
+  list(APPEND cme_rest ${cme_chosen})
+  if(cme_optimisation)
+    list(APPEND cme_rest "${cme_optimisation}")
+  endif()
+  list(SORT cme_rest)
+  list(JOIN cme_rest " " cme_said)
+  set(${out} "${cme_said}" PARENT_SCOPE)
+endfunction()
+
+# The flags this build compiles with, both kinds of them: the ones that
+# apply always and the ones the build type adds.
+function(cme_flags_of out language)
+  set(cme_text "${CMAKE_${language}_FLAGS}")
+  if(CMAKE_BUILD_TYPE)
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" cme_config)
+    string(APPEND cme_text " ${CMAKE_${language}_FLAGS_${cme_config}}")
+  endif()
+  cme_significant_flags(cme_said "${cme_text}")
+  set(${out} "${cme_said}" PARENT_SCOPE)
+endfunction()
+
 # The compiler's major version. A patch release of the same compiler does not
 # make a library it built unusable, and treating it as though it did means
 # rebuilding everything on a Tuesday.
@@ -225,6 +375,8 @@ function(cme_environment_key out)
 
   cme_major(c_major "${CMAKE_C_COMPILER_VERSION}")
   cme_major(cxx_major "${CMAKE_CXX_COMPILER_VERSION}")
+  cme_flags_of(c_flags C)
+  cme_flags_of(cxx_flags CXX)
   set(toolchain "")
   if(CMAKE_TOOLCHAIN_FILE AND EXISTS "${CMAKE_TOOLCHAIN_FILE}")
     file(SHA256 "${CMAKE_TOOLCHAIN_FILE}" toolchain)
@@ -245,7 +397,15 @@ function(cme_environment_key out)
               # Objects compiled for link-time optimisation are not the same
               # objects, and a library built one way is not the library built
               # the other -- whatever else matches.
+              #
+              # CMAKE_INTERPROCEDURAL_OPTIMIZATION is how that is asked of
+              # CMake, and it is not the only way it is asked: a build that
+              # puts -flto in its own flags gets objects that are bitcode
+              # just the same. So the flags are part of the name as well.
+              # They decide what an object is, which is the question this
+              # name answers.
               "${CMAKE_INTERPROCEDURAL_OPTIMIZATION}" "${BUILD_SHARED_LIBS}"
+              "${c_flags}" "${cxx_flags}"
               "${CMAKE_CXX_STANDARD}" "${CMAKE_BUILD_TYPE}"
               "${CMAKE_OSX_DEPLOYMENT_TARGET}" "${CMAKE_OSX_ARCHITECTURES}"
               "${toolchain}")
@@ -5556,7 +5716,14 @@ macro(cme_provider cme_method cme_package)
   endif()
 endmacro()
 
-cmake_language(SET_DEPENDENCY_PROVIDER cme_provider
-               SUPPORTED_METHODS FIND_PACKAGE)
+# Read as a script, this file is what it says and does nothing: a provider
+# can only be registered by the project() that is asking for one, and there
+# is no project in `cmake -P`. What that leaves is every function here,
+# which is how test/flags.cmake asks the real thing what it makes of a set
+# of flags rather than asking a copy of it.
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+  cmake_language(SET_DEPENDENCY_PROVIDER cme_provider
+                 SUPPORTED_METHODS FIND_PACKAGE)
+endif()
 
 cmake_policy(POP)
