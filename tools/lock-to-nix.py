@@ -22,6 +22,8 @@ separate hash is needed; fetchurl for an archive, whose digest the lock has.
 import json
 import os
 import subprocess
+import base64
+import binascii
 import sys
 import tempfile
 
@@ -33,9 +35,27 @@ def sources(lock):
             # Nothing to fetch: a port answered by the system, or one that
             # is a name for other ports.
             continue
-        digest = facts.get("archive", "")
-        digest = digest.split("=", 1)[1] if "=" in digest else digest
-        yield port, url, facts.get("commit"), digest, facts.get("version", "")
+        # sha256=... or sha512=..., and which one it is decides the field
+        # it goes in. A sha512 written as a sha256 is not a digest Nix reads
+        # wrongly, it is one it refuses: "wrong length for hash algorithm".
+        stated = facts.get("archive", "")
+        if "=" in stated:
+            algorithm, digest = stated.split("=", 1)
+        else:
+            algorithm, digest = "sha256", stated
+        yield port, url, facts.get("commit"), digest, algorithm, \
+            facts.get("version", "")
+
+
+def sri(algorithm, digest):
+    """A digest as Nix and the web write one: the algorithm, then base64.
+
+    Not a conversion for its own sake -- sha256 = "..." says the algorithm in
+    the field name, and a lock that holds a sha512 then has nowhere correct
+    to put it.
+    """
+    raw = binascii.unhexlify(digest)
+    return algorithm + "-" + base64.b64encode(raw).decode()
 
 
 def checkout(cache, port):
@@ -97,7 +117,7 @@ def main(path, cache=None):
           "build to.")
     print("{ pkgs ? import <nixpkgs> { } }:")
     print("{")
-    for port, url, commit, digest, version in sources(lock):
+    for port, url, commit, digest, algorithm, version in sources(lock):
         name = port.replace("-", "_")
         if commit:
             # fetchgit when the digest of the contents can be had, because
@@ -107,10 +127,16 @@ def main(path, cache=None):
             where = checkout(cache, port)
             digest = contents(where, commit) if where else ""
             if digest:
+                # Without submodules, because that is what was hashed:
+                # the digest above is of the commit materialised through an
+                # index, which has no submodules in it. fetchgit takes them
+                # by default, and freetype -- which carries dlg -- then
+                # produced a tree nothing here had ever described.
                 print(f'  {name} = pkgs.fetchgit {{')
                 print(f'    url = "{url}";')
                 print(f'    rev = "{commit}";')
                 print(f'    sha256 = "{digest}";')
+                print(f'    fetchSubmodules = false;')
                 print(f'  }};  # {version}')
             else:
                 print(f'  {name} = builtins.fetchGit {{')
@@ -118,9 +144,11 @@ def main(path, cache=None):
                 print(f'    rev = "{commit}";')
                 print(f'  }};  # {version}')
         elif digest:
+            # In the one spelling that carries the algorithm with it, so
+            # neither side has to agree separately about which was meant.
             print(f'  {name} = pkgs.fetchurl {{')
             print(f'    url = "{url}";')
-            print(f'    sha256 = "{digest}";')
+            print(f'    hash = "{sri(algorithm, digest)}";')
             print(f'  }};  # {version}')
         else:
             # Said rather than skipped: a source with neither a commit nor a

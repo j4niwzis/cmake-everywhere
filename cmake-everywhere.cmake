@@ -293,14 +293,15 @@ function(cme_identity_key out port version)
   # The port file itself: changing what a port does has to change the name of
   # what it produces.
   set(recipe "")
-  get_property(port_dir GLOBAL PROPERTY CME_PORT_${port}_DIR)
-  if(port_dir)
+  get_property(port_dirs GLOBAL PROPERTY CME_PORT_${port}_DIRS)
+  foreach(port_dir IN LISTS port_dirs)
     file(GLOB files "${port_dir}/*.cmake" "${port_dir}/patches/*")
     foreach(file IN LISTS files)
       file(SHA256 "${file}" digest)
       string(APPEND recipe "${digest}")
     endforeach()
-  else()
+  endforeach()
+  if(NOT port_dirs)
     # A port a project declared in its own CMakeLists has no file of its own,
     # so what it said is hashed instead. Either way, changing what a port
     # does changes the name of what it produces.
@@ -1370,6 +1371,20 @@ function(cme_declare_port)
     # declaration that has a directory brings one even when it is not first.
     set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_DIR "${directory}")
   endif()
+  # And every directory that declared it, not only the first.
+  #
+  # A decentralised port is declared in more than one place: an overlay says
+  # where the sources are, the registry says what the library is and what it
+  # carries. The patches are beside the file that named them, and the files
+  # that decide what this port does are all of them -- so both questions are
+  # asked of the whole list rather than of whichever came first.
+  if(directory)
+    get_property(said GLOBAL PROPERTY CME_PORT_${PORT_NAME}_DIRS)
+    if(NOT directory IN_LIST said)
+      set_property(GLOBAL APPEND PROPERTY CME_PORT_${PORT_NAME}_DIRS
+                   "${directory}")
+    endif()
+  endif()
   # What the port said, for a port that has no file of its own to hash.
   set(recipe "")
   foreach(field IN LISTS one many)
@@ -1634,6 +1649,47 @@ function(cme_platform_features out)
     string(TOLOWER "${CMAKE_SYSTEM_NAME}" names)
   endif()
   set(${out} "${names}" PARENT_SCOPE)
+endfunction()
+
+# A system as CMake spells it, in the spelling used here. A port says
+# SYSTEMS Android or SYSTEMS Darwin, because that is what a toolchain file
+# sets, and the names above are lowercase and shorter in two places.
+function(cme_platform_name out name)
+  string(TOLOWER "${name}" lowered)
+  if(lowered STREQUAL "darwin")
+    set(lowered "macos")
+  elseif(lowered STREQUAL "emscripten")
+    set(lowered "wasm")
+  elseif(lowered MATCHES "^(ios|watchos|tvos|visionos)$")
+    set(lowered "ios")
+  elseif(lowered MATCHES "^(windowsstore|msys|cygwin)$")
+    set(lowered "windows")
+  endif()
+  set(${out} "${lowered}" PARENT_SCOPE)
+endfunction()
+
+# Whether a port is for the platform this build is going to.
+#
+# Asked of the platform rather than of CMAKE_SYSTEM_NAME, because those are
+# not always the same sentence: this project's Android toolchain compiles
+# against bionic with an aarch64-linux-android triple and sets
+# CMAKE_SYSTEM_NAME to Linux, so oboe -- which is Android's and says so --
+# was refused to an Android build for being Linux.
+function(cme_port_for_here out port)
+  cme_port_field(systems ${port} SYSTEMS)
+  if(NOT systems)
+    set(${out} TRUE PARENT_SCOPE)
+    return()
+  endif()
+  cme_platform_features(here)
+  set(result FALSE)
+  foreach(system IN LISTS systems)
+    cme_platform_name(spelled "${system}")
+    if(spelled IN_LIST here)
+      set(result TRUE)
+    endif()
+  endforeach()
+  set(${out} "${result}" PARENT_SCOPE)
 endfunction()
 
 function(cme_platform_feature out name)
@@ -3305,11 +3361,13 @@ function(cme_require port version features reason)
   endif()
   set_property(GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port} TRUE)
 
-  cme_port_field(systems ${port} SYSTEMS)
-  if(systems AND NOT CMAKE_SYSTEM_NAME IN_LIST systems)
+  cme_port_for_here(here ${port})
+  if(NOT here)
+    cme_port_field(systems ${port} SYSTEMS)
+    cme_platform_features(platforms)
     message(FATAL_ERROR
       "cmake-everywhere: ${reason} needs ${port}, and ${port} is only for "
-      "${systems}. This is ${CMAKE_SYSTEM_NAME}.")
+      "${systems}. This build is for ${platforms}.")
   endif()
   cme_check_licence(${port} "${reason}")
   cme_enabled_features(${port} enabled)
@@ -3923,18 +3981,31 @@ function(cme_apply_patches port source)
   if(NOT patches)
     return()
   endif()
-  get_property(port_dir GLOBAL PROPERTY CME_PORT_${port}_DIR)
+  # Beside whichever file named it. A port declared in two places -- an
+  # overlay that says where the sources are, then the registry that says
+  # what the library carries -- kept only the first directory, and a patch
+  # the second one named was looked for beside the first.
+  get_property(port_dirs GLOBAL PROPERTY CME_PORT_${port}_DIRS)
   set(digests "")
   set(files "")
   foreach(name IN LISTS patches)
-    set(file "${name}")
-    if(NOT IS_ABSOLUTE "${file}")
-      set(file "${port_dir}/${name}")
+    set(file "")
+    if(IS_ABSOLUTE "${name}")
+      set(file "${name}")
+    else()
+      foreach(port_dir IN LISTS port_dirs)
+        if(EXISTS "${port_dir}/${name}")
+          set(file "${port_dir}/${name}")
+          break()
+        endif()
+      endforeach()
     endif()
-    if(NOT EXISTS "${file}")
+    if(NOT file OR NOT EXISTS "${file}")
+      list(JOIN port_dirs ", " looked)
       message(FATAL_ERROR
         "cmake-everywhere: ${port} says it carries the patch ${name}, and "
-        "there is no such file at ${file}")
+        "there is no such file beside any of the places it was declared: "
+        "${looked}")
     endif()
     file(SHA256 "${file}" digest)
     list(APPEND files "${file}")

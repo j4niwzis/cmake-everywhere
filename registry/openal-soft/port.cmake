@@ -56,6 +56,21 @@ cme_port_feature(openal-soft opensl
   SUMMARY "the older Android backend, OpenSL ES"
   OPTIONS "ALSOFT_BACKEND_OPENSL ON")
 
+# On Android, one of the two above rather than none.
+#
+# The backends this library is built with are the devices it can open, and
+# the two Android ones are off in the OPTIONS above because they are wrong
+# everywhere else. A build for Android that named no backend got a library
+# that opens nothing, which is silence at run time and no error at any time.
+# Oboe is the current one and the one Android's own documentation points at;
+# OpenSL ES is what it replaced.
+#
+# android is a platform, so this is not a request anybody makes or refuses:
+# it is on because the build is for Android.
+cme_port_feature(openal-soft android
+  SUMMARY "the Android audio backend"
+  IMPLIES oboe)
+
 cme_port_feature(openal-soft pipewire
   SUMMARY "PipeWire"
   OPTIONS "ALSOFT_BACKEND_PIPEWIRE ON")

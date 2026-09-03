@@ -136,18 +136,29 @@ def main(path, cache=None):
                 print(f'      ;; or run this again with the source cache')
             print(f'      (sha256 (base32 "{digest}"))))')
         elif facts.get("archive"):
-            digest = facts["archive"].split("=", 1)[-1]
+            stated = facts["archive"]
+            algorithm, _, digest = stated.rpartition("=")
+            algorithm = algorithm or "sha256"
             try:
                 encoded = base32(digest)
             except ValueError:
-                print(f'  ;; {port}: {facts["archive"]} is not a sha256')
+                print(f'  ;; {port}: {stated} is not a digest in hexadecimal')
                 continue
             print(f'  (list "{port}" "{version}"')
             print(f'    (origin')
             print(f'      (method url-fetch)')
             print(f'      (uri "{url}")')
             print(f'      (file-name "{port}-{version}{extension(url)}")')
-            print(f'      (sha256 (base32 "{encoded}"))))')
+            if algorithm == "sha256":
+                print(f'      (sha256 (base32 "{encoded}"))))')
+            else:
+                # (sha256 ...) is the short way of saying the usual one,
+                # and it is a claim about the algorithm as well as the
+                # value: a sha512 put there is refused for its length.
+                # content-hash says which algorithm, and reads the same
+                # base32 -- not the hexadecimal the lock holds, which it
+                # takes for base32 and stops at the first e.
+                print(f'      (hash (content-hash "{encoded}" {algorithm}))))')
         else:
             print(f'  ;; {port}: neither a commit nor a digest in the lock')
     print("  )")
