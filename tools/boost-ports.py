@@ -427,56 +427,15 @@ endfunction()
         waits = ""
         if needs:
             waits = "    needs: [" + ", ".join(sorted(needs)) + "]\n"
-        # The store of each library this one is built on, restored by name.
-        # Those were built and checked by their own jobs, which have finished
-        # by the time this one starts, so this job compiles its own library
-        # and takes theirs as they left them. Its own store is never restored
-        # -- a job whose question is "does this library build" must not be
-        # answered by not building it.
-        theirs = "\n".join(
-            f"""      - uses: actions/cache/restore@v4
-        with:
-          path: .cache/store
-          key: boost-store-{other}-{version}"""
-            for other in sorted(needs))
         jobs.append(f"""  {port(module)}:
 {waits}    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/boost-library
         with:
-          path: .cache/sources
-          key: boost-git-{port(module)}-{version}
-          restore-keys: boost-git-
-      - uses: actions/cache@v4
-        with:
-          path: .cache/ccache
-          key: boost-ccache-{port(module)}-${{{{ github.sha }}}}
-          restore-keys: |
-            boost-ccache-{port(module)}-
-            boost-ccache-
-{theirs}
-      - name: boost_{key(module)} and what it is built on
-        run: |
-          export CPM_SOURCE_CACHE="$PWD/.cache/sources"
-          export CCACHE_DIR="$PWD/.cache/ccache"
-          tools/configure -S test/port -B build/one -G Ninja \\
-            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \\
-            -DCME_SYSTEM=NEVER -DCME_LOCK= \\
-            -DCME_STORE="$PWD/.cache/store" \\
-            -DCME_PORT_PACKAGE=boost_{key(module)} \\
-            -DCME_PORT_TARGETS=Boost::{target(module, defines)} \\
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \\
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          cmake --build build/one
-          ./build/one/cme-port
-      - name: what this one leaves for the ones above it
-        uses: actions/cache/save@v4
-        with:
-          path: .cache/store
-          key: boost-store-{port(module)}-{version}
-      - run: ccache --show-stats""")
+          port: {port(module)}
+          package: boost_{key(module)}
+          target: Boost::{target(module, defines)}""")
 
     write(".github/workflows/boost.yml", f"""# Written by tools/boost-ports.py. Do not edit: run the script again.
 #

@@ -1376,13 +1376,20 @@ jobs waits for the libraries its own is built on, so a broken leaf skips what
 is above it rather than failing a hundred and fifty times -- and what is
 skipped is the truth about what this run did and did not check.
 
-Waiting is also what makes the store worth using there. A job restores the
-store of each library its own is built on, by name, because those were built
-and checked by their own jobs and have finished; it compiles its own library
-and takes theirs as they left them. Its own store is never restored, which is
-the line to hold: a job whose question is "does this library build" must not
-be answered by not building it. The archive job keeps the store off entirely,
-because in one build there is nothing that has already been checked. Between runs it is ccache and the source cache.
+Waiting is also what makes the store worth using there. Every job keeps what
+it built as an artifact, and takes the ones the jobs before it left; those
+are the libraries it is built on, checked by their own jobs, so a hit is
+their answer rather than a way around this job's question. Its own library is
+never in what it downloads, which is the line to hold: a job whose question
+is "does this library build" must not be answered by not building it. The
+archive job keeps the store off entirely, because in one build there is
+nothing that has already been checked.
+
+Those entries are written with `CME_STORE_PORTABLE=ON`, which copies the
+headers an entry needs into it instead of pointing at the source tree it was
+built from. That is what a store has to be to travel at all -- to another
+machine, into a container, or between two jobs -- and it costs disk, so it is
+a choice rather than the default. Between runs it is ccache and the source cache.
 
 ### What a source build cannot answer
 
@@ -1463,6 +1470,7 @@ cmake -S test/skia -B build/skia -G Ninja \
 | `CME_LOCK_FILE` | where the report of one build is written |
 | `CME_STORE` | where built libraries are kept, or empty for none |
 | `CME_STORE_MATCH` | `EXACT`, `COMPATIBLE`, `LOOSE` |
+| `CME_STORE_PORTABLE` | copy the headers an entry needs into it, so it can be used elsewhere |
 | `CME_COMPILER_CACHE` | the compiler cache to give ports, or `OFF` |
 | `CME_FEATURES_<port>` | features wanted |
 | `CME_FEATURES_OFF_<port>` | features refused |

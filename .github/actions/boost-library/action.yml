@@ -1,0 +1,71 @@
+# One Boost library, built with what the libraries under it left behind.
+#
+# A composite action rather than the steps themselves, because there are a
+# hundred and fifty-three jobs and a workflow file has a size limit: the same
+# twenty lines written out that many times came to 553 KB, over the limit,
+# and the run stopped being created at all -- silently, which is how it took
+# a while to notice.
+name: a boost library
+description: Build one Boost library and everything it is built on
+
+inputs:
+  port:
+    description: The port, as the registry names it
+    required: true
+  package:
+    description: The name find_package is called with
+    required: true
+  target:
+    description: The target a consumer links
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: sudo apt-get update && sudo apt-get install -y ninja-build ccache
+    - uses: actions/cache@v4
+      with:
+        path: .cache/sources
+        key: boost-git-${{ inputs.port }}
+        restore-keys: boost-git-
+    - uses: actions/cache@v4
+      with:
+        path: .cache/ccache
+        key: boost-ccache-${{ inputs.port }}-${{ github.sha }}
+        restore-keys: |
+          boost-ccache-${{ inputs.port }}-
+          boost-ccache-
+    # Everything the jobs before this one kept. They are the libraries this
+    # one is built on -- this job waits for them -- and their entries are
+    # portable, so they are usable here without their sources. A store hit
+    # for a library that was checked by its own job is that job's answer,
+    # not a way around this one's: this library is never in what is
+    # downloaded, because it is what this job is for.
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: store-*
+        path: .cache/store
+        merge-multiple: true
+      continue-on-error: true
+    - shell: bash
+      run: |
+        export CPM_SOURCE_CACHE="$PWD/.cache/sources"
+        export CCACHE_DIR="$PWD/.cache/ccache"
+        tools/configure -S test/port -B build/one -G Ninja \
+          -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+          -DCME_SYSTEM=NEVER -DCME_LOCK= \
+          -DCME_STORE="$PWD/.cache/store" -DCME_STORE_PORTABLE=ON \
+          -DCME_PORT_PACKAGE="${{ inputs.package }}" \
+          -DCME_PORT_TARGETS="${{ inputs.target }}" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        cmake --build build/one
+        ./build/one/cme-port
+        ccache --show-stats
+    - uses: actions/upload-artifact@v4
+      with:
+        name: store-${{ inputs.port }}
+        path: .cache/store
+        retention-days: 1
+        if-no-files-found: ignore
