@@ -200,6 +200,45 @@ wrong: a renderer can be built out of others. `vulkan` is one capability of
 one library, and the library is the only thing that knows what turning it on
 means.
 
+### A feature can need a library
+
+Which is where this stops being a list of switches. A feature names what it
+needs, and that dependency exists only when the feature is on:
+
+```cmake
+cme_port_feature(skia png
+  DEPENDS libpng
+  GN_ARGS "skia_use_libpng_decode=true" "skia_use_system_libpng=true")
+```
+
+`find_package(Skia)` builds no libpng. `find_package(Skia COMPONENTS png)`
+builds libpng, and zlib under it, because that is what libpng needs. The
+graph is walked with the features in hand, so a dependency that only exists
+because of a feature is found at the same time as everything else, before
+anything is built.
+
+### Skia, as it is set up here
+
+Nothing by default: the port with no features is Skia as a CPU rasteriser --
+no GPU backend, no codecs, no fonts, no compression, no PDF, no SVG. A
+consumer asks for what it uses:
+
+```cmake
+find_package(Skia COMPONENTS gl png freetype)
+```
+
+and nothing else is built. `gl`, `egl`, `vulkan`, `graphite`, `png`, `jpeg`,
+`webp`, `zlib`, `freetype`, `fontconfig`, `fontmgr-directory`, `pdf`, `svg`
+and `skottie` are the features; each says what it is for in a sentence.
+
+Nothing bundled, ever. Skia carries copies of zlib, libpng, libjpeg-turbo,
+libwebp, freetype and expat in `third_party/externals`, and every feature
+that needs one turns on the matching `skia_use_system_*` and names the port
+that supplies it. Those settings are read back out of GN afterwards rather
+than assumed. And since this build never runs Skia's dependency sync,
+`third_party/externals` is empty -- so a bundled path would not quietly
+happen, it would fail to find its sources.
+
 ## Options for a library being built
 
 ```cmake

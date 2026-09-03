@@ -74,9 +74,10 @@ endfunction()
 # by maximum: if anything in the build needs skia with Vulkan, the one Skia
 # in the build has Vulkan.
 function(cme_port_feature port feature)
-  cmake_parse_arguments(FEATURE "" "SUMMARY" "GN_ARGS;OPTIONS;DEPENDS" ${ARGN})
+  cmake_parse_arguments(FEATURE "" "SUMMARY" "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS"
+                        ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
-  foreach(field GN_ARGS OPTIONS DEPENDS SUMMARY)
+  foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
   endforeach()
@@ -432,7 +433,10 @@ function(cme_build_port port package version exact)
         "${port_version}, but the port does not say how a version becomes a "
         "tag. Add GIT_TAG_TEMPLATE to registry/${port}/port.cmake.")
     endif()
+    string(REPLACE "." "_" underscored "${port_version}")
     string(REPLACE "@VERSION@" "${port_version}" port_tag "${template}")
+    string(REPLACE "@VERSION_UNDERSCORE@" "${underscored}" port_tag
+           "${port_tag}")
     message(STATUS
       "cmake-everywhere: ${port} at ${port_version} rather than the pinned "
       "${pinned}")
