@@ -71,6 +71,38 @@ different("-O3 -fno-tree-vectorize" "-O3")
 set(CME_OPTIMISATION_DEFAULTS "")
 different("-O3 -ftree-vectorize" "-O3")
 
+# Dropped after the last one in a family has won and not before. A flag the
+# level already sets is only the same as nothing when it is the flag that
+# ends up applying: "-fno-tree-vectorize -ftree-vectorize" vectorises, and
+# reading it as "-fno-tree-vectorize" would give it the name of a build
+# that does not.
+set(CME_OPTIMISATION_DEFAULTS "tree-vectorize=enabled;unroll-loops=disabled")
+same("-O3 -fno-tree-vectorize -ftree-vectorize" "-O3")
+different("-O3 -fno-tree-vectorize -ftree-vectorize" "-O3 -fno-tree-vectorize")
+set(CME_OPTIMISATION_DEFAULTS "")
+
+# The compiler with no list to print, asked the other way: what its driver
+# hands to the compiler proper. Clang enables the vectorisers from -O2, so
+# asking for one there is a longer way of writing -O2, and asking for one at
+# -O0 is not.
+find_program(CME_TEST_CLANG NAMES clang)
+if(CME_TEST_CLANG)
+  set(CME_OPTIMISATION_DRIVER "${CME_TEST_CLANG}")
+  set(CME_OPTIMISATION_LEVEL "-O2")
+  same("-O2 -fvectorize" "-O2")
+  same("-O2 -fslp-vectorize" "-O2")
+  different("-O2 -fno-vectorize" "-O2")
+  set(CME_OPTIMISATION_LEVEL "-O0")
+  different("-O0 -fvectorize" "-O0")
+  # And asked in the language the flags are for: -fno-rtti is nothing to a C
+  # compilation and everything to a C++ one.
+  set(CME_OPTIMISATION_LEVEL "-O2")
+  set(CME_OPTIMISATION_LANGUAGE "c++")
+  different("-O2 -fno-rtti" "-O2")
+  set(CME_OPTIMISATION_LANGUAGE "")
+  set(CME_OPTIMISATION_DRIVER "")
+endif()
+
 if(problems GREATER 0)
   message(FATAL_ERROR "${problems} answers about flags are wrong")
 endif()

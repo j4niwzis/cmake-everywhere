@@ -262,11 +262,10 @@ endfunction()
 # -- and the answer belongs to that compiler at that version, which is the
 # only place it is true.
 #
-# Clang cannot be asked. Its levels are pipelines of passes rather than sets
-# of switches, and a good many -f flags it accepts do nothing at all; there
-# is no list to get and inventing one would be the guess this is avoiding.
-# So with clang nothing is collapsed and a redundant flag costs a rebuild,
-# which is the safe direction.
+# Clang has no such list to print and its documentation does not have one
+# either: its levels are pipelines of passes rather than sets of switches.
+# It will answer a different question instead, in cme_flag_says_nothing
+# below.
 function(cme_optimisation_defaults out compiler level)
   string(MAKE_C_IDENTIFIER "${compiler}${level}" cme_slot)
   if(DEFINED CME_OPTIMISATIONS_${cme_slot})
@@ -289,6 +288,48 @@ function(cme_optimisation_defaults out compiler level)
   endif()
   set(CME_OPTIMISATIONS_${cme_slot} "${cme_said}" CACHE INTERNAL
       "What ${compiler} says ${level} turns on")
+  set(${out} "${cme_said}" PARENT_SCOPE)
+endfunction()
+
+# What the compiler proper is asked to do, as one line to compare with
+# another.
+#
+# The driver decides what an optimisation level means and hands the result
+# to the compiler proper, and -### prints exactly that:
+#
+#   clang -### -O2 -x c -c /dev/null      "-cc1" ... "-vectorize-loops" ...
+#
+# This is the whole of the compilation. Two invocations whose cc1 line is
+# the same character for character compile the same object, whatever they
+# were spelled as on the outside. Clang has no list of what a level turns on
+# to print and its documentation does not have one either, and this is the
+# question it will answer instead.
+function(cme_driver_line out compiler language words)
+  string(MAKE_C_IDENTIFIER "${compiler}${language}${words}" cme_slot)
+  if(DEFINED CME_DRIVER_LINE_${cme_slot})
+    set(${out} "${CME_DRIVER_LINE_${cme_slot}}" PARENT_SCOPE)
+    return()
+  endif()
+  # An empty translation unit, compiled to nothing: -### runs no command, so
+  # this asks what would be run and nothing is written anywhere.
+  # "-###" in quotes: a # outside them starts a comment, even in the middle
+  # of a word, and the compiler was being run with a lone - and no arguments
+  # -- which it reads as a program on standard input.
+  execute_process(COMMAND "${compiler}" "-###" -x "${language}" -c /dev/null
+                          -o /dev/null ${words}
+                  OUTPUT_QUIET ERROR_VARIABLE cme_text
+                  RESULT_VARIABLE cme_code)
+  set(cme_said "")
+  if(cme_code EQUAL 0)
+    string(REPLACE "\n" ";" cme_lines "${cme_text}")
+    foreach(cme_line IN LISTS cme_lines)
+      if(cme_line MATCHES "\"-cc1\"")
+        string(APPEND cme_said "${cme_line}")
+      endif()
+    endforeach()
+  endif()
+  set(CME_DRIVER_LINE_${cme_slot} "${cme_said}" CACHE INTERNAL
+      "What ${compiler} runs for ${language} ${words}")
   set(${out} "${cme_said}" PARENT_SCOPE)
 endfunction()
 
@@ -362,18 +403,6 @@ function(cme_significant_flags out text)
       set(cme_optimisation "${cme_word}")
       continue()
     endif()
-    # A switch the level already sets this way says nothing.
-    if(CME_OPTIMISATION_DEFAULTS AND cme_word MATCHES "^-f(no-)?([A-Za-z0-9-]+)$")
-      set(cme_negated "${CMAKE_MATCH_1}")
-      set(cme_switch "${CMAKE_MATCH_2}")
-      set(cme_wanted "enabled")
-      if(cme_negated)
-        set(cme_wanted "disabled")
-      endif()
-      if("${cme_switch}=${cme_wanted}" IN_LIST CME_OPTIMISATION_DEFAULTS)
-        continue()
-      endif()
-    endif()
     # A switch and the switch that turns it off are one family; so are the
     # settings written -fname=value.
     if(cme_word MATCHES "^-(f|m)(no-)?([^=]+)(=.*)?$")
@@ -390,7 +419,69 @@ function(cme_significant_flags out text)
     endif()
     list(APPEND cme_rest "${cme_word}")
   endforeach()
-  list(APPEND cme_rest ${cme_chosen})
+  # What the level already says, dropped -- after the families have been
+  # collapsed and not before. Before, a flag the level sets could be dropped
+  # while the flag it overrode stayed: "-O3 -fno-tree-vectorize
+  # -ftree-vectorize" would keep the -fno- and name a build that vectorises
+  # as one that does not, and a build that really had vectorising off would
+  # then answer to that name too.
+  set(cme_kept "")
+  foreach(cme_word IN LISTS cme_chosen)
+    set(cme_nothing FALSE)
+    if(CME_OPTIMISATION_DEFAULTS AND cme_word MATCHES "^-f(no-)?([A-Za-z0-9-]+)$")
+      set(cme_negated "${CMAKE_MATCH_1}")
+      set(cme_switch "${CMAKE_MATCH_2}")
+      set(cme_wanted "enabled")
+      if(cme_negated)
+        set(cme_wanted "disabled")
+      endif()
+      if("${cme_switch}=${cme_wanted}" IN_LIST CME_OPTIMISATION_DEFAULTS)
+        set(cme_nothing TRUE)
+      endif()
+    endif()
+    if(NOT cme_nothing)
+      list(APPEND cme_kept "${cme_word}")
+    endif()
+  endforeach()
+
+  # And the other way of asking, for the compiler that has no list: take the
+  # flag out of this build's own command line and see whether the compiler
+  # proper is told anything different. Not "level against level plus flag",
+  # because what a level means depends on the rest of it -- the target, the
+  # sysroot, the architecture -- and a flag that says nothing on this machine
+  # can say something for the machine being built for.
+  #
+  # A flag that is dropped leaves the command line before the next one is
+  # asked about, so two flags cannot each be dropped because the other one
+  # was there.
+  if(CME_OPTIMISATION_DRIVER)
+    # In the language the flags are for. Asked as C, a C++ build's -fno-rtti
+    # is a flag the compiler has no use for and drops, and two libraries that
+    # differ by whether they have run-time type information would have been
+    # given one name.
+    set(cme_language "c")
+    if(CME_OPTIMISATION_LANGUAGE)
+      set(cme_language "${CME_OPTIMISATION_LANGUAGE}")
+    endif()
+    set(cme_context ${CME_OPTIMISATION_LEVEL} ${CME_OPTIMISATION_DRIVER_ARGS}
+                    ${cme_kept})
+    set(cme_survived "")
+    foreach(cme_word IN LISTS cme_kept)
+      set(cme_without ${cme_context})
+      list(REMOVE_ITEM cme_without "${cme_word}")
+      cme_driver_line(cme_full "${CME_OPTIMISATION_DRIVER}"
+                      "${cme_language}" "${cme_context}")
+      cme_driver_line(cme_less "${CME_OPTIMISATION_DRIVER}"
+                      "${cme_language}" "${cme_without}")
+      if(cme_full AND cme_less AND cme_full STREQUAL cme_less)
+        set(cme_context ${cme_without})
+      else()
+        list(APPEND cme_survived "${cme_word}")
+      endif()
+    endforeach()
+    set(cme_kept ${cme_survived})
+  endif()
+  list(APPEND cme_rest ${cme_kept})
   if(cme_optimisation)
     list(APPEND cme_rest "${cme_optimisation}")
   endif()
@@ -418,6 +509,30 @@ function(cme_flags_of out language)
   endforeach()
   cme_optimisation_defaults(CME_OPTIMISATION_DEFAULTS
                             "${CMAKE_${language}_COMPILER}" "${cme_level}")
+  # The compiler that has no list to print is asked one flag at a time
+  # instead, by what its driver hands to the compiler proper.
+  set(CME_OPTIMISATION_DRIVER "")
+  set(CME_OPTIMISATION_LEVEL "${cme_level}")
+  set(CME_OPTIMISATION_DRIVER_ARGS "")
+  set(CME_OPTIMISATION_LANGUAGE "c")
+  if(language STREQUAL "CXX")
+    set(CME_OPTIMISATION_LANGUAGE "c++")
+  endif()
+  if(NOT CME_OPTIMISATION_DEFAULTS
+     AND CMAKE_${language}_COMPILER_ID MATCHES "Clang")
+    set(CME_OPTIMISATION_DRIVER "${CMAKE_${language}_COMPILER}")
+    # What the flags are for. One clang builds for every target it knows, and
+    # its defaults are the target's: frame pointers are kept on some and
+    # dropped on others, so asking without the target answers about the
+    # wrong machine.
+    if(CMAKE_${language}_COMPILER_TARGET)
+      list(APPEND CME_OPTIMISATION_DRIVER_ARGS
+           "--target=${CMAKE_${language}_COMPILER_TARGET}")
+    endif()
+    if(CMAKE_SYSROOT)
+      list(APPEND CME_OPTIMISATION_DRIVER_ARGS "--sysroot=${CMAKE_SYSROOT}")
+    endif()
+  endif()
   cme_significant_flags(cme_said "${cme_text}")
   set(${out} "${cme_said}" PARENT_SCOPE)
 endfunction()

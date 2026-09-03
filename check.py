@@ -192,6 +192,25 @@ for path in files:
                   f"it, where it is still the previous one")
             problems += 1
 
+# A # stuck to the end of a word, which is a comment and not part of it.
+#
+# CMake begins a comment at a # anywhere outside quotes, including in the
+# middle of an argument. "clang -### -x c" is therefore clang, a lone -, and
+# a comment: the compiler was run with no arguments at all and read a
+# program from its standard input, and the answer it could not give was
+# taken for "this flag matters" for a year of rebuilds.
+for path in files:
+    text = re.sub(r'"(\\.|[^"\\])*"',
+                  lambda m: '"' + "\n" * m.group(0).count("\n") + '"',
+                  open(path).read(), flags=re.S)
+    for number, line in enumerate(text.splitlines(), 1):
+        if line.lstrip().startswith("#"):
+            continue
+        if re.search(r"\S#", line):
+            print(f"  {path}:{number}: a # here is the start of a comment and "
+                  f"not part of the word before it")
+            problems += 1
+
 # A port that says nothing about what it produces cannot be checked by
 # anything but a person reading it.
 for entry in ports():
