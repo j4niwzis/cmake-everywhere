@@ -435,6 +435,24 @@ jobs:
           python3 tools/lock-to-guix.py test/lock/cme-lock.json > /tmp/unknown.scm
           grep -q 'base32 ""' /tmp/unknown.scm
 
+  # A project that asks pkg-config instead of find_package, which is most of
+  # them. With nothing allowed from the system the only answer available is
+  # a port, so a link here means a pkg-config call was answered by something
+  # that is not pkg-config.
+  pkgconfig:
+    needs: quick
+    runs-on: ubuntu-latest
+    name: asked through pkg-config
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build pkg-config
+      - run: |
+          cmake -S test/pkgconfig -B build/pkgconfig -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_SYSTEM=NEVER -DCME_LOCK= -DCME_STORE=
+          cmake --build build/pkgconfig
+          ./build/pkgconfig/cme-pkgconfig
+
   # Whether a library nobody has ported can be used anyway. Everything this
   # one touches is made while it runs: an upstream repository, a directory of
   # ports, a repository of ports. Nothing is downloaded and nothing is in the

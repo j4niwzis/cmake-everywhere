@@ -2075,6 +2075,157 @@ function(cme_finish_exports)
   endforeach()
 endfunction()
 
+# Which port answers for a pkg-config module.
+#
+# The ports already say it, the other way round: SYSTEM_PKGCONFIG is how a
+# port says which modules a machine may have it as. Read backwards it says
+# which port a module is, and that is what a pkg_check_modules call needs.
+function(cme_pkgconfig_port out module)
+  set(${out} "" PARENT_SCOPE)
+  get_property(names GLOBAL PROPERTY CME_PORTS)
+  foreach(port IN LISTS names)
+    cme_port_field(mapping ${port} SYSTEM_PKGCONFIG)
+    foreach(pair IN LISTS mapping)
+      if(pair MATCHES "^([^:]+):(.+)$")
+        set(named "${CMAKE_MATCH_1}")
+      else()
+        set(named "${pair}")
+      endif()
+      if(named STREQUAL module)
+        set(${out} "${port}" PARENT_SCOPE)
+        return()
+      endif()
+    endforeach()
+  endforeach()
+endfunction()
+
+# pkg_check_modules, answered the same way find_package is.
+#
+# A dependency provider is offered find_package and nothing else, so a
+# project -- or a library this build added -- that asks pkg-config instead
+# goes straight past all of this: it finds the system's copy or it finds
+# nothing, and nothing here hears the question. That is a hole of the same
+# shape as a system config file resolving its own components, which this
+# already closes.
+#
+# CMake lets a command be redefined, and the one that was there stays
+# reachable with an underscore, so the real pkg_check_modules is still what
+# answers everything this cannot.
+#
+# Only a REQUIRED call is answered here. Without REQUIRED the question is
+# "does this machine have it", and a build that answered that by building
+# the library would be answering a different question: an optional
+# dependency would become a compulsory download.
+# A function rather than a macro, and that is not a style choice.
+#
+# A macro's body is re-scanned with the macro's own arguments substituted
+# into it, and a macro defined inside a macro is defined out of that
+# substituted text: the ${ARGN} of the inner one was replaced by the empty
+# ARGN of the outer one before it ever existed. Every call then arrived with
+# no arguments at all, and the real pkg_check_modules said so -- "invoked
+# with incorrect arguments" -- from a line that plainly passes it several.
+# A function's body is not substituted, so what is defined inside one is
+# what was written.
+function(cme_install_pkgconfig_override)
+  get_property(cme_pkgconfig_overridden GLOBAL PROPERTY CME_PKGCONFIG_OVERRIDDEN)
+  if(COMMAND pkg_check_modules AND NOT cme_pkgconfig_overridden)
+    set_property(GLOBAL PROPERTY CME_PKGCONFIG_OVERRIDDEN TRUE)
+
+    # A macro rather than a function, because everything a caller of
+    # pkg_check_modules reads afterwards is a variable it expects in its own
+    # scope, and a macro is already there. It costs the use of return(),
+    # which in a macro would return from whoever called it.
+    macro(pkg_check_modules cme_pkg_prefix)
+      set(cme_pkg_wanted "")
+      set(cme_pkg_rest "")
+      set(cme_pkg_required FALSE)
+      set(cme_pkg_imported FALSE)
+      foreach(cme_pkg_argument IN ITEMS ${ARGN})
+        if(cme_pkg_argument STREQUAL "REQUIRED")
+          set(cme_pkg_required TRUE)
+        elseif(cme_pkg_argument STREQUAL "IMPORTED_TARGET")
+          set(cme_pkg_imported TRUE)
+        elseif(NOT cme_pkg_argument MATCHES
+               "^(QUIET|GLOBAL|NO_CMAKE_PATH|NO_CMAKE_ENVIRONMENT_PATH)$")
+          list(APPEND cme_pkg_wanted "${cme_pkg_argument}")
+        endif()
+        list(APPEND cme_pkg_rest "${cme_pkg_argument}")
+      endforeach()
+
+      # Only a REQUIRED call. Without it the question is "does this machine
+      # have it", and answering that by building the library answers a
+      # different one: an optional dependency would become a compulsory
+      # download.
+      set(cme_pkg_ports "")
+      set(cme_pkg_ours ${cme_pkg_required})
+      foreach(cme_pkg_spec IN LISTS cme_pkg_wanted)
+        # "zlib >= 1.2" and "zlib>=1.2" are both spellings pkg-config takes.
+        string(REGEX REPLACE "[ ]*[<>=]+.*$" "" cme_pkg_module "${cme_pkg_spec}")
+        cme_pkgconfig_port(cme_pkg_port "${cme_pkg_module}")
+        if(cme_pkg_port)
+          list(APPEND cme_pkg_ports "${cme_pkg_port}")
+        else()
+          set(cme_pkg_ours FALSE)
+        endif()
+      endforeach()
+
+      if(NOT cme_pkg_ours)
+        _pkg_check_modules(${cme_pkg_prefix} ${cme_pkg_rest})
+      else()
+        set(cme_pkg_targets "")
+        set(cme_pkg_version "")
+        foreach(cme_pkg_port IN LISTS cme_pkg_ports)
+          cme_port_field(cme_pkg_names ${cme_pkg_port} PROVIDES)
+          list(GET cme_pkg_names 0 cme_pkg_package)
+          find_package(${cme_pkg_package} REQUIRED QUIET)
+          cme_port_field(cme_pkg_theirs ${cme_pkg_port} TARGETS)
+          foreach(cme_pkg_one IN LISTS cme_pkg_theirs)
+            if(TARGET ${cme_pkg_one})
+              list(APPEND cme_pkg_targets "${cme_pkg_one}")
+            endif()
+          endforeach()
+          get_property(cme_pkg_at GLOBAL PROPERTY
+                       CME_PROVIDED_VERSION_${cme_pkg_package})
+          if(cme_pkg_at AND NOT cme_pkg_version)
+            set(cme_pkg_version "${cme_pkg_at}")
+          endif()
+        endforeach()
+        if(cme_pkg_targets)
+          list(REMOVE_DUPLICATES cme_pkg_targets)
+        endif()
+
+        # What a caller reads afterwards. The include directories and the
+        # link flags are on the targets, which is why these are empty rather
+        # than missing: a caller that adds them adds nothing, and a caller
+        # that checks them sees the shape it expects.
+        set(${cme_pkg_prefix}_FOUND TRUE)
+        set(${cme_pkg_prefix}_LIBRARIES ${cme_pkg_targets})
+        set(${cme_pkg_prefix}_LINK_LIBRARIES ${cme_pkg_targets})
+        set(${cme_pkg_prefix}_LDFLAGS ${cme_pkg_targets})
+        set(${cme_pkg_prefix}_STATIC_LDFLAGS ${cme_pkg_targets})
+        set(${cme_pkg_prefix}_STATIC_LIBRARIES ${cme_pkg_targets})
+        set(${cme_pkg_prefix}_INCLUDE_DIRS "")
+        set(${cme_pkg_prefix}_STATIC_INCLUDE_DIRS "")
+        set(${cme_pkg_prefix}_LIBRARY_DIRS "")
+        set(${cme_pkg_prefix}_CFLAGS_OTHER "")
+        set(${cme_pkg_prefix}_STATIC_CFLAGS_OTHER "")
+        set(${cme_pkg_prefix}_VERSION "${cme_pkg_version}")
+        if(cme_pkg_imported AND NOT TARGET PkgConfig::${cme_pkg_prefix})
+          add_library(PkgConfig::${cme_pkg_prefix} INTERFACE IMPORTED GLOBAL)
+          if(cme_pkg_targets)
+            set_property(TARGET PkgConfig::${cme_pkg_prefix} PROPERTY
+                         INTERFACE_LINK_LIBRARIES ${cme_pkg_targets})
+          endif()
+        endif()
+        list(JOIN cme_pkg_wanted ", " cme_pkg_listed)
+        message(STATUS
+          "cmake-everywhere: ${cme_pkg_listed} was asked for through "
+          "pkg-config, and is answered the way find_package would be")
+      endif()
+    endmacro()
+  endif()
+endfunction()
+
 function(cme_load_registry)
   get_property(loaded GLOBAL PROPERTY CME_REGISTRY_LOADED)
   if(loaded)
@@ -3698,6 +3849,7 @@ endfunction()
 # back. So it stays small, and everything that could re-enter is in the
 # functions above.
 macro(cme_provider cme_method cme_package)
+
   # A config file the system installed resolves its own pieces by calling
   # find_package again, and those calls arrive here. They must not: a copy
   # of a library that somebody else built was built against the rest of what
@@ -3708,7 +3860,19 @@ macro(cme_provider cme_method cme_package)
   # So while a system copy is being looked for, this steps aside and lets
   # CMake search the way it would without a provider.
   get_property(cme_bypassing GLOBAL PROPERTY CME_INSIDE_SYSTEM)
-  if("${cme_method}" STREQUAL "FIND_PACKAGE" AND NOT cme_bypassing)
+  # FindPkgConfig defines pkg_check_modules when it is included, and it is
+  # included by find_package(PkgConfig) -- which comes through here. So this
+  # is the moment the real one exists and can be stepped in front of; doing
+  # it any earlier would be undone by the module itself a moment later.
+  #
+  # A branch rather than an early return: this is a macro, and a return in a
+  # macro returns from whoever called it, which here is somebody else's
+  # CMakeLists in the middle of its own work.
+  if("${cme_method}" STREQUAL "FIND_PACKAGE"
+     AND "${cme_package}" STREQUAL "PkgConfig" AND NOT cme_bypassing)
+    find_package(PkgConfig ${ARGN} BYPASS_PROVIDER)
+    cme_install_pkgconfig_override()
+  elseif("${cme_method}" STREQUAL "FIND_PACKAGE" AND NOT cme_bypassing)
     cme_load_registry()
     get_property(cme_port GLOBAL PROPERTY CME_PROVIDER_${cme_package})
     if(cme_port)

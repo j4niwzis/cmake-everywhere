@@ -110,6 +110,9 @@ else
   report 1 "decentral  (see $out/decentral.log)"
 fi
 
+echo "pkg-config -- a project that asks the other way round"
+expect_build pkgconfig "$here/pkgconfig" -DCME_SYSTEM=NEVER
+
 echo "builds"
 expect_build features "$here/features"
 expect_build features-from-source "$here/features" -DCME_SYSTEM=NEVER

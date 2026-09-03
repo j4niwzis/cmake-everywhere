@@ -378,6 +378,38 @@ handful of lines in the library's own CMakeLists, for which the library gets
 its own dependencies resolved the same way. When that happens the port here
 should shrink to nothing and then be deleted.
 
+## Asked the other way round
+
+A dependency provider is offered `find_package` and nothing else, so a
+project -- or a library this build added -- that asks pkg-config instead goes
+straight past all of this. It finds the system's copy or it finds nothing,
+and nothing here hears the question. That is a hole of the same shape as a
+system config file resolving its own components, and it is closed the same
+way:
+
+```cmake
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
+target_link_libraries(app PRIVATE PkgConfig::ZLIB)
+```
+
+That is answered by the zlib port, from the system when the system has it and
+from source when it does not, and the variables the caller reads afterwards
+are set to what a target makes of them. `SYSTEM_PKGCONFIG` is what makes it
+possible: a port already says which pkg-config modules a machine may have it
+as, and read backwards that says which port a module is.
+
+**Only a `REQUIRED` call.** Without `REQUIRED` the question is "does this
+machine have it", and answering that by building the library answers a
+different question -- an optional dependency would become a compulsory
+download. Those go to pkg-config as they always did, as does any module no
+port answers for.
+
+FindPkgConfig defines `pkg_check_modules` when it is included, and it is
+included by `find_package(PkgConfig)`, which comes through the provider. So
+that is where the real one is stepped in front of, and it stays reachable
+under the name CMake leaves it at.
+
 ## Why this is possible at all
 
 CMake 3.24 added [dependency providers][provider]. A provider installed
