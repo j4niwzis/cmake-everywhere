@@ -21,6 +21,18 @@ report() {
   fi
 }
 
+# What a project built, if it built something to run. A test that only
+# builds says the symbols were found; a test that runs says which library
+# they were found in.
+run_if_built() {
+  for binary in "$1"/cme-*; do
+    if [ -x "$binary" ] && [ -f "$binary" ]; then
+      "$binary" || return 1
+    fi
+  done
+  return 0
+}
+
 # A project that has to configure, build and link.
 expect_build() {
   name=$1
@@ -31,7 +43,8 @@ expect_build() {
   if cmake -S "$source" -B "$directory" -G Ninja \
        -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$provider" \
        "$@" >"$out/$name.log" 2>&1 &&
-     cmake --build "$directory" >>"$out/$name.log" 2>&1; then
+     cmake --build "$directory" >>"$out/$name.log" 2>&1 &&
+     run_if_built "$directory" >>"$out/$name.log" 2>&1; then
     report 0 "$name"
   else
     report 1 "$name  (see $out/$name.log)"

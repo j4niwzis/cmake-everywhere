@@ -68,6 +68,14 @@ function(cme_gn_substitute out text)
   string(REPLACE "@BUILD_TYPE@" "${CMAKE_BUILD_TYPE}" value "${value}")
   string(REPLACE "@SOURCE_DIR@" "${CME_GN_SOURCE_DIR}" value "${value}")
   string(REPLACE "@DEP_INCLUDES@" "${CME_GN_DEP_INCLUDES}" value "${value}")
+  # @INCLUDE:port@ -- where one dependency's headers are, as a path. A
+  # project that takes an include directory as an argument rather than as a
+  # flag needs one of these, and giving it nothing means it keeps its own
+  # default, which is usually /usr/include/something.
+  while(value MATCHES "@INCLUDE:([A-Za-z0-9_.+-]+)@")
+    cme_gn_include_dir(directory "${CMAKE_MATCH_1}")
+    string(REPLACE "@INCLUDE:${CMAKE_MATCH_1}@" "${directory}" value "${value}")
+  endwhile()
   string(REPLACE "@DEP_LIBDIRS@" "${CME_GN_DEP_LIBDIRS}" value "${value}")
   # GN spells architectures its own way and so does everyone else.
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
@@ -182,6 +190,34 @@ function(cme_gn_dependency_flags port out_includes out_libdirs)
   list(JOIN quoted_libdirs "," quoted_libdirs)
   set(${out_includes} "${quoted_includes}" PARENT_SCOPE)
   set(${out_libdirs} "${quoted_libdirs}" PARENT_SCOPE)
+endfunction()
+
+# The first include directory of one port, by name.
+function(cme_gn_include_dir out port)
+  cme_port_field(names ${port} PROVIDES)
+  if(NOT names)
+    message(FATAL_ERROR
+      "cmake-everywhere: a port asks for @INCLUDE:${port}@ and there is no "
+      "port called ${port}")
+  endif()
+  list(GET names 0 package)
+  string(TOUPPER "${package}" upper)
+  get_property(exported GLOBAL PROPERTY CME_EXPORT_${package})
+  set(found "")
+  while(exported)
+    list(POP_FRONT exported name value)
+    string(REPLACE "@CME@" ";" value "${value}")
+    if(NOT found AND (name STREQUAL "${upper}_INCLUDE_DIRS" OR
+                      name STREQUAL "${package}_INCLUDE_DIRS"))
+      list(GET value 0 found)
+    endif()
+  endwhile()
+  if(NOT found)
+    message(FATAL_ERROR
+      "cmake-everywhere: @INCLUDE:${port}@ was asked for and ${port} has not "
+      "said where its headers are. It has to export ${upper}_INCLUDE_DIRS.")
+  endif()
+  set(${out} "${found}" PARENT_SCOPE)
 endfunction()
 
 # What a bare library name means here.
@@ -404,14 +440,30 @@ function(cme_gn_import port description)
       if(${prefix}_DEFINES)
         target_compile_definitions(${target} ${scope} ${${prefix}_DEFINES})
       endif()
+      # A library name is not a compile flag, and it is what a group carries.
+      # Skia describes a system library as system("freetype2"), which is a
+      # group whose public config holds libs = [ "freetype" ] -- so dropping
+      # libs for interface libraries dropped every system library there is,
+      # silently, and the link failed at the end with no freetype in it.
+      if(${prefix}_LIB_DIRS)
+        target_link_directories(${target} ${scope} ${${prefix}_LIB_DIRS})
+      endif()
+      foreach(library IN LISTS ${prefix}_LIBS)
+        cme_gn_resolve_lib(resolved "${library}" "${link_map}")
+        if(NOT resolved STREQUAL library)
+          message(DEBUG "cmake-everywhere: -l${library} is ${resolved}")
+        endif()
+        target_link_libraries(${target} ${scope} ${resolved})
+      endforeach()
+
+      # The per-file flags are the reason to take GN's word for this: a
+      # project like Skia compiles its vector code with flags that differ
+      # from one translation unit to the next, and guessing them wrong is a
+      # miscompile rather than an error.
+      foreach(flag IN LISTS ${prefix}_CFLAGS)
+        target_compile_options(${target} ${scope} "SHELL:${flag}")
+      endforeach()
       if(NOT kind STREQUAL "INTERFACE_LIBRARY")
-        # The per-file flags are the reason to take GN's word for this: a
-        # project like Skia compiles its vector code with flags that differ
-        # from one translation unit to the next, and guessing them wrong is a
-        # miscompile rather than an error.
-        foreach(flag IN LISTS ${prefix}_CFLAGS)
-          target_compile_options(${target} PRIVATE "SHELL:${flag}")
-        endforeach()
         foreach(flag IN LISTS ${prefix}_CFLAGS_C)
           target_compile_options(${target} PRIVATE
             "$<$<COMPILE_LANGUAGE:C>:SHELL:${flag}>")
@@ -420,20 +472,15 @@ function(cme_gn_import port description)
           target_compile_options(${target} PRIVATE
             "$<$<COMPILE_LANGUAGE:CXX>:SHELL:${flag}>")
         endforeach()
-        if(${prefix}_LDFLAGS AND NOT kind STREQUAL "OBJECT_LIBRARY"
-           AND NOT kind STREQUAL "STATIC_LIBRARY")
+      endif()
+      if(${prefix}_LDFLAGS AND NOT kind STREQUAL "OBJECT_LIBRARY")
+        # On a static library these belong to whoever links it, not to a
+        # link step it does not have.
+        if(kind STREQUAL "STATIC_LIBRARY" OR kind STREQUAL "INTERFACE_LIBRARY")
+          target_link_options(${target} INTERFACE ${${prefix}_LDFLAGS})
+        else()
           target_link_options(${target} PRIVATE ${${prefix}_LDFLAGS})
         endif()
-        if(${prefix}_LIB_DIRS)
-          target_link_directories(${target} ${scope} ${${prefix}_LIB_DIRS})
-        endif()
-        foreach(library IN LISTS ${prefix}_LIBS)
-          cme_gn_resolve_lib(resolved "${library}" "${link_map}")
-          if(NOT resolved STREQUAL library)
-            message(DEBUG "cmake-everywhere: -l${library} is ${resolved}")
-          endif()
-          target_link_libraries(${target} ${scope} ${resolved})
-        endforeach()
       endif()
     endif()
 
