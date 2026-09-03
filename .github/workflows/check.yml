@@ -677,6 +677,45 @@ jobs:
   # The one that proves the libraries reached are the ones this registry
   # built, rather than something the linker found. Weekly, because it is
   # Skia with three features from source.
+  # A feature that is a patch: openal-soft built against the fmt in this
+  # registry instead of the copy in its own tree. Its own build has no
+  # switch for that, so the feature carries the substitution, and this is
+  # the run that says the patch still applies and the pair still compiles.
+  openal-external-fmt:
+    needs: quick
+    runs-on: ubuntu-latest
+    name: openal-soft, formatting through the registry's fmt
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update || true; sudo apt-get install -y ninja-build ccache
+      - uses: actions/cache@v4
+        with:
+          path: .cache/sources
+          key: sources-openal-external-fmt-${{ hashFiles('registry/openal-soft/*', 'registry/fmt/*') }}
+          restore-keys: sources-openal-external-fmt-
+      - uses: actions/cache@v4
+        with:
+          path: .cache/ccache
+          key: ccache-openal-external-fmt-${{ github.sha }}
+          restore-keys: ccache-openal-external-fmt-
+      - name: built with the fmt the registry has
+        run: |
+          cmake -S test/port -B build/openal -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_SYSTEM=NEVER \
+            -DCME_FEATURES_openal-soft=external-fmt \
+            -DCME_PORT_PACKAGE=OpenAL -DCME_PORT_TARGETS=OpenAL::OpenAL \
+            -DCME_PORT_INCLUDE=AL/al.h \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build/openal
+          ./build/openal/cme-port
+          # The copy in its tree is not what was compiled against: the
+          # patched build says find_package(fmt), and the port answers it.
+          grep -q "^fmt " build/openal/cme-report.txt
+          cat build/openal/cme-report.txt
+      - run: ccache --show-stats
+
   skia-features:
     needs: quick
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

@@ -660,6 +660,18 @@ cme_port_feature(skia egl
   GN_CONFIRM "skia_use_egl=true")
 ```
 
+`PATCHES` is on the list too, for the feature that a library has no switch
+for. OpenAL Soft carries its own copy of fmt and offers no way to use
+another one, so the port's `external-fmt` feature carries the patch that
+turns the bundled subdirectory into a `find_package(fmt)` -- applied when
+the feature is asked for and not otherwise, and part of what the build is
+kept under either way.
+
+One thing to know about it: a fetched tree is shared between builds and
+records what it was patched with, so turning such a feature on and off means
+the source directory has to go. The build says so rather than patching a
+tree twice.
+
 `IMPLIES` is applied transitively: `fontconfig` implies `freetype`, which
 implies `zlib`, so asking for the first brings all three and the zlib port
 with them. `CONFLICTS` is checked as the graph is walked rather than at the

@@ -1529,7 +1529,7 @@ endfunction()
 # in the build has Vulkan.
 function(cme_port_feature port feature)
   cmake_parse_arguments(FEATURE "" "SUMMARY"
-    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;DEFAULT"
+    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;PATCHES;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
   set_property(GLOBAL APPEND_STRING PROPERTY CME_PORT_${port}_RECIPE
@@ -1542,7 +1542,7 @@ function(cme_port_feature port feature)
   cme_export_line(${port} "${said})")
   foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY IMPLIES CONFLICTS
                 EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_CODE SYSTEM_COMPONENT
-                CONFIGURE_ARGS
+                CONFIGURE_ARGS PATCHES
                 DEFAULT)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
@@ -4008,6 +4008,16 @@ endfunction()
 # library that moved on is a port that has to be looked at.
 function(cme_apply_patches port source)
   cme_port_field(patches ${port} PATCHES)
+  # And whatever a feature that is on carries. A patch is how a library is
+  # told something its own build has no option for -- openal-soft has no
+  # switch for using the fmt this build has instead of the copy in its tree
+  # -- and that is a property of the feature, not of the library: applied
+  # when it is asked for and not otherwise.
+  cme_enabled_features(${port} enabled)
+  foreach(feature IN LISTS enabled)
+    cme_feature_field(extra ${port} ${feature} PATCHES)
+    list(APPEND patches ${extra})
+  endforeach()
   if(NOT patches)
     return()
   endif()

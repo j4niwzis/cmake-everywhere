@@ -1,0 +1,53 @@
+Format through the fmt this build has, not the copy in the tree.
+
+OpenAL Soft carries fmt under fmt-11.2.0/ and has no option to use another
+one: the subdirectory is added unconditionally and every target links
+alsoft::fmt. The copy is deliberate -- the targets are renamed, the symbols
+are hidden and the inline namespace is v11_alsoft rather than v11, so that
+being a subproject beside somebody else's fmt cannot collide -- and none of
+that is needed when there is one fmt in the build and this is it.
+
+So the same substitution Fedora makes: the subdirectory becomes a
+find_package, which this build answers, and every alsoft::fmt becomes
+fmt::fmt. No source file changes: 1.25 formats through common/alformat.hpp,
+which takes std::format where <format> exists, and the four sources that
+still call fmt directly include fmt/ranges.h, which includes format.h.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -258,7 +258,7 @@
+ endif()
+ 
+ 
+-add_subdirectory(fmt-11.2.0 EXCLUDE_FROM_ALL)
++find_package(fmt REQUIRED)
+ 
+ 
+ set(CPP_DEFS ) # C pre-processor, not C++
+@@ -1649,7 +1649,7 @@
+     PUBLIC ${OpenAL_BINARY_DIR} ${OpenAL_SOURCE_DIR}/common ${OpenAL_SOURCE_DIR}/gsl/include)
+ target_compile_definitions(alsoft.common PUBLIC ${CPP_DEFS})
+ target_compile_options(alsoft.common PUBLIC ${C_FLAGS})
+-target_link_libraries(alsoft.common PUBLIC Threads::Threads ${LINKER_FLAGS} alsoft::fmt)
++target_link_libraries(alsoft.common PUBLIC Threads::Threads ${LINKER_FLAGS} fmt::fmt)
+ set_target_properties(alsoft.common PROPERTIES ${ALSOFT_STD_VERSION_PROPS}
+     POSITION_INDEPENDENT_CODE TRUE)
+ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND DEFINED CMAKE_OSX_DEPLOYMENT_TARGET
+@@ -1720,7 +1720,7 @@
+     target_compile_definitions(${IMPL_TARGET} PUBLIC AL_LIBTYPE_STATIC)
+     target_include_directories(${IMPL_TARGET} PRIVATE ${OpenAL_SOURCE_DIR}/gsl/include)
+     target_link_libraries(${IMPL_TARGET} PRIVATE Threads::Threads ${LINKER_FLAGS} ${EXTRA_LIBS}
+-        ${MATH_LIB} $<BUILD_LOCAL_INTERFACE:alsoft::fmt>)
++        ${MATH_LIB} $<BUILD_LOCAL_INTERFACE:fmt::fmt>)
+ 
+     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND DEFINED CMAKE_OSX_DEPLOYMENT_TARGET
+         AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "10.13")
+@@ -1749,7 +1749,7 @@
+             target_compile_definitions(alsoft.router-modules PRIVATE AL_ALEXT_PROTOTYPES
+                 "ALC_API=${EXPORT_DECL}" "AL_API=${EXPORT_DECL}" ${CPP_DEFS})
+             target_compile_options(alsoft.router-modules PRIVATE ${C_FLAGS})
+-            target_link_libraries(alsoft.router-modules PRIVATE Threads::Threads alsoft::fmt
++            target_link_libraries(alsoft.router-modules PRIVATE Threads::Threads fmt::fmt
+                 PUBLIC alsoft::buildapi-modules)
+             set_target_properties(alsoft.router-modules PROPERTIES ${ALSOFT_STD_VERSION_PROPS}
+                 POSITION_INDEPENDENT_CODE TRUE)
