@@ -2317,10 +2317,22 @@ endfunction()
 # with incorrect arguments" -- from a line that plainly passes it several.
 # A function's body is not substituted, so what is defined inside one is
 # what was written.
+# Installed again on every find_package(PkgConfig), and that is not
+# belt-and-braces either.
+#
+# FindPkgConfig is a find module, and a find module is read again every time
+# it is found: the second find_package(PkgConfig) in a build re-runs the
+# file, which defines pkg_check_modules again -- over this one. skiff asks
+# for PkgConfig itself, so from that point on every pkg-config question in
+# the build went to pkg-config, and the client linked the Skia built here
+# while skiff linked the machine's. Installing once was installing until
+# somebody else asked the same question.
+#
+# Redefining it again is what undoes that, and it nests correctly: each
+# definition leaves the one before it reachable with an underscore, so the
+# real one is still what answers everything this cannot.
 function(cme_install_pkgconfig_override)
-  get_property(cme_pkgconfig_overridden GLOBAL PROPERTY CME_PKGCONFIG_OVERRIDDEN)
-  if(COMMAND pkg_check_modules AND NOT cme_pkgconfig_overridden)
-    set_property(GLOBAL PROPERTY CME_PKGCONFIG_OVERRIDDEN TRUE)
+  if(COMMAND pkg_check_modules)
 
     # A macro rather than a function, because everything a caller of
     # pkg_check_modules reads afterwards is a variable it expects in its own

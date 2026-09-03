@@ -454,6 +454,7 @@ jobs:
             -DCME_SYSTEM=NEVER -DCME_LOCK= -DCME_STORE=
           cmake --build build/pkgconfig
           ./build/pkgconfig/cme-pkgconfig
+          ./build/pkgconfig/cme-pkgconfig-again
 
   # Whether a project that builds with Meson can be a port. Nothing here
   # installs basu: it is fetched, configured by meson, read, and built in

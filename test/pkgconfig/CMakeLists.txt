@@ -24,3 +24,25 @@ if(NOBODY_FOUND)
     "a library that does not exist was found, which means an optional "
     "pkg-config call was answered by building something")
 endif()
+
+# And asked again, the way a library this build adds asks it.
+#
+# FindPkgConfig is a find module, and a find module is read again every time
+# it is found: this second call re-runs the file, which defines
+# pkg_check_modules over the one that answers here. Installing the answer
+# once meant it lasted until the first fetched library asked PkgConfig for
+# itself -- skiff does -- and everything after that went to pkg-config.
+#
+# The runner has zlib, so a call that reached pkg-config would be answered
+# and would link. What tells them apart is the answer: this one hands back
+# targets, and pkg-config hands back paths and -l names.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(AGAIN REQUIRED IMPORTED_TARGET zlib)
+if(NOT "ZLIB::ZLIB" IN_LIST AGAIN_LIBRARIES)
+  message(FATAL_ERROR
+    "the second pkg_check_modules was answered by pkg-config: "
+    "AGAIN_LIBRARIES is `${AGAIN_LIBRARIES}` rather than the port's target")
+endif()
+
+add_executable(cme-pkgconfig-again main.cc)
+target_link_libraries(cme-pkgconfig-again PRIVATE PkgConfig::AGAIN)
