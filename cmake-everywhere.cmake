@@ -694,6 +694,15 @@ function(cme_lock_write)
     return()
   endif()
   cme_lock_read()
+  # What resolved all of this. A project that pins every library it uses and
+  # not the thing that reads the pins has written down everything except the
+  # part that decides.
+  if(CME_VERSION)
+    cme_lock_fact("cmake-everywhere" "version" "${CME_VERSION}")
+  endif()
+  if(CME_FETCHED_SHA256)
+    cme_lock_fact("cmake-everywhere" "archive" "${CME_FETCHED_SHA256}")
+  endif()
   get_property(kept GLOBAL PROPERTY CME_LOCK_KEPT)
   get_property(locked GLOBAL PROPERTY CME_LOCKED)
   # What was there stays there unless this build learned something else about
