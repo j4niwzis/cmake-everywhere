@@ -43,6 +43,10 @@ def sources(lock):
             algorithm, digest = stated.split("=", 1)
         else:
             algorithm, digest = "sha256", stated
+        # The lock spells it the way CMake does, in capitals. Nix and Guix
+        # both want it in lowercase, and neither guesses: "unknown hash
+        # algorithm 'SHA512'" is where a build stops.
+        algorithm = algorithm.lower()
         yield port, url, facts.get("commit"), digest, algorithm, \
             facts.get("version", "")
 

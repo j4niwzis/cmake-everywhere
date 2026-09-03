@@ -38,9 +38,12 @@ function(cme_adapt_libsndfile source binary)
   cme_export_variable(SndFile SNDFILE_FOUND TRUE)
   cme_export_variable(SndFile SNDFILE_LIBRARY SndFile::sndfile)
   cme_export_variable(SndFile SNDFILE_LIBRARIES SndFile::sndfile)
-  cme_export_variable(SndFile SNDFILE_INCLUDE_DIR
-    "${source}/include;${binary}/include")
-  cme_export_variable(SndFile SNDFILE_INCLUDE_DIRS
-    "${source}/include;${binary}/include")
+  # sndfile.h is a file in the tree, not something the build writes: the
+  # autotools build generates one and this one does not. The include
+  # directory beside the build never appears, and naming it kept this
+  # library out of the store -- an entry is not published while something it
+  # says it needs has never been written.
+  cme_export_variable(SndFile SNDFILE_INCLUDE_DIR "${source}/include")
+  cme_export_variable(SndFile SNDFILE_INCLUDE_DIRS "${source}/include")
   cme_export_variable(SndFile SndFile_VERSION 1.2.2)
 endfunction()

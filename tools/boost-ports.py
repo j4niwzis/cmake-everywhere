@@ -111,6 +111,20 @@ EXTRA = {
 }
 ALSO = {"test": ["prg_exec_monitor", "test_exec_monitor"]}
 
+# What somebody will otherwise work out again from the graph. Written into
+# the port beside the dependencies it explains.
+NOTES = {
+    "asio": """# Boost::asio is three libraries: asio_core, which needs align, assert,
+# config, system and throw_exception; asio_deadline_timer, which adds
+# date_time; and asio_spawn, which adds context for stackful coroutines.
+# Boost::asio itself is all three, and that is why Context and Date_Time are
+# in this list.
+#
+# Taking less means linking Boost::asio_core, which is a choice for whoever
+# writes the target_link_libraries -- and not one Beast leaves open: its own
+# dependency list names Boost::asio.""",
+}
+
 
 def made_by_hand(stripped):
     """Targets a file makes with a function of its own.
@@ -234,13 +248,16 @@ def main(version):
                      else "BOOST_ENABLE_MPI"
             arrangement = f"\n  ARRANGEMENT {switch}"
         depends = " ".join(port(other) for other in edges[module])
+        note = NOTES.get(module, "")
+        if note:
+            note = "#\n" + note + "\n"
         text = f"""# Written by tools/boost-ports.py from what boostorg/{modules[module]}
 # declares. Do not edit: run the script again.
 #
 # One library out of Boost, on its own. FAMILY is what keeps it from being
 # half of one Boost and half of another: every Boost port in a build is
 # answered the same way, from the same place, at the same version.
-cme_declare_port(
+{note}cme_declare_port(
   NAME {port(module)}
   PROVIDES boost_{key(module)} Boost{key(module).title().replace("_", "")}
   VERSION {version}

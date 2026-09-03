@@ -138,7 +138,10 @@ def main(path, cache=None):
         elif facts.get("archive"):
             stated = facts["archive"]
             algorithm, _, digest = stated.rpartition("=")
-            algorithm = algorithm or "sha256"
+            # In lowercase, because the lock spells it the way CMake does
+            # and Guix reads content-hash algorithms in lowercase: given
+            # SHA512 it says the expression matched no pattern.
+            algorithm = (algorithm or "sha256").lower()
             try:
                 encoded = base32(digest)
             except ValueError:

@@ -7,7 +7,25 @@
 # first. That is what keeps a consumer's CMakeLists at one call: freetype's
 # own find_package(ZLIB) is answered here rather than in the consumer.
 
-cmake_minimum_required(VERSION 3.24)
+# In a policy scope of its own, because this file is included into somebody
+# else's project and cmake_minimum_required sets the policy version of the
+# scope it runs in. Saying 3.24 there turned off, for the whole project that
+# included this, everything CMake decided after 3.24 -- CMP0155 among them,
+# which is what makes a target's own C++ sources scanned for module imports.
+# A program that imports a module from a library found here then compiled
+# with no module map at all: "module 'skiff.widgets' not found", from a
+# build that had just scanned and compiled that very module.
+#
+# The functions below are defined inside this scope and keep these policies,
+# which are the ones they were written against. What the caller gets back is
+# what the caller had.
+cmake_policy(PUSH)
+# And up to whatever CMake is running: the range's maximum is the version
+# whose policies are set to NEW, so this asks for 3.24 at least and takes the
+# newest behaviour the CMake in hand has. Written as the version rather than
+# as a number to keep up to date -- a hard-coded maximum is a decision that
+# stops being made the day it is written.
+cmake_minimum_required(VERSION 3.24...${CMAKE_VERSION})
 include_guard(GLOBAL)
 
 set(CME_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "cmake-everywhere root")
@@ -576,6 +594,22 @@ set(CME_POLICY_VERSION_MINIMUM "3.5" CACHE STRING
 function(cme_finish)
   cme_finish_exports()
   cme_lock_write()
+  cme_store_publish()
+endfunction()
+
+# The default build's reason to write anything into the store.
+#
+# Made here, at the top level, because this is the one directory whose
+# default build is the build: every port is added with EXCLUDE_FROM_ALL, so
+# a target made beside one of them is in nobody's default build however it
+# was declared.
+function(cme_store_publish)
+  get_property(targets GLOBAL PROPERTY CME_STORE_TARGETS)
+  if(NOT targets)
+    return()
+  endif()
+  add_custom_target(cme_store ALL)
+  add_dependencies(cme_store ${targets})
 endfunction()
 
 function(cme_schedule_finish)
@@ -2372,8 +2406,18 @@ function(cme_store_write port package entry)
     # So they are copied in beside it, and the entry offers them the way an
     # installed module library does -- an interface file set on the imported
     # target, which is what install(EXPORT CXX_MODULES_DIRECTORY) writes too.
+    # Only the sets a consumer can import.
+    #
+    # CXX_MODULE_SETS is every module file set a target has, private ones
+    # included, and a private one is an implementation detail: its units are
+    # compiled into the archive and nobody outside ever names them.
+    # openal-soft has three of those -- gsl, a window function, a phase
+    # shifter -- and copying them into the entry made every consumer compile
+    # them, against include directories that are openal-soft's own and are
+    # not in the entry: "'gsl/gsl' file not found", in a library whose
+    # interface is C headers.
     set(module_files "")
-    foreach(property CXX_MODULE_SETS INTERFACE_CXX_MODULE_SETS)
+    foreach(property INTERFACE_CXX_MODULE_SETS)
       get_target_property(module_sets ${target} ${property})
       if(NOT module_sets)
         continue()
@@ -2543,13 +2587,26 @@ function(cme_store_write port package entry)
     list(APPEND keeping COMMAND ${CMAKE_COMMAND} "-Dfrom=${from}" "-Dto=${to}"
          -P "${CME_DIR}/cmake/store-headers.cmake")
   endwhile()
-  add_custom_target(cme_store_${port} ALL
+  # Not ALL, and not because it should not run.
+  #
+  # ALL means "part of the default build of the directory this is created
+  # in", and a port is added with EXCLUDE_FROM_ALL -- so for a library found
+  # while another library was being configured, this target was created in
+  # that library's directory and was never in anything's default build. It
+  # was made, described, and never run: mpg123, which libsndfile asks for,
+  # was rebuilt from source in every build while its entry was announced in
+  # every configure.
+  #
+  # The one that is in the default build is made at the top level, where
+  # cme_finish runs, and everything kept hangs off it.
+  add_custom_target(cme_store_${port}
     ${keeping}
     COMMAND ${CMAKE_COMMAND} "-Dfrom=${building}" "-Dto=${entry}"
             -P "${CME_DIR}/cmake/store-finish.cmake"
     COMMENT "cmake-everywhere: keeping ${port} in the store"
     VERBATIM)
   add_dependencies(cme_store_${port} ${everything})
+  set_property(GLOBAL APPEND PROPERTY CME_STORE_TARGETS cme_store_${port})
   file(WRITE "${building}/use.cmake" "${text}")
   list(LENGTH everything count)
   message(STATUS
@@ -5332,3 +5389,5 @@ endmacro()
 
 cmake_language(SET_DEPENDENCY_PROVIDER cme_provider
                SUPPORTED_METHODS FIND_PACKAGE)
+
+cmake_policy(POP)

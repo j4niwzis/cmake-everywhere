@@ -53,8 +53,12 @@ function(cme_adapt_libzip source binary)
   cme_export_variable(libzip LIBZIP_FOUND TRUE)
   cme_export_variable(libzip LIBZIP_LIBRARY libzip::zip)
   cme_export_variable(libzip LIBZIP_LIBRARIES libzip::zip)
-  cme_export_variable(libzip LIBZIP_INCLUDE_DIR
-    "${source}/lib;${binary};${binary}/zipconf")
-  cme_export_variable(libzip LIBZIP_INCLUDE_DIRS
-    "${source}/lib;${binary};${binary}/zipconf")
+  # zip.h is in the tree and zipconf.h is written beside the build, both at
+  # the top of their directory: configure_file(zipconf.h.in
+  # ${PROJECT_BINARY_DIR}/zipconf.h). There is no zipconf directory and
+  # never was -- naming one was a guess, and a guess that cost this library
+  # its place in the store, because an entry is not published while
+  # something it says it needs has never been written.
+  cme_export_variable(libzip LIBZIP_INCLUDE_DIR "${source}/lib;${binary}")
+  cme_export_variable(libzip LIBZIP_INCLUDE_DIRS "${source}/lib;${binary}")
 endfunction()

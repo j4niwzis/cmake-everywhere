@@ -4,6 +4,16 @@
 # One library out of Boost, on its own. FAMILY is what keeps it from being
 # half of one Boost and half of another: every Boost port in a build is
 # answered the same way, from the same place, at the same version.
+#
+# Boost::asio is three libraries: asio_core, which needs align, assert,
+# config, system and throw_exception; asio_deadline_timer, which adds
+# date_time; and asio_spawn, which adds context for stackful coroutines.
+# Boost::asio itself is all three, and that is why Context and Date_Time are
+# in this list.
+#
+# Taking less means linking Boost::asio_core, which is a choice for whoever
+# writes the target_link_libraries -- and not one Beast leaves open: its own
+# dependency list names Boost::asio.
 cme_declare_port(
   NAME boost-asio
   PROVIDES boost_asio BoostAsio
