@@ -1834,6 +1834,17 @@ endfunction()
 # and its targets are the ones whose source directory is inside its checkout.
 function(cme_store_owns out port target)
   set(${out} FALSE PARENT_SCOPE)
+  # Through an alias to the target it names. A library links what its author
+  # called it -- openal-soft links alsoft::fmt, which is an alias for a
+  # static library in its own tree -- and an alias answers for almost no
+  # property, SOURCE_DIR among them. Read as it stands, an alias therefore
+  # belongs to nobody, and the entry ends up naming a target that will not
+  # exist when it is read back: "the link interface of OpenAL::OpenAL
+  # contains alsoft::fmt, but the target was not found".
+  get_target_property(aliased ${target} ALIASED_TARGET)
+  if(aliased)
+    set(target "${aliased}")
+  endif()
   if(target MATCHES "^${port}_")
     set(${out} TRUE PARENT_SCOPE)
     return()
@@ -2174,6 +2185,17 @@ function(cme_store_write port package entry)
              "\${CMAKE_CURRENT_LIST_DIR}/modules/${where}/${leaf}")
       endforeach()
       list(JOIN listed "\"\n    \"" spelled)
+      # The standard those units are written in. CMake compiles them in a
+      # target of its own when a consumer imports them, and that target takes
+      # what this one says: without it, "has C++ sources that use modules,
+      # but does not include cxx_std_20 among its target_compile_features; no
+      # C++ standard found".
+      get_target_property(standard ${target} CXX_STANDARD)
+      if(NOT standard)
+        set(standard 23)
+      endif()
+      string(APPEND text
+        "target_compile_features(${alias} INTERFACE cxx_std_${standard})\n")
       string(APPEND text
         "target_sources(${alias} INTERFACE\n"
         "  FILE_SET cme_modules TYPE CXX_MODULES\n"
