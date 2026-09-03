@@ -41,7 +41,7 @@ function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE)
-  set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG
+  set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES
            GN_ARGS GN_TARGETS GN_CONFIRM)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
@@ -74,10 +74,12 @@ endfunction()
 # by maximum: if anything in the build needs skia with Vulkan, the one Skia
 # in the build has Vulkan.
 function(cme_port_feature port feature)
-  cmake_parse_arguments(FEATURE "" "SUMMARY" "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS"
-                        ${ARGN})
+  cmake_parse_arguments(FEATURE "" "SUMMARY"
+    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS"
+    ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
-  foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY)
+  foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY IMPLIES CONFLICTS
+                EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
   endforeach()
@@ -241,9 +243,132 @@ endfunction()
 # point of the constraints being data: a version asked for by something deep
 # in the graph is known before the shallow end is built, so nothing has to be
 # built twice and nothing ends up older than something else needed.
-function(cme_require port version features)
+# Who asked for what. A conflict between two features is only useful to read
+# if it says which two things wanted them, and by the time it is found the
+# call that started it is several levels up.
+function(cme_remember_why port feature reason)
+  get_property(known GLOBAL PROPERTY CME_WHY_${port}_${feature})
+  if(NOT known)
+    set_property(GLOBAL PROPERTY CME_WHY_${port}_${feature} "${reason}")
+  endif()
+endfunction()
+
+function(cme_why out port feature)
+  get_property(reason GLOBAL PROPERTY CME_WHY_${port}_${feature})
+  if(NOT reason)
+    set(reason "something in the build")
+  endif()
+  set(${out} "${reason}" PARENT_SCOPE)
+endfunction()
+
+# A feature that turns on others: egl is gl reached differently, and
+# fontconfig is not fontconfig without freetype under it. Applied
+# transitively, because an implication can imply.
+function(cme_expand_implications port features out)
+  set(result "${features}")
+  set(pending "${features}")
+  while(pending)
+    list(POP_FRONT pending feature)
+    cme_feature_field(implied ${port} ${feature} IMPLIES)
+    foreach(other IN LISTS implied)
+      if(NOT other IN_LIST result)
+        list(APPEND result "${other}")
+        list(APPEND pending "${other}")
+        cme_why(reason ${port} ${feature})
+        cme_remember_why(${port} ${other} "${port}[${feature}], from ${reason}")
+      endif()
+    endforeach()
+  endwhile()
+  set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
+# Two features of one library that cannot both be on. Checked as they are
+# gathered rather than at the end, so the error can name the two things that
+# asked rather than the state they left behind.
+function(cme_check_feature_conflicts port)
+  cme_enabled_features(${port} enabled)
+  foreach(feature IN LISTS enabled)
+    cme_feature_field(against ${port} ${feature} CONFLICTS)
+    foreach(other IN LISTS against)
+      if(other IN_LIST enabled)
+        cme_why(first ${port} ${feature})
+        cme_why(second ${port} ${other})
+        message(FATAL_ERROR
+          "cmake-everywhere: ${port} cannot have both ${feature} and "
+          "${other}.\n"
+          "  ${feature} was asked for by ${first}\n"
+          "  ${other} was asked for by ${second}")
+      endif()
+    endforeach()
+  endforeach()
+endfunction()
+
+# A library, or a feature of one, that must not be in the build at all when
+# this one is. Registered when it is learned and checked from both ends,
+# because the two sides can arrive in either order.
+function(cme_register_exclusions port features)
+  cme_port_field(excluded ${port} EXCLUDES)
+  set(reasons "${port}")
+  foreach(feature IN LISTS features)
+    cme_feature_field(extra ${port} ${feature} EXCLUDES)
+    foreach(spec IN LISTS extra)
+      list(APPEND excluded "${spec}")
+      set(reasons "${reasons};${port}[${feature}]")
+    endforeach()
+  endforeach()
+  set(index 0)
+  foreach(spec IN LISTS excluded)
+    list(LENGTH reasons count)
+    if(index LESS count)
+      list(GET reasons ${index} by)
+    else()
+      set(by "${port}")
+    endif()
+    math(EXPR index "${index} + 1")
+    set_property(GLOBAL APPEND PROPERTY CME_EXCLUSIONS "${by}|${spec}")
+  endforeach()
+  cme_check_exclusions()
+endfunction()
+
+function(cme_check_exclusions)
+  get_property(exclusions GLOBAL PROPERTY CME_EXCLUSIONS)
+  foreach(entry IN LISTS exclusions)
+    if(NOT entry MATCHES "^([^|]+)\\|(.+)$")
+      continue()
+    endif()
+    set(by "${CMAKE_MATCH_1}")
+    cme_split_requirement("${CMAKE_MATCH_2}" name unused wanted_features)
+    get_property(required GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${name})
+    if(NOT required)
+      continue()
+    endif()
+    if(wanted_features)
+      cme_enabled_features(${name} enabled)
+      set(hit FALSE)
+      foreach(feature IN LISTS wanted_features)
+        if(feature IN_LIST enabled)
+          set(hit TRUE)
+          set(named "${name}[${feature}]")
+        endif()
+      endforeach()
+      if(NOT hit)
+        continue()
+      endif()
+    else()
+      set(named "${name}")
+    endif()
+    cme_why(reason ${name} "")
+    message(FATAL_ERROR
+      "cmake-everywhere: ${by} cannot be in a build with ${named}, and both "
+      "are.\n"
+      "  ${named} was asked for by ${reason}")
+  endforeach()
+endfunction()
+
+function(cme_require port version features reason)
   get_property(have GLOBAL PROPERTY CME_REQUIRED_VERSION_${port})
   get_property(visited GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port})
+  cme_remember_why(${port} "" "${reason}")
   if(version AND (NOT have OR have VERSION_LESS version))
     set_property(GLOBAL PROPERTY CME_REQUIRED_VERSION_${port} "${version}")
     # A raised floor has to be pushed down again: what this port needs may
@@ -254,13 +379,17 @@ function(cme_require port version features)
   # dependencies of its own, and those have to be walked too.
   get_property(known GLOBAL PROPERTY CME_REQUIRED_FEATURES_${port})
   foreach(feature IN LISTS features)
+    cme_port_field(declared ${port} FEATURES)
+    if(NOT feature IN_LIST declared)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${reason} asks ${port} for a feature called "
+        "${feature}, and the port has none by that name. It has: ${declared}")
+    endif()
+    cme_remember_why(${port} ${feature} "${reason}")
+  endforeach()
+  cme_expand_implications(${port} "${features}" features)
+  foreach(feature IN LISTS features)
     if(NOT feature IN_LIST known)
-      cme_port_field(declared ${port} FEATURES)
-      if(NOT feature IN_LIST declared)
-        message(FATAL_ERROR
-          "cmake-everywhere: something asks ${port} for a feature called "
-          "${feature}, and the port has none by that name. It has: ${declared}")
-      endif()
       list(APPEND known "${feature}")
       set(visited FALSE)
     endif()
@@ -272,14 +401,27 @@ function(cme_require port version features)
   set_property(GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port} TRUE)
 
   cme_enabled_features(${port} enabled)
+  cme_check_feature_conflicts(${port})
+  cme_register_exclusions(${port} "${enabled}")
+
   cme_port_field(depends ${port} DEPENDS)
+  set(reasons "")
+  foreach(spec IN LISTS depends)
+    list(APPEND reasons "${port}")
+  endforeach()
   foreach(feature IN LISTS enabled)
     cme_feature_field(extra ${port} ${feature} DEPENDS)
-    list(APPEND depends ${extra})
+    foreach(spec IN LISTS extra)
+      list(APPEND depends "${spec}")
+      list(APPEND reasons "${port}[${feature}]")
+    endforeach()
   endforeach()
+  set(index 0)
   foreach(spec IN LISTS depends)
+    list(GET reasons ${index} by)
+    math(EXPR index "${index} + 1")
     cme_split_requirement("${spec}" name wanted wanted_features)
-    cme_require("${name}" "${wanted}" "${wanted_features}")
+    cme_require("${name}" "${wanted}" "${wanted_features}" "${by}")
   endforeach()
 endfunction()
 
@@ -308,6 +450,61 @@ function(cme_effective_version port out)
     endif()
   endif()
   set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
+# A system copy is a copy somebody else built, and what they built it with is
+# not written anywhere a build system can read. What can be read is whether
+# the result has the thing in it: a header that only exists when a feature was
+# on, a symbol that is only compiled when it was. A feature says what to look
+# for, and a system copy that does not have it is not rejected loudly -- it
+# simply is not the copy this build can use, and the port is built instead.
+function(cme_system_has_features out package port features)
+  set(${out} TRUE PARENT_SCOPE)
+  set(includes "${${package}_INCLUDE_DIRS}")
+  if(NOT includes)
+    set(includes "${${package}_INCLUDE_DIR}")
+  endif()
+  set(libraries "${${package}_LIBRARIES}")
+  if(NOT libraries)
+    set(libraries "${${package}_LIBRARY}")
+  endif()
+  include(CheckIncludeFile)
+  include(CheckSymbolExists)
+  set(CMAKE_REQUIRED_INCLUDES "${includes}")
+  set(CMAKE_REQUIRED_LIBRARIES "${libraries}")
+  set(CMAKE_REQUIRED_QUIET TRUE)
+  foreach(feature IN LISTS features)
+    cme_feature_field(headers ${port} ${feature} SYSTEM_HEADERS)
+    foreach(header IN LISTS headers)
+      string(MAKE_C_IDENTIFIER "cme_${package}_${header}" variable)
+      check_include_file("${header}" ${variable})
+      if(NOT ${variable})
+        message(STATUS
+          "cmake-everywhere: the system ${package} has no ${header}, so it "
+          "was not built with ${feature}")
+        set(${out} FALSE PARENT_SCOPE)
+        return()
+      endif()
+    endforeach()
+    # "symbol:header", because a symbol cannot be looked for without one.
+    cme_feature_field(symbols ${port} ${feature} SYSTEM_SYMBOLS)
+    foreach(pair IN LISTS symbols)
+      if(NOT pair MATCHES "^([^:]+):(.+)$")
+        message(FATAL_ERROR
+          "cmake-everywhere: ${port}'s ${feature} says SYSTEM_SYMBOLS "
+          "${pair}, which is not <symbol>:<header>")
+      endif()
+      string(MAKE_C_IDENTIFIER "cme_${package}_${CMAKE_MATCH_1}" variable)
+      check_symbol_exists("${CMAKE_MATCH_1}" "${CMAKE_MATCH_2}" ${variable})
+      if(NOT ${variable})
+        message(STATUS
+          "cmake-everywhere: the system ${package} has no ${CMAKE_MATCH_1}, "
+          "so it was not built with ${feature}")
+        set(${out} FALSE PARENT_SCOPE)
+        return()
+      endif()
+    endforeach()
+  endforeach()
 endfunction()
 
 # Most distributions ship a .pc file and no CMake config at all, and CMake
@@ -582,7 +779,8 @@ macro(cme_provider cme_method cme_package)
 
       get_property(cme_answered GLOBAL PROPERTY CME_ANSWERED_${cme_package})
       if(NOT cme_answered)
-        cme_require("${cme_port}" "${cme_wanted}" "${cme_asked_features}")
+        cme_require("${cme_port}" "${cme_wanted}" "${cme_asked_features}"
+                    "the project")
         set(cme_answered "port")
         cme_system_allowed(cme_try_system "${cme_package}")
         if(cme_try_system)
@@ -591,6 +789,13 @@ macro(cme_provider cme_method cme_package)
           find_package(${cme_package} ${cme_wanted} QUIET GLOBAL
                        BYPASS_PROVIDER)
           if(${cme_package}_FOUND)
+            cme_enabled_features(${cme_port} cme_needed)
+            cme_system_has_features(cme_usable "${cme_package}" "${cme_port}"
+                                    "${cme_needed}")
+          else()
+            set(cme_usable FALSE)
+          endif()
+          if(${cme_package}_FOUND AND cme_usable)
             set(cme_answered "system")
             set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${cme_package}
                          "${${cme_package}_VERSION}")
@@ -600,7 +805,12 @@ macro(cme_provider cme_method cme_package)
             cme_try_pkgconfig(cme_by_pc "${cme_port}" "${cme_package}"
                               "${cme_wanted}" "${cme_exact}")
             if(cme_by_pc)
-              set(cme_answered "pkg-config")
+              cme_enabled_features(${cme_port} cme_needed)
+              cme_system_has_features(cme_usable "${cme_package}"
+                                      "${cme_port}" "${cme_needed}")
+              if(cme_usable)
+                set(cme_answered "pkg-config")
+              endif()
             endif()
           endif()
         endif()

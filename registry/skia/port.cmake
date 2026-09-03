@@ -97,9 +97,11 @@ cme_port_feature(skia gl
   GN_ARGS "skia_enable_ganesh=true" "skia_use_gl=true"
   GN_CONFIRM "skia_use_gl=true")
 
+# EGL is a way of reaching GL, not an alternative to it.
 cme_port_feature(skia egl
   SUMMARY "Ganesh on GL, reaching it through EGL"
-  GN_ARGS "skia_enable_ganesh=true" "skia_use_gl=true" "skia_use_egl=true"
+  IMPLIES gl
+  GN_ARGS "skia_use_egl=true"
   GN_CONFIRM "skia_use_egl=true")
 
 cme_port_feature(skia vulkan
@@ -141,31 +143,34 @@ cme_port_feature(skia zlib
   GN_ARGS "skia_use_zlib=true" "skia_use_system_zlib=true"
   GN_CONFIRM "skia_use_system_zlib=true")
 
+# FreeType reads compressed font tables, so it wants zlib whether or not
+# anything else in the build does.
 cme_port_feature(skia freetype
   SUMMARY "glyph rasterisation through FreeType"
-  DEPENDS freetype zlib
+  IMPLIES zlib
+  DEPENDS freetype
   GN_ARGS "skia_use_freetype=true" "skia_use_system_freetype2=true"
-          "skia_use_system_zlib=true" "skia_use_freetype_zlib_bundled=false"
+          "skia_use_freetype_zlib_bundled=false"
   GN_CONFIRM "skia_use_system_freetype2=true")
 
+# A font database is not a font rasteriser: fontconfig says which file, and
+# FreeType turns it into glyphs.
 cme_port_feature(skia fontconfig
   SUMMARY "finding fonts through the system's fontconfig"
-  DEPENDS freetype zlib
-  GN_ARGS "skia_use_freetype=true" "skia_use_system_freetype2=true"
-          "skia_use_fontconfig=true" "skia_enable_fontmgr_fontconfig=true"
+  IMPLIES freetype
+  GN_ARGS "skia_use_fontconfig=true" "skia_enable_fontmgr_fontconfig=true"
   GN_CONFIRM "skia_use_fontconfig=true")
 
 cme_port_feature(skia fontmgr-directory
   SUMMARY "loading fonts from a directory, with no system font database"
-  DEPENDS freetype zlib
-  GN_ARGS "skia_use_freetype=true" "skia_use_system_freetype2=true"
-          "skia_enable_fontmgr_custom_directory=true")
+  IMPLIES freetype
+  GN_ARGS "skia_enable_fontmgr_custom_directory=true")
 
+# PDF streams are deflated, so this is zlib whether it was asked for or not.
 cme_port_feature(skia pdf
   SUMMARY "the PDF backend"
-  DEPENDS zlib
-  GN_ARGS "skia_enable_pdf=true" "skia_use_zlib=true"
-          "skia_use_system_zlib=true"
+  IMPLIES zlib
+  GN_ARGS "skia_enable_pdf=true"
   GN_CONFIRM "skia_enable_pdf=true")
 
 cme_port_feature(skia svg

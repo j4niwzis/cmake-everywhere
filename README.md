@@ -119,6 +119,25 @@ What is fragile: `action()` steps become `add_custom_command`, and GN rebases
 their script arguments against its build directory, so they are run from
 there. `gn` has to be on `PATH` at configure time, or named with `-DCME_GN=`.
 
+### Whether a system copy has the features
+
+A copy somebody else built does not record what it was built with anywhere a
+build system can read. What can be read is whether the result has the thing
+in it, and a feature says what to look for:
+
+```cmake
+cme_port_feature(flac ogg
+  DEPENDS "ogg>=1.3"
+  OPTIONS "WITH_OGG ON"
+  SYSTEM_SYMBOLS "FLAC__stream_encoder_init_ogg_stream:FLAC/stream_encoder.h")
+```
+
+libFLAC compiles its Ogg entry points only when it was built with Ogg, so
+looking for one answers the question. A system copy that fails the check is
+not an error -- it is simply not the copy this build can use, and the port is
+built instead, with a line saying which check failed and why that means what
+it means.
+
 ### A requirement the registry could not have known
 
 What that leaves is a request the consuming project makes itself, after the
@@ -199,6 +218,35 @@ This is not the old grouping. `graphics` was a group of libraries and it was
 wrong: a renderer can be built out of others. `vulkan` is one capability of
 one library, and the library is the only thing that knows what turning it on
 means.
+
+### What a feature can say
+
+```cmake
+cme_port_feature(skia egl
+  SUMMARY  "Ganesh on GL, reaching it through EGL"
+  IMPLIES  gl                    # other features of this library
+  CONFLICTS metal                # other features of this library
+  DEPENDS  "libpng" "other[featured]>=2"   # libraries, with their features
+  EXCLUDES "otherlib[bundled-zlib]"        # what cannot be in the build with it
+  SYSTEM_HEADERS "EGL/egl.h"     # how to tell whether a copy somebody else
+  SYSTEM_SYMBOLS "eglInitialize:EGL/egl.h" #   built has this feature in it
+  GN_ARGS  "skia_use_egl=true"
+  GN_CONFIRM "skia_use_egl=true")
+```
+
+`IMPLIES` is applied transitively: `fontconfig` implies `freetype`, which
+implies `zlib`, so asking for the first brings all three and the zlib port
+with them. `CONFLICTS` is checked as the graph is walked rather than at the
+end, and the error names the two things that asked:
+
+```
+skia cannot have both vulkan and metal.
+  vulkan was asked for by the project
+  metal was asked for by fancylib[gpu]
+```
+
+`EXCLUDES` is the same across libraries rather than within one, and it is
+checked from both ends, because the two sides can arrive in either order.
 
 ### A feature can need a library
 
