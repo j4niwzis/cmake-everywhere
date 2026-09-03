@@ -206,14 +206,65 @@ int main() {
 # GL context has one. A Skia with gl and neither factory is a usable Skia for
 # such a consumer, and Debian ships exactly that.
 
+# Either backend on Vulkan needs an allocator, and Skia builds one: a driver
+# hands out whole blocks of device memory and permits only a few thousand of
+# them, so something has to suballocate, and Skia compiles the library
+# everyone uses for that into itself with settings of its own. Those sources
+# are a port, because this build fetches nothing on Skia's behalf -- and
+# without them a Vulkan build stops on a header it cannot find, having
+# already compiled everything else.
 cme_port_feature(skia vulkan
   SUMMARY "the Ganesh backend on Vulkan"
+  DEPENDS vulkan-memory-allocator-sources
+  TREES "third_party/externals/vulkanmemoryallocator=vulkan-memory-allocator-sources"
   GN_ARGS "skia_enable_ganesh=true" "skia_use_vulkan=true"
-  GN_CONFIRM "skia_use_vulkan=true")
+  GN_CONFIRM "skia_use_vulkan=true" "skia_use_vma=true")
 
+# Graphite is the backend Skia is writing in place of Ganesh: the same
+# drawing API, recorded into a Recording on one thread and played into a
+# Context on another, over an API that expects to be told about work in
+# advance. It has no GL backend and never will -- Dawn, Metal and Vulkan are
+# what it speaks -- so this feature is the machinery and a backend is what
+# turns it into a build that can draw.
 cme_port_feature(skia graphite
   SUMMARY "the Graphite backend"
   GN_ARGS "skia_enable_graphite=true")
+
+# The one that exists on this side of the world. Metal is Apple's and Dawn is
+# WebGPU's, which is another dependency the size of this one.
+#
+# A consumer of this cannot make a Context without an allocator, and Skia's
+# is not in its public headers -- "we cannot really expose this to clients in
+# a meaningful way", says the header that declares it, because what it is was
+# decided when Skia was compiled. It is reachable all the same: this port
+# puts the root of Skia's own checkout on the interface, which is how a
+# consumer includes anything of Skia's that is not under include/. So the
+# probe below is what says whether a Skia can be used this way, and an
+# installed one that has no such header is one that cannot.
+cme_port_feature(skia graphite-vulkan
+  SUMMARY "the Graphite backend on Vulkan"
+  IMPLIES graphite
+  DEPENDS vulkan-memory-allocator-sources
+  TREES "third_party/externals/vulkanmemoryallocator=vulkan-memory-allocator-sources"
+  GN_ARGS "skia_use_vulkan=true"
+  GN_CONFIRM "skia_use_vulkan=true" "skia_use_vma=true"
+            "skia_enable_graphite=true"
+  SYSTEM_CODE "#include <skia/gpu/graphite/Context.h>
+#include <skia/gpu/graphite/ContextOptions.h>
+#include <skia/gpu/graphite/vk/VulkanGraphiteContext.h>
+#include <skia/gpu/vk/VulkanBackendContext.h>
+#include \"src/gpu/vk/vulkanmemoryallocator/VulkanMemoryAllocatorPriv.h\"
+#include <memory>
+int main() {
+  std::unique_ptr<skgpu::graphite::Context> (*context)(
+      const skgpu::VulkanBackendContext &,
+      const skgpu::graphite::ContextOptions &) =
+      &skgpu::graphite::ContextFactory::MakeVulkan;
+  sk_sp<skgpu::VulkanMemoryAllocator> (*allocator)(
+      const skgpu::VulkanBackendContext &, skgpu::ThreadSafe) =
+      &skgpu::VulkanMemoryAllocators::Make;
+  return context == nullptr || allocator == nullptr;
+}")
 
 # Each codec names the port that supplies it and the argument that makes Skia
 # take it from there rather than from its own third_party copy.
@@ -617,6 +668,12 @@ function(cme_adapt_skia_system includes targets)
   endif()
   if("graphite" IN_LIST features)
     list(APPEND defines SK_GRAPHITE)
+  endif()
+  # Graphite on Vulkan is a Vulkan build without a Ganesh in it: the headers
+  # that describe the backend are behind SK_VULKAN whichever backend plays
+  # them.
+  if("graphite-vulkan" IN_LIST features)
+    list(APPEND defines SK_GRAPHITE SK_VULKAN)
   endif()
   if("png" IN_LIST features)
     list(APPEND defines SK_CODEC_DECODES_PNG SK_CODEC_ENCODES_PNG)

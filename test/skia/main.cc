@@ -14,6 +14,18 @@
 #ifdef CME_EXPECT_HARFBUZZ
 #include <harfbuzz/hb.h>
 #endif
+#ifdef CME_EXPECT_GRAPHITE_VULKAN
+#include <skia/gpu/graphite/Context.h>
+#include <skia/gpu/graphite/ContextOptions.h>
+#include <skia/gpu/graphite/vk/VulkanGraphiteContext.h>
+#include <skia/gpu/vk/VulkanBackendContext.h>
+// Not under include/: the allocator Skia builds for its Vulkan backends is
+// declared here, and a consumer needs one to make a context at all. The port
+// puts the root of the checkout on the interface, which is how this is
+// reachable and how the feature's own probe finds it.
+#include "src/gpu/vk/vulkanmemoryallocator/VulkanMemoryAllocatorPriv.h"
+#include <memory>
+#endif
 
 // The skia/ in front of the headers is this port's doing. Skia includes
 // itself as "include/core/SkCanvas.h", a path with nothing in it to say
@@ -60,6 +72,24 @@ int main() {
 #endif
 #ifdef CME_EXPECT_HARFBUZZ
   ok = same("harfbuzz", hb_version_string(), CME_EXPECT_HARFBUZZ) && ok;
+#endif
+
+#ifdef CME_EXPECT_GRAPHITE_VULKAN
+  // No device is made here: a runner has no GPU, and what this asks is
+  // whether the two calls a Graphite consumer starts with are in the library
+  // -- the factory that makes a Context out of a Vulkan device, and the
+  // allocator it cannot be given a null of.
+  {
+    std::unique_ptr<skgpu::graphite::Context> (*context)(
+        const skgpu::VulkanBackendContext &,
+        const skgpu::graphite::ContextOptions &) =
+        &skgpu::graphite::ContextFactory::MakeVulkan;
+    sk_sp<skgpu::VulkanMemoryAllocator> (*allocator)(
+        const skgpu::VulkanBackendContext &, skgpu::ThreadSafe) =
+        &skgpu::VulkanMemoryAllocators::Make;
+    std::printf("graphite on vulkan: %d\n",
+                static_cast<int>(context != nullptr && allocator != nullptr));
+  }
 #endif
 
   // A CPU raster surface, one rectangle, one pixel read back. No codec, no
