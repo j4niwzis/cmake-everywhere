@@ -86,6 +86,7 @@ cme_declare_port(
     "extra_ldflags=[@DEP_LIBDIRS@]"
   GN_CONFIRM
     "is_official_build=true"
+  LICENSE BSD-3-Clause
 )
 
 # The names below are ours. Skia has no find_package convention to obey

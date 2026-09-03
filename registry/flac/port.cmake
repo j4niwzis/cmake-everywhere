@@ -16,6 +16,7 @@ cme_declare_port(
     "WITH_FORTIFY_SOURCE OFF"
   SYSTEM_PKGCONFIG "flac:FLAC::FLAC"
   GIT_TAG_TEMPLATE "@VERSION@"
+  LICENSE BSD-3-Clause
 )
 
 # libFLAC can be built with or without Ogg, and which one a system copy is

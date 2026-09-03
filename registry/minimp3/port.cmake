@@ -12,6 +12,7 @@ cme_declare_port(
   GITHUB_REPOSITORY lieff/minimp3
   GIT_TAG ea99364f61c14656440e8d77e9c233ccf3124633
   OVERLAY overlay
+  LICENSE CC0-1.0
 )
 
 function(cme_adapt_minimp3 source binary)

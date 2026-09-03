@@ -12,6 +12,7 @@ cme_declare_port(
     "OPUS_BUILD_SHARED_LIBRARY OFF"
   SYSTEM_PKGCONFIG "opus:Opus::opus"
   GIT_TAG_TEMPLATE "v@VERSION@"
+  LICENSE BSD-3-Clause
 )
 
 function(cme_adapt_opus source binary)

@@ -12,6 +12,7 @@ cme_declare_port(
     "BUILD_TESTING OFF"
   SYSTEM_PKGCONFIG "ogg:Ogg::ogg"
   GIT_TAG_TEMPLATE "v@VERSION@"
+  LICENSE BSD-3-Clause
 )
 
 # The variables are exported because FLAC and libsndfile look for OGG_LIBRARY

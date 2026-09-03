@@ -11,6 +11,7 @@ cme_declare_port(
     "ZLIB_BUILD_EXAMPLES OFF"
   SYSTEM_PKGCONFIG "zlib:ZLIB::ZLIB"
   GIT_TAG_TEMPLATE "v@VERSION@"
+  LICENSE Zlib
 )
 
 # zlib's own CMake builds targets called zlib and zlibstatic and offers no

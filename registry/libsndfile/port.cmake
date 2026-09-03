@@ -18,6 +18,7 @@ cme_declare_port(
     "ENABLE_CPACK OFF"
   SYSTEM_PKGCONFIG "sndfile:SndFile::sndfile"
   GIT_TAG_TEMPLATE "@VERSION@"
+  LICENSE LGPL-2.1-or-later
 )
 
 # One find_package(SndFile) brings ogg, vorbis, FLAC and opus with it,

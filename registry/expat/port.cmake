@@ -17,6 +17,7 @@ cme_declare_port(
     "EXPAT_BUILD_TESTS OFF"
     "EXPAT_BUILD_DOCS OFF"
     "EXPAT_SHARED_LIBS OFF"
+  LICENSE MIT
 )
 
 function(cme_adapt_expat source binary)

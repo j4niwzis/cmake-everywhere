@@ -119,6 +119,68 @@ What is fragile: `action()` steps become `add_custom_command`, and GN rebases
 their script arguments against its build directory, so they are run from
 there. `gn` has to be on `PATH` at configure time, or named with `-DCME_GN=`.
 
+### Saying no, and saying it once
+
+Everything above is additive: something asks, and the library gets it. A
+project also needs to be able to refuse, and to state a policy rather than
+repeat a decision:
+
+```cmake
+cme_features(skia gl -vulkan)          # this library: yes to one, never the other
+set(CME_DEFAULT_FEATURES png -vulkan)  # every library that has a feature by that name
+cme_profile(self-contained)            # a named file of these, beside the registry
+```
+
+A refusal is not a quiet override. If something in the graph genuinely needs
+what was refused, the build stops and says so, naming both sides: one of the
+two has to give.
+
+A feature can also be on unless refused, which is how a port matches an
+upstream default it agrees with -- `flac`'s Ogg support is on because
+libFLAC's own build turns it on.
+
+### Rules about a whole library
+
+```cmake
+cme_port_rule(skia AT_MOST_ONE_OF fontconfig fontmgr-directory)
+cme_port_rule(skia AT_LEAST_ONE_OF gl vulkan)
+cme_port_rule(skia EXACTLY_ONE_OF a b c)
+cme_port_rule(skia WITHOUT zlib DEPENDS miniz)
+```
+
+The first can only be broken by turning something on, so it is checked while
+the graph is walked and the error names what asked. The others can only be
+broken by leaving something out, which is not known until nothing more can
+ask, so they are checked when the library is about to be built. `WITHOUT` is
+a dependency that exists because a feature is *off* -- the substitute for
+something that was not enabled.
+
+### Licences
+
+A port says what its library is under, and a project can say what it will
+accept:
+
+```cmake
+set(CME_ACCEPT_LICENSES "MIT;BSD-3-Clause;Zlib;Apache-2.0")
+```
+
+A library outside that list stops the build, naming what pulled it in --
+which matters here, because a feature can bring a dependency the project
+never mentioned. A port that does not say what it is under is refused too:
+not saying is not the same as being permissive. With no list set, there is no
+opinion and nothing is checked.
+
+### Reading what was decided
+
+```cmake
+cme_report()
+```
+
+at the end of the top-level `CMakeLists.txt` prints every library that was
+reached: where it came from, at what version, who asked for it, and each of
+its features with whether it is on, who wanted it, and what it is for. The
+same text is written beside the lock file.
+
 ### Whether a system copy has the features
 
 A copy somebody else built does not record what it was built with anywhere a

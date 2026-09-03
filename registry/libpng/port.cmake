@@ -17,6 +17,7 @@ cme_declare_port(
     "PNG_FRAMEWORK OFF"
   SYSTEM_PKGCONFIG "libpng:PNG::PNG"
   GIT_TAG_TEMPLATE "v@VERSION@"
+  LICENSE libpng-2.0
 )
 
 # libpng looks for zlib with find_package(ZLIB) inside its own CMakeLists,

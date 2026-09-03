@@ -23,6 +23,11 @@ NEVER: build everything from source.")
 set_property(CACHE CME_SYSTEM PROPERTY STRINGS AUTO ALWAYS NEVER)
 set(CME_LOCK_FILE "${CMAKE_BINARY_DIR}/cme-lock.txt" CACHE FILEPATH
   "Where the resolved decisions are written")
+set(CME_DEFAULT_FEATURES "" CACHE STRING
+  "Features to turn on wherever a library has one by that name, and -name to \
+refuse one wherever it appears")
+set(CME_ACCEPT_LICENSES "" CACHE STRING
+  "Licences a library may be under, or empty for no opinion")
 # CMake 4 refuses to configure a project whose cmake_minimum_required asks
 # for less than 3.5, and a good many released libraries ask for less than
 # that: libogg 1.3.5 asks for 3.0. These are trees this registry did not
@@ -41,7 +46,7 @@ function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE)
-  set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES
+  set(many PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG EXCLUDES LICENSE
            GN_ARGS GN_TARGETS GN_CONFIRM)
   cmake_parse_arguments(PORT "" "${one}" "${many}" ${ARGN})
   if(NOT PORT_NAME)
@@ -75,11 +80,11 @@ endfunction()
 # in the build has Vulkan.
 function(cme_port_feature port feature)
   cmake_parse_arguments(FEATURE "" "SUMMARY"
-    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS"
+    "GN_ARGS;GN_CONFIRM;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
   foreach(field GN_ARGS GN_CONFIRM OPTIONS DEPENDS SUMMARY IMPLIES CONFLICTS
-                EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS)
+                EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS DEFAULT)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
   endforeach()
@@ -100,10 +105,82 @@ endfunction()
 # both spellings are ours.
 function(cme_features port)
   set(chosen "${CME_FEATURES_${port}}")
-  list(APPEND chosen ${ARGN})
-  list(REMOVE_DUPLICATES chosen)
+  set(refused "${CME_FEATURES_OFF_${port}}")
+  foreach(name IN LISTS ARGN)
+    if(name MATCHES "^-(.+)$")
+      list(APPEND refused "${CMAKE_MATCH_1}")
+    else()
+      list(APPEND chosen "${name}")
+    endif()
+  endforeach()
+  if(chosen)
+    list(REMOVE_DUPLICATES chosen)
+  endif()
+  if(refused)
+    list(REMOVE_DUPLICATES refused)
+  endif()
+  foreach(name IN LISTS chosen)
+    if(name IN_LIST refused)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} is asked for ${name} and refused ${name} "
+        "in the same breath.")
+    endif()
+  endforeach()
   set(CME_FEATURES_${port} "${chosen}" CACHE STRING
     "Features wanted from the ${port} port" FORCE)
+  set(CME_FEATURES_OFF_${port} "${refused}" CACHE STRING
+    "Features refused from the ${port} port" FORCE)
+endfunction()
+
+# A named set of decisions, kept as a file of cme_features calls beside the
+# registry. A project states one instead of restating the same twenty lines.
+function(cme_profile name)
+  set(file "${CME_REGISTRY}/../profiles/${name}.cmake")
+  if(NOT EXISTS "${file}")
+    file(GLOB available "${CME_REGISTRY}/../profiles/*.cmake")
+    set(names "")
+    foreach(one IN LISTS available)
+      get_filename_component(one "${one}" NAME_WE)
+      list(APPEND names "${one}")
+    endforeach()
+    message(FATAL_ERROR
+      "cmake-everywhere: there is no profile called ${name}. There is: ${names}")
+  endif()
+  include("${file}")
+endfunction()
+
+# Whether policy says this feature may not be on. A project that asks a
+# library for something directly outranks a blanket rule about every library.
+function(cme_feature_refused out port feature)
+  set(result FALSE)
+  if("-${feature}" IN_LIST CME_DEFAULT_FEATURES)
+    set(result TRUE)
+  endif()
+  if(feature IN_LIST CME_FEATURES_${port})
+    set(result FALSE)
+  endif()
+  if(feature IN_LIST CME_FEATURES_OFF_${port})
+    set(result TRUE)
+  endif()
+  set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
+# A rule about a whole library rather than about one feature:
+#
+#   cme_port_rule(skia AT_MOST_ONE_OF fontconfig fontmgr-directory)
+#   cme_port_rule(skia AT_LEAST_ONE_OF gl vulkan)
+#   cme_port_rule(skia EXACTLY_ONE_OF a b c)
+#   cme_port_rule(skia WITHOUT zlib DEPENDS miniz)
+#
+# The counted ones cannot all be checked at the same moment: that a feature
+# is missing is only true once nothing more can ask for it, so those are
+# checked when the library is about to be built, while the ones that can only
+# be broken by adding are checked as the graph is walked.
+function(cme_port_rule port kind)
+  get_property(rules GLOBAL PROPERTY CME_RULES_${port})
+  list(LENGTH rules index)
+  set_property(GLOBAL APPEND PROPERTY CME_RULES_${port} "${kind}")
+  set_property(GLOBAL PROPERTY CME_RULE_${port}_${index} "${ARGN}")
 endfunction()
 
 function(cme_port_field out port field)
@@ -365,10 +442,129 @@ function(cme_check_exclusions)
   endforeach()
 endfunction()
 
+# The rules that can only be broken by turning something on. Checked while
+# the graph is being walked, so the error names what asked.
+function(cme_check_open_rules port)
+  cme_enabled_features(${port} enabled)
+  get_property(kinds GLOBAL PROPERTY CME_RULES_${port})
+  set(index 0)
+  foreach(kind IN LISTS kinds)
+    get_property(members GLOBAL PROPERTY CME_RULE_${port}_${index})
+    math(EXPR index "${index} + 1")
+    if(NOT kind STREQUAL "AT_MOST_ONE_OF" AND NOT kind STREQUAL "EXACTLY_ONE_OF")
+      continue()
+    endif()
+    set(on "")
+    foreach(feature IN LISTS members)
+      if(feature IN_LIST enabled)
+        list(APPEND on "${feature}")
+      endif()
+    endforeach()
+    list(LENGTH on count)
+    if(count GREATER 1)
+      set(lines "")
+      foreach(feature IN LISTS on)
+        cme_why(reason ${port} ${feature})
+        string(APPEND lines "\n  ${feature} was asked for by ${reason}")
+      endforeach()
+      list(JOIN members ", " listed)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} can have at most one of ${listed}, and it "
+        "has ${count}.${lines}")
+    endif()
+  endforeach()
+endfunction()
+
+# The rules that can only be broken by leaving something out, which is not
+# known until nothing more can ask.
+function(cme_check_closed_rules port)
+  cme_enabled_features(${port} enabled)
+  get_property(kinds GLOBAL PROPERTY CME_RULES_${port})
+  set(index 0)
+  foreach(kind IN LISTS kinds)
+    get_property(members GLOBAL PROPERTY CME_RULE_${port}_${index})
+    math(EXPR index "${index} + 1")
+    if(NOT kind STREQUAL "AT_LEAST_ONE_OF" AND NOT kind STREQUAL "EXACTLY_ONE_OF")
+      continue()
+    endif()
+    set(on "")
+    foreach(feature IN LISTS members)
+      if(feature IN_LIST enabled)
+        list(APPEND on "${feature}")
+      endif()
+    endforeach()
+    if(NOT on)
+      list(JOIN members ", " listed)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} needs one of ${listed} and has none of "
+        "them. Ask for one with find_package COMPONENTS, or cme_features.")
+    endif()
+  endforeach()
+endfunction()
+
+# A dependency that exists because a feature is off rather than on.
+function(cme_absent_dependencies port out)
+  cme_enabled_features(${port} enabled)
+  get_property(kinds GLOBAL PROPERTY CME_RULES_${port})
+  set(index 0)
+  set(result "")
+  foreach(kind IN LISTS kinds)
+    get_property(members GLOBAL PROPERTY CME_RULE_${port}_${index})
+    math(EXPR index "${index} + 1")
+    if(NOT kind STREQUAL "WITHOUT")
+      continue()
+    endif()
+    # WITHOUT <feature> DEPENDS <spec>...
+    list(GET members 0 feature)
+    if(feature IN_LIST enabled)
+      continue()
+    endif()
+    list(FIND members "DEPENDS" at)
+    if(at LESS 0)
+      continue()
+    endif()
+    math(EXPR at "${at} + 1")
+    list(LENGTH members count)
+    while(at LESS count)
+      list(GET members ${at} spec)
+      list(APPEND result "${spec}")
+      math(EXPR at "${at} + 1")
+    endwhile()
+  endforeach()
+  set(${out} "${result}" PARENT_SCOPE)
+endfunction()
+
+# What a library is under, and whether this build will have it.
+function(cme_check_licence port reason)
+  if(NOT CME_ACCEPT_LICENSES)
+    return()
+  endif()
+  cme_port_field(licence ${port} LICENSE)
+  if(NOT licence)
+    message(FATAL_ERROR
+      "cmake-everywhere: this build only accepts ${CME_ACCEPT_LICENSES}, and "
+      "the ${port} port does not say what it is under. Add LICENSE to it.")
+  endif()
+  foreach(one IN LISTS licence)
+    if(NOT one IN_LIST CME_ACCEPT_LICENSES)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} is ${one} and this build accepts only "
+        "${CME_ACCEPT_LICENSES}. It was asked for by ${reason}.")
+    endif()
+  endforeach()
+endfunction()
+
 function(cme_require port version features reason)
+  cme_port_field(exists ${port} PROVIDES)
+  if(NOT exists)
+    message(FATAL_ERROR
+      "cmake-everywhere: ${reason} needs ${port}, and there is no port called "
+      "that in ${CME_REGISTRY}.")
+  endif()
   get_property(have GLOBAL PROPERTY CME_REQUIRED_VERSION_${port})
   get_property(visited GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port})
   cme_remember_why(${port} "" "${reason}")
+  set_property(GLOBAL APPEND PROPERTY CME_TOUCHED "${port}")
   if(version AND (NOT have OR have VERSION_LESS version))
     set_property(GLOBAL PROPERTY CME_REQUIRED_VERSION_${port} "${version}")
     # A raised floor has to be pushed down again: what this port needs may
@@ -385,6 +581,13 @@ function(cme_require port version features reason)
         "cmake-everywhere: ${reason} asks ${port} for a feature called "
         "${feature}, and the port has none by that name. It has: ${declared}")
     endif()
+    cme_feature_refused(refused ${port} ${feature})
+    if(refused)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${reason} needs ${port} with ${feature}, and this "
+        "build refuses ${feature}. One of the two has to give: ask for it, or "
+        "stop needing it.")
+    endif()
     cme_remember_why(${port} ${feature} "${reason}")
   endforeach()
   cme_expand_implications(${port} "${features}" features)
@@ -400,11 +603,15 @@ function(cme_require port version features reason)
   endif()
   set_property(GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port} TRUE)
 
+  cme_check_licence(${port} "${reason}")
   cme_enabled_features(${port} enabled)
   cme_check_feature_conflicts(${port})
+  cme_check_open_rules(${port})
   cme_register_exclusions(${port} "${enabled}")
 
   cme_port_field(depends ${port} DEPENDS)
+  cme_absent_dependencies(${port} absent)
+  list(APPEND depends ${absent})
   set(reasons "")
   foreach(spec IN LISTS depends)
     list(APPEND reasons "${port}")
@@ -430,11 +637,27 @@ endfunction()
 function(cme_enabled_features port out)
   get_property(enabled GLOBAL PROPERTY CME_REQUIRED_FEATURES_${port})
   list(APPEND enabled ${CME_FEATURES_${port}})
-  if(enabled)
-    list(REMOVE_DUPLICATES enabled)
-    list(SORT enabled)
+  # A feature the library says is on unless somebody says otherwise, and one
+  # a project wants wherever it exists.
+  cme_port_field(declared ${port} FEATURES)
+  foreach(feature IN LISTS declared)
+    cme_feature_field(default ${port} ${feature} DEFAULT)
+    if(default OR feature IN_LIST CME_DEFAULT_FEATURES)
+      list(APPEND enabled "${feature}")
+    endif()
+  endforeach()
+  set(result "")
+  foreach(feature IN LISTS enabled)
+    cme_feature_refused(refused ${port} ${feature})
+    if(NOT refused)
+      list(APPEND result "${feature}")
+    endif()
+  endforeach()
+  if(result)
+    list(REMOVE_DUPLICATES result)
+    list(SORT result)
   endif()
-  set(${out} "${enabled}" PARENT_SCOPE)
+  set(${out} "${result}" PARENT_SCOPE)
 endfunction()
 
 # The version this port is going to be built at: what it pins, unless
@@ -587,6 +810,7 @@ function(cme_build_port port package version exact)
   # needing itself would otherwise never stop.
   set_property(GLOBAL PROPERTY CME_BUILT_${port} TRUE)
 
+  cme_check_closed_rules(${port})
   cme_enabled_features(${port} features)
   if(features)
     list(JOIN features ", " listed)
@@ -631,9 +855,11 @@ function(cme_build_port port package version exact)
         "tag. Add GIT_TAG_TEMPLATE to registry/${port}/port.cmake.")
     endif()
     string(REPLACE "." "_" underscored "${port_version}")
+    string(REPLACE "." "-" dashed "${port_version}")
     string(REPLACE "@VERSION@" "${port_version}" port_tag "${template}")
     string(REPLACE "@VERSION_UNDERSCORE@" "${underscored}" port_tag
            "${port_tag}")
+    string(REPLACE "@VERSION_DASH@" "${dashed}" port_tag "${port_tag}")
     message(STATUS
       "cmake-everywhere: ${port} at ${port_version} rather than the pinned "
       "${pinned}")
@@ -744,6 +970,49 @@ function(cme_build_port port package version exact)
 endfunction()
 
 # ---------------------------------------------------------------- provider
+
+# What was decided and why, for a project that wants to read it rather than
+# infer it from how long the build took. Call it at the end of the top-level
+# CMakeLists; the same text is written to the lock file.
+function(cme_report)
+  get_property(touched GLOBAL PROPERTY CME_TOUCHED)
+  if(NOT touched)
+    return()
+  endif()
+  list(REMOVE_DUPLICATES touched)
+  list(SORT touched)
+  set(text "")
+  foreach(port IN LISTS touched)
+    cme_port_field(names ${port} PROVIDES)
+    list(GET names 0 package)
+    get_property(how GLOBAL PROPERTY CME_ANSWERED_${package})
+    get_property(version GLOBAL PROPERTY CME_PROVIDED_VERSION_${package})
+    if(NOT how)
+      set(how "not reached")
+    endif()
+    cme_why(reason ${port} "")
+    string(APPEND text "${port} ${version} from ${how}, asked for by ${reason}\n")
+    cme_port_field(declared ${port} FEATURES)
+    cme_enabled_features(${port} enabled)
+    foreach(feature IN LISTS declared)
+      cme_feature_field(summary ${port} ${feature} SUMMARY)
+      if(feature IN_LIST enabled)
+        cme_why(why ${port} ${feature})
+        string(APPEND text
+          "    on  ${feature} -- ${summary} (${why})\n")
+      else()
+        cme_feature_refused(refused ${port} ${feature})
+        if(refused)
+          string(APPEND text "    no  ${feature} -- refused\n")
+        else()
+          string(APPEND text "    off ${feature} -- ${summary}\n")
+        endif()
+      endif()
+    endforeach()
+  endforeach()
+  message(STATUS "cmake-everywhere:\n${text}")
+  file(WRITE "${CME_LOCK_FILE}.report" "${text}")
+endfunction()
 
 macro(cme_provider cme_method cme_package)
   if("${cme_method}" STREQUAL "FIND_PACKAGE")

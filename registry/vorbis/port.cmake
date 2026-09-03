@@ -12,6 +12,7 @@ cme_declare_port(
     "vorbisenc:Vorbis::vorbisenc"
     "vorbisfile:Vorbis::vorbisfile"
   GIT_TAG_TEMPLATE "v@VERSION@"
+  LICENSE BSD-3-Clause
 )
 
 function(cme_adapt_vorbis source binary)
