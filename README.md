@@ -1,8 +1,8 @@
 # cmake-everywhere
 
-One `find_package()` in your project, everything underneath it resolved:
+One `find_package()` in your project, and everything underneath it resolved:
 from the system when it is there, built from a pinned source when it is not,
-and given a CMake build by this registry when upstream has none.
+and given a CMake build when upstream has none.
 
 ```cmake
 set(CMAKE_PROJECT_TOP_LEVEL_INCLUDES ${CMAKE_CURRENT_LIST_DIR}/cmake/get_cme.cmake)
@@ -23,47 +23,8 @@ nobody has to agree: a git URL and a tag are enough, the repository already
 exists, and a project can depend on it this afternoon. An index that has to
 accept a library first turns that into a queue.
 
-So this is a default, not a gate, and the ordinary case is a port written
-where it is used:
-
-```cmake
-cme_declare_port(
-  NAME hello
-  PROVIDES Hello
-  VERSION 1.0.0
-  GIT_REPOSITORY https://example.invalid/hello.git
-  GIT_TAG v1.0.0
-)
-
-find_package(Hello REQUIRED)          # and everything under it resolves too
-```
-
-That port is a port in every way the ones here are: features, versions, the
-store, and every `find_package` underneath it. Nothing about it is second
-class and nothing about it involves us.
-
-### What a library needs is the library's to say
-
-The obvious problem with the above is that it does not stop at one. If
-`hello` needs two libraries nobody has ported either, every project that uses
-`hello` would have to declare those too, and their names would appear in
-CMakeLists files that have nothing to do with them.
-
-They do not have to. A library says what it needs, and whoever fetches it
-reads that before configuring it -- which is before the library's own
-`find_package` calls happen:
-
-* **a library that uses this says it in its own CMakeLists.** Its
-  `cme_declare_port` calls run when its directory is added, which is exactly
-  when they are needed. There is no extra file, no convention to adopt, and
-  nothing to keep in sync: using this *is* the declaration.
-* **a library that has never heard of this** can carry a `cme-ports.cmake`
-  (or `.cme/ports.cmake`), which is the same calls and nothing else.
-* **a library you do not control** can have one attached to it by whoever
-  declares it: `PORTS_FROM ports/hello-deps.cmake`, a path of yours, because
-  it is your file.
-
-So a project declares what it uses, and what that uses does not leak into it.
+So the registry in this repository is a default, not a gate, and the ordinary
+case is a port written where it is used.
 
 ### What a consumer has to say, which is two things
 
@@ -81,15 +42,41 @@ That is enough for the whole sequence. The name is looked for in the system
 first; if it is not there, or not good enough, the URL is fetched, and the
 port is then taken from the library itself -- its version, its licence, its
 features, what it needs. Only if the library says nothing about itself does
-the consumer have to write a full port, and then it writes one here, in its
-own CMakeLists, for as long as that library has not adopted anything.
+the consumer write a full port, and it writes one here, in its own
+CMakeLists, for as long as that library has not adopted anything.
 
 What the consumer said stands: it chose the library, so it decides which one
 and where from. Everything it did not say, the library says.
 
-### What a library knows about itself, and what it does not
+### What a library needs is the library's to say
 
-A library declaring itself declares what it is:
+A port written where it is used would stop being an answer at the second
+library: if `hello` needs two libraries nobody has ported either, every
+project that uses `hello` would have to declare those too, and their names
+would appear in CMakeLists files that have nothing to do with them.
+
+They do not have to. A library says what it needs, and whoever fetches it
+reads that after the fetch and before the tree is configured -- which is
+before the library's own `find_package` calls happen:
+
+* **a library that uses this says it in its own CMakeLists.** Its
+  `cme_declare_port` calls run when its directory is added, which is exactly
+  when they are needed. There is no extra file, no convention to adopt, and
+  nothing to keep in sync: using this *is* the declaration.
+* **a library that has never heard of this** can carry a `cme-port.cmake` or
+  `cme-ports.cmake` (or the same under `.cme/`), which is those calls and
+  nothing else.
+* **a library you do not control** can have one attached to it by whoever
+  declares it: `PORTS_FROM ports/hello-deps.cmake`, a path of yours, because
+  it is your file.
+
+Fetching and configuring are two steps for this reason. CPM is asked for the
+tree and nothing else; the library's own port is read; and then what would
+have been decided against a description that did not exist yet -- rules,
+licence, version, dependencies, options -- is decided with it in hand, before
+the tree is added.
+
+### What a library knows about itself, and what it does not
 
 ```cmake
 project(hello VERSION 1.4.0 LANGUAGES CXX)
@@ -97,8 +84,8 @@ project(hello VERSION 1.4.0 LANGUAGES CXX)
 cme_declare_port(NAME hello PROVIDES Hello LICENSE MIT)
 ```
 
-That is the whole self-description. The version comes from `project()`; what
-it needs is learned while it is built and written into the exported port, so
+That is a whole self-description. The version comes from `project()`. What it
+needs is learned while it is built and written into its exported port, so
 nobody keeps a list by hand and nobody keeps a wrong one.
 
 There is no URL in it, and there should not be. A library's own repository
@@ -112,12 +99,38 @@ cme_port_source(hello GITHUB_REPOSITORY me/hello GIT_TAG v1.4.0)
 
 Said separately, field by field, first to say wins. A port with nothing to
 say about where it comes from is a perfectly good port for a library that is
-installed or in the store; it becomes a problem only at the moment something
-has to fetch it, and then the message says what to add and where.
+installed or in the store; it becomes a problem only when something has to
+fetch it, and then the message says what to add.
 
-`cme_port_needs(<port> <what>...)` is the other half of the same idea: it
-adds to what a port needs without redeclaring it. It is what the exported
-port is written with.
+`cme_port_needs(<port> <what>...)` adds to what a port needs without
+redeclaring it. It is what an exported port is written with.
+
+### Two declarations of the same port fill each other in
+
+A second declaration of a port fills in what the first did not say and
+changes nothing that it did. This is the same rule from the other side: a
+project knows where a library is, because it chose it; a library knows what
+it is, because it is the library. Neither list is complete and neither should
+erase the other.
+
+### Where a port can come from
+
+| | |
+| --- | --- |
+| the project | `cme_declare_port()` in your own CMakeLists |
+| a fetched source | what the library itself says it needs |
+| an overlay | in the order the overlays are named |
+| the system | `share/cmake-everywhere/ports` in the prefixes |
+| the registry | the ports that come with this |
+
+The first one that names a port is the one that is read, and the build says
+so: `beta comes from the overlay ...; the registry only fills in what it did
+not say`. `cme_report()` names, for every library in the build, who ported
+it.
+
+Explicit before ambient, and yours before anybody's: an overlay can correct a
+port here without waiting for us to merge anything, and a project can correct
+an overlay without waiting for whoever keeps it.
 
 ### Without cloning anything
 
@@ -133,23 +146,24 @@ A library that uses this writes nothing to make that happen -- it declared
 the ports already, and installing the library installs them. Any prefix in
 `CMAKE_PREFIX_PATH` is then a place ports come from: no index, no server, no
 clone, and the metadata arrives with the package it describes. A distribution
-that packages a library can ship its port in the package; the store can do
-the same for what it builds; `make install` into your own prefix shares your
-declarations with your next project.
+that packages a library can ship its port in the package; `make install` into
+your own prefix shares your declarations with your next project.
 
 `CME_EXPORT_PORTS=OFF` if you would rather your package did not carry them,
-`CME_SYSTEM_PORTS=OFF` if you would rather this build did not read them.
+`CME_SYSTEM_PORTS=OFF` if you would rather this build did not read them,
+`CME_EXPORT_DESTINATION` to put them somewhere else under the prefix.
 
 **An installed port says what that copy is, not what the library can be.**
 It was written beside one version, built one way, with some features on and
-others off. So a version in it is the version that is here, not a ceiling: a
-`GIT_TAG_TEMPLATE` or a port of your own gets another one. And what a library
-needed is only written down when it was built with nothing turned on --
-otherwise it is a fact about that build, and declaring it would make the next
-project build a dependency it never asked for. When a description that came
-from an installed copy is the reason something is refused, the message says
-so, because "the copy here will not do" is a different thing from "this
-library cannot".
+others off. So a version in it is the version that is here, not a ceiling:
+when something asks for more and there is a tag to fetch, it is fetched, and
+the question is asked again against what the library itself says it is. And
+what a library needed is only written down when it was built with nothing
+turned on -- otherwise it is a fact about that build, and declaring it would
+make the next project build a dependency it never asked for. When a
+description that came from an installed copy is the reason something is
+refused, the message says so, because "the copy here will not do" is a
+different statement from "this library cannot".
 
 ### Overlays
 
@@ -163,77 +177,10 @@ as paths or as URLs:
 
 A URL is cloned once into `~/.cache/cmake-everywhere/overlays` and then left
 alone; `#ref` pins it to a branch or a tag, and `-DCME_OVERLAY_REFRESH=ON`
-updates the ones that are not pinned. This is for an organisation with its
-own libraries, not for the ordinary case.
-
-### The order
-
-| | |
-| --- | --- |
-| the project | `cme_declare_port()` in your own CMakeLists |
-| a fetched source | what the library itself says it needs |
-| an overlay | in the order the overlays are named |
-| the system | `share/cmake-everywhere/ports` in the prefixes |
-| the registry | the ports that come with this |
-
-The first one that names a port is the one that is read, and the build says
-so: `beta comes from the overlay ...; the copy in the registry is not read`.
-`cme_report()` names, for every library in the build, who ported it.
-
-Explicit before ambient, and yours before anybody's: an overlay can correct a
-port here without waiting for us to merge anything, and a project can correct
-an overlay without waiting for whoever keeps it.
-
-### A lock you commit
-
-A port that came from somewhere else is two things this project does not
-contain: code the build reads, and a library the build fetches. Both can
-change without a line of this project changing -- a tag moves, a branch
-certainly moves, an archive is replaced, a port file is edited in the
-overlay it lives in. So both are written down, in `cme.lock` beside your
-CMakeLists:
-
-```
-hello commit 6f1c0e5a2b...          what was actually fetched, not the tag
-hello port 3f2a9c...                the digest of a port file from elsewhere
-hello version 1.0.0
-zlib archive SHA256=...
-```
-
-On the next build every one of those has to still be true, and if one is not
-the build stops and names it. `-DCME_LOCK_UPDATE=ON` takes what a build
-resolved to as the new answer; `-DCME_UNLOCKED=hello;wibble` says those two
-are being followed rather than pinned, which is what you want for a library
-you are working on at the same time. The same thing said where the port is
-written, which is usually the better place for it:
-
-```cmake
-cme_declare_port(NAME hello PROVIDES Hello UNLOCKED YES
-                 GIT_REPOSITORY https://example.invalid/hello.git
-                 GIT_TAG main)
-```
-
-The rule is the same for everyone, a project and a library alike: **you may
-say it about yourself, and about a port you declared.** A library that
-declares where its own unported dependency comes from may say that one is
-followed rather than pinned, because it is the one saying where it comes
-from. It may not say it about a port somebody else declared -- it cannot
-unpin the registry's zlib because it happens to use it. Anything wider than
-that is the project's to say, on the command line, which is what
-`CME_UNLOCKED` is for. A port that is asked about by someone with no standing
-to ask stays pinned, and the build says so rather than quietly obeying.
-
-**Writing it is its own run.** An ordinary build does not fetch what it does
-not need: a library the system has is never downloaded, one in the store is
-not either, and a lock written by such a build has holes in it. So it says
-which holes it left, and there is a run that leaves none:
-
-```sh
-cmake -S . -B build/lock -DCME_LOCK_ALL=ON   -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=.../cmake-everywhere.cmake
-```
-
-Nothing from the system, nothing from the store, every library fetched and
-every port read. Commit what it writes.
+updates the ones that are not pinned. A dependency tree that quietly changes
+under a project between two configures of the same source is worse than one
+that is out of date, and out of date is one flag away. This is for an
+organisation with its own libraries, not for the ordinary case.
 
 ### A port from a URL
 
@@ -248,6 +195,61 @@ a machine that is not yours. `UNVERIFIED` takes it without one and is meant
 to be written while working something out and then removed. Either way the
 file's digest goes into the lock, so a file that changes under a project
 stops the build rather than changing it.
+
+### A lock you commit
+
+A port that came from somewhere else is two things this project does not
+contain: code the build reads, and a library the build fetches. Both can
+change without a line of this project changing -- a tag moves, a branch
+certainly moves, an archive is replaced, a port file is edited in the overlay
+it lives in. So both are written into `cme.lock` beside your CMakeLists:
+
+```
+hello commit 6f1c0e5a2b...          what was fetched, rather than the tag
+hello port 3f2a9c...                a port file that came from elsewhere
+hello version 1.0.0
+zlib archive SHA256=...
+```
+
+On the next build every one of those has to still be true, and if one is not
+the build stops and names it. Ports the project declares itself are not in
+it: they are in the project, which is what the lock is for.
+
+**Writing it is its own run.** An ordinary build does not fetch what it does
+not need: a library the system has is never downloaded, one already in the
+store is not either, and a lock written by such a build has holes in it. So
+such a build says which holes it left, by name, and there is a run that
+leaves none:
+
+```sh
+cmake -S . -B build/lock -DCME_LOCK_ALL=ON \
+  -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=.../cmake-everywhere.cmake
+```
+
+Nothing from the system, nothing from the store, every library fetched and
+every port read. Commit what it writes. `-DCME_LOCK_UPDATE=ON` on an
+ordinary build takes what that build resolved to as the new answer for the
+part of it that was reached; `-DCME_LOCK=` (empty) turns the whole thing off.
+
+`-DCME_UNLOCKED=hello;wibble` says those two are being followed rather than
+pinned. The same thing said where the port is written, which is usually the
+better place for it:
+
+```cmake
+cme_declare_port(NAME hello PROVIDES Hello UNLOCKED YES
+                 GIT_REPOSITORY https://example.invalid/hello.git
+                 GIT_TAG main)
+```
+
+The rule is the same for everyone, a project and a library alike: **you may
+say it about yourself, and about a port you declared.** A library that
+declares where its own unported dependency comes from may say that one is
+followed rather than pinned, because it is the one saying where it comes
+from. It may not say it about a port somebody else declared -- it cannot
+unpin the registry's zlib because it happens to use it. Anything wider than
+that is the project's to say on the command line. A port asked about by
+someone with no standing to ask stays pinned, and the build says so rather
+than quietly obeying.
 
 ### The registry is the part that should shrink
 
@@ -289,242 +291,29 @@ coming straight back.
 
 Per package: `-DCME_SYSTEM_ZLIB=OFF` builds that one and leaves the rest
 alone. Every decision is written to `cme-lock.txt` in the build directory --
-which package came from where, and at what version.
+which package came from where, at what version, and who ported it. That file
+is a report of one build; `cme.lock`, above, is the pinning you commit.
 
-## Versions
+### Why it built something you have installed
 
-`find_package(FLAC 1.4)` means 1.4 or newer, and it is treated that way:
+Most distributions ship a `.pc` file and no CMake config, and CMake has no
+`FindOgg`, `FindVorbis`, `FindFLAC` or `FindSndFile` of its own. So a plain
+`find_package(Ogg)` fails on a machine that has libogg installed, and without
+help the port would be built for nothing.
 
-* the system copy is accepted only if it satisfies the request -- the version
-  goes into the `find_package` call and into the pkg-config query;
-* the port is built only if what it pins satisfies the request. A port
-  pinning 1.3.5 while something asks for 1.4 is an error naming both, not a
-  build of 1.3.5 that fails much later as a missing symbol;
-* a package already resolved cannot be resolved again, so a later caller
-  asking for more than what is already in the build is told so;
-* `EXACT` is honoured on all three paths.
-
-A newer version wins where there is a choice: the system copy is tried first,
-so an installed 1.5 is used rather than the 1.4 the port pins.
-
-### Requirements are read before anything is built
-
-A dependency can carry a floor, and that is data in the registry rather than
-something only discovered by running a third-party CMakeLists:
+A port therefore also names the pkg-config modules it can be satisfied by,
+and the target each one should answer to:
 
 ```cmake
-DEPENDS "ogg>=1.3" vorbis flac opus
+SYSTEM_PKGCONFIG
+  "vorbis:Vorbis::vorbis"
+  "vorbisenc:Vorbis::vorbisenc"
+  "vorbisfile:Vorbis::vorbisfile"
 ```
 
-When a package is asked for, the whole graph under it is walked first and
-every floor in it raised, before a single `add_subdirectory` has run. So a
-version needed by something deep in the graph is known while the shallow end
-is still being decided, and a port whose pin is lower is built at the version
-that satisfies everyone -- provided it says how a version becomes a tag.
-Nothing is built twice and nothing ends up older than something else needed.
-
-### A library that refuses to be a subdirectory
-
-Some libraries will not be added to another build. libjpeg-turbo says so in
-as many words and stops: an upstream build system cannot anticipate every
-downstream one, and it would rather not try. That is a fair position, and it
-needs a different mechanism rather than an argument.
-
-So it is not made one:
-
-```cmake
-IMPORT cmake
-IMPORT_TARGETS "jpeg-static=JPEG::JPEG"
-```
-
-It is configured on its own, asked what it would build, and that is built
-here -- in your graph, with your generator, beside everything else. The same
-idea as the GN ports and for the same reason: a build system describes a
-build far better than it can be guessed at.
-
-Two sources, because one is not enough. CMake's File API describes every
-target: its sources, its defines, its include directories, and the exact
-flags each *group* of sources is compiled with, so a project that compiles
-one file differently from the rest still does. It does not describe custom
-commands at all, so those are read out of `build.ninja`, which is where the
-generator wrote them down, and run the way it would have run them: through a
-shell, from the directory they were written for. Reproducing them any other
-way is guessing.
-
-`EXTERNAL YES` still exists and is the escape hatch: configure, build and
-install on its own, and take the install prefix. Nothing uses it now.
-
-## A port that is only for somewhere
-
-```cmake
-SYSTEMS Android
-```
-
-Oboe is Android's, and its build says so by compiling with warning flags only
-Clang has. A port that names the systems it is for is refused anywhere else,
-at the point somebody asks for it rather than at the first flag the compiler
-does not recognise. The build that checks the registry skips it rather than
-failing it.
-
-## Headers under the name they are used by
-
-A library's include directory in its own checkout and the same directory once
-it is installed are often not the same shape, and everything that consumes
-the library was written against the installed one.
-
-Opus keeps its headers flat, at `include/opus.h`, and puts them under `opus/`
-when it installs them -- so libsndfile's `#include <opus/opus.h>` compiles
-against an installed Opus and not against a checkout of it. Skia includes
-itself as `"include/core/SkCanvas.h"`, a path with nothing in it to say whose
-include directory that is.
-
-A port offers the directory a second time under the name consumers use:
-
-```cmake
-cme_header_prefix(prefix opus "${source}/include")
-```
-
-```cpp
-#include <opus/opus.h>
-#include <skia/core/SkCanvas.h>
-```
-
-Nothing is copied and nothing is rewritten. The name is a link, and the
-original directory stays on the interface too, so the library's own spelling
-keeps working -- which matters, because the library compiles itself with it.
-
-### Versions as archives
-
-A port can list its versions as archives with a digest of each, instead of
-being cloned:
-
-```cmake
-cme_port_version(skia 153
-  URL "https://codeload.github.com/google/skia/tar.gz/9d07e5ba..."
-  SHA512 9c1682...)
-```
-
-Skia is fetched that way. Its history is several gigabytes and none of it is
-read; an archive of one commit is 65 MiB and a fixed number of bytes that can
-be checked. Ten milestones are listed, `cme_version(skia 148)` takes another,
-and a number that is not listed is refused rather than guessed at -- there is
-no digest for it.
-
-Each line names a commit rather than the branch it was cut from. A branch
-moves, and a digest of what it pointed at yesterday is a digest of nothing.
-
-### A GN project
-
-```cmake
-GN_TARGETS "//:skia=Skia::skia"
-GN_ARGS
-  "cc=\"@CC@\"" "cxx=\"@CXX@\""
-  "target_os=\"@TARGET_OS@\"" "target_cpu=\"@TARGET_CPU@\""
-  "skia_use_vulkan=false"
-  "extra_cflags=[@DEP_INCLUDES@]"
-GN_CONFIRM "skia_use_vulkan=false"
-```
-
-GN is run once, at configure time, and only to describe the build:
-`gn gen --ide=json` reports every source, define, include directory and
-per-file compiler flag of every target, with the project's own hundred build
-arguments already evaluated by the thing that understands them. That
-description becomes ordinary CMake targets, compiled by your generator
-alongside everything else. GN is not part of the build; it is part of the
-configure.
-
-A library name is not left bare. A project told to use the system's libpng
-ends up asking the linker for `-lpng`, and the linker answers with whatever
-it finds -- on a machine that has libpng installed, that is the system's
-copy, with headers from this build and a library from somewhere else, and it
-is silent about it. So a port says what it answers to:
-
-```cmake
-LINK_NAMES "png=PNG::PNG" "png16=PNG::PNG"
-```
-
-and a bare name that matches becomes that target. A target is an archive with
-a path, and a path cannot be mistaken for something else.
-
-`cmake/gn.cmake` knows nothing about any particular project. A port supplies
-its project's own vocabulary -- one calls the compiler `cc`, the next calls
-it `clang_path` -- and asks for the values it cannot know by placeholder:
-`@CC@`, `@CXX@`, `@AR@`, `@SYSROOT@`, `@TARGET_OS@`, `@TARGET_CPU@`, and
-`@DEP_INCLUDES@` / `@DEP_LIBDIRS@` for the libraries the registry built for
-it. `GN_CONFIRM` reads back what GN actually settled on, because an argument
-that is misspelled or overridden still reads correctly in the command line
-that set it.
-
-The alternative -- reading a project's source lists and re-stating its
-conditions in CMake by hand -- is the same work again, done worse, once per
-release. This way a new file arrives on its own and a new condition is
-evaluated by GN.
-
-What is fragile: `action()` steps become `add_custom_command`, and GN rebases
-their script arguments against its build directory, so they are run from
-there. `gn` has to be on `PATH` at configure time, or named with `-DCME_GN=`.
-
-### Saying no, and saying it once
-
-Everything above is additive: something asks, and the library gets it. A
-project also needs to be able to refuse, and to state a policy rather than
-repeat a decision:
-
-```cmake
-cme_features(skia gl -vulkan)          # this library: yes to one, never the other
-set(CME_DEFAULT_FEATURES png -vulkan)  # every library that has a feature by that name
-cme_profile(self-contained)            # a named file of these, beside the registry
-```
-
-A refusal is not a quiet override. If something in the graph genuinely needs
-what was refused, the build stops and says so, naming both sides: one of the
-two has to give.
-
-A feature can also be on unless refused, which is how a port matches an
-upstream default it agrees with -- `flac`'s Ogg support is on because
-libFLAC's own build turns it on.
-
-### Rules about a whole library
-
-```cmake
-cme_port_rule(skia AT_MOST_ONE_OF fontconfig fontmgr-directory)
-cme_port_rule(skia AT_LEAST_ONE_OF gl vulkan)
-cme_port_rule(skia EXACTLY_ONE_OF a b c)
-cme_port_rule(skia WITHOUT zlib DEPENDS miniz)
-```
-
-The first can only be broken by turning something on, so it is checked while
-the graph is walked and the error names what asked. The others can only be
-broken by leaving something out, which is not known until nothing more can
-ask, so they are checked when the library is about to be built. `WITHOUT` is
-a dependency that exists because a feature is *off* -- the substitute for
-something that was not enabled.
-
-### Licences
-
-A port says what its library is under, and a project can say what it will
-accept:
-
-```cmake
-set(CME_ACCEPT_LICENSES "MIT;BSD-3-Clause;Zlib;Apache-2.0")
-```
-
-A library outside that list stops the build, naming what pulled it in --
-which matters here, because a feature can bring a dependency the project
-never mentioned. A port that does not say what it is under is refused too:
-not saying is not the same as being permissive. With no list set, there is no
-opinion and nothing is checked.
-
-### Reading what was decided
-
-```cmake
-cme_report()
-```
-
-at the end of the top-level `CMakeLists.txt` prints every library that was
-reached: where it came from, at what version, who asked for it, and each of
-its features with whether it is on, who wanted it, and what it is for. The
-same text is written beside the lock file.
+The order is: CMake config or Find module, then pkg-config, then build it.
+The report says which of the three answered for each package, so a build that
+took longer than expected can be read rather than guessed at.
 
 ### Whether a system copy has the features
 
@@ -545,6 +334,57 @@ not an error -- it is simply not the copy this build can use, and the port is
 built instead, with a line saying which check failed and why that means what
 it means.
 
+## Versions
+
+`find_package(FLAC 1.4)` means 1.4 or newer, and it is treated that way:
+
+* the system copy is accepted only if it satisfies the request -- the version
+  goes into the `find_package` call and into the pkg-config query;
+* the port is built only if what it can produce satisfies the request. A port
+  pinning 1.3.5 while something asks for 1.4 is an error naming both, not a
+  build of 1.3.5 that fails much later as a missing symbol;
+* a package already resolved cannot be resolved again, so a later caller
+  asking for more than what is already in the build is told so;
+* `EXACT` is honoured on all three paths.
+
+A newer version wins where there is a choice: the system copy is tried first,
+so an installed 1.5 is used rather than the 1.4 the port pins.
+
+To build a version other than the one the port pins:
+
+```cmake
+cme_version(flac 1.5.0)
+```
+
+The port says how a version becomes a tag, because one project tags `v1.3.5`
+and the next tags `1.4.3`:
+
+```cmake
+GIT_TAG_TEMPLATE "v@VERSION@"
+```
+
+`@VERSION_UNDERSCORE@` and `@VERSION_DASH@` exist for the projects that spell
+it those ways. A port without a template refuses the request instead of
+checking out something that is not what was asked for -- unless the version
+it is being held to came from a copy installed on this machine, which is not
+the library speaking and cannot refuse a fetch.
+
+### Requirements are read before anything is built
+
+A dependency can carry a floor, and that is data in the port rather than
+something only discovered by running a third-party CMakeLists:
+
+```cmake
+DEPENDS "ogg>=1.3" vorbis flac opus
+```
+
+When a package is asked for, the whole graph under it is walked first and
+every floor in it raised, before a single `add_subdirectory` has run. So a
+version needed by something deep in the graph is known while the shallow end
+is still being decided, and a port whose pin is lower is built at the version
+that satisfies everyone. Nothing is built twice and nothing ends up older
+than something else needed.
+
 ### A requirement the registry could not have known
 
 What that leaves is a request the consuming project makes itself, after the
@@ -560,25 +400,29 @@ anything the registry was told about. Written down -- run cmake again and it
 will be resolved at 1.4 from the start.
 ```
 
-The floor goes into the cache and into `cme-lock.txt`, so the next configure
+The floor goes into the cache and into the report, so the next configure
 resolves it correctly from the first call. Once per requirement, not once per
 call.
 
-To build a version other than the one the port pins:
+### Versions as archives
+
+A port can list its versions as archives with a digest of each, instead of
+being cloned:
 
 ```cmake
-cme_version(flac 1.5.0)
+cme_port_version(skia 153
+  URL "https://codeload.github.com/google/skia/tar.gz/9d07e5ba..."
+  SHA512 9c1682...)
 ```
 
-The port says how a version becomes a tag, because one project tags `v1.3.5`
-and the next tags `1.4.3`:
+Skia is fetched that way. Its history is several gigabytes and none of it is
+read; an archive of one commit is 65 MiB and a fixed number of bytes that can
+be checked. Ten milestones are listed, `cme_version(skia 148)` takes another,
+and a number that is not listed is refused rather than guessed at -- there is
+no digest for it.
 
-```cmake
-GIT_TAG_TEMPLATE "v@VERSION@"
-```
-
-A port without one refuses the request instead of checking out something that
-is not what was asked for.
+Each line names a commit rather than the branch it was cut from. A branch
+moves, and a digest of what it pointed at yesterday is a digest of nothing.
 
 ## Features
 
@@ -611,7 +455,7 @@ answered as present, because a port that supplies a library supplies all of
 it. `cme_features` is the unambiguous spelling: it is only ever about
 features, and a name that is not one is refused.
 
-and a port asks for them from another port in its dependency, which is where
+A port asks for them from another port in its dependencies, which is where
 this earns its keep:
 
 ```cmake
@@ -629,10 +473,10 @@ A feature asked for after the library is already built is written down and
 the run stops, exactly as a version is -- the next configure builds it with
 the feature from the start.
 
-This is not the old grouping. `graphics` was a group of libraries and it was
-wrong: a renderer can be built out of others. `vulkan` is one capability of
-one library, and the library is the only thing that knows what turning it on
-means.
+This is not a grouping of libraries. `graphics` would be a group and it would
+be wrong: a renderer can be built out of others. `vulkan` is one capability
+of one library, and the library is the only thing that knows what turning it
+on means.
 
 ### What a feature can say
 
@@ -645,6 +489,7 @@ cme_port_feature(skia egl
   EXCLUDES "otherlib[bundled-zlib]"        # what cannot be in the build with it
   SYSTEM_HEADERS "EGL/egl.h"     # how to tell whether a copy somebody else
   SYSTEM_SYMBOLS "eglInitialize:EGL/egl.h" #   built has this feature in it
+  DEFAULT  YES                   # on unless something refuses it
   GN_ARGS  "skia_use_egl=true"
   GN_CONFIRM "skia_use_egl=true")
 ```
@@ -662,6 +507,8 @@ skia cannot have both vulkan and metal.
 
 `EXCLUDES` is the same across libraries rather than within one, and it is
 checked from both ends, because the two sides can arrive in either order.
+`DEFAULT` is how a port matches an upstream default it agrees with --
+`flac`'s Ogg support is on because libFLAC's own build turns it on.
 
 ### A feature can need a library
 
@@ -679,6 +526,38 @@ builds libpng, and zlib under it, because that is what libpng needs. The
 graph is walked with the features in hand, so a dependency that only exists
 because of a feature is found at the same time as everything else, before
 anything is built.
+
+### Saying no, and saying it once
+
+Everything above is additive: something asks, and the library gets it. A
+project also needs to be able to refuse, and to state a policy rather than
+repeat a decision:
+
+```cmake
+cme_features(skia gl -vulkan)          # this library: yes to one, never the other
+set(CME_DEFAULT_FEATURES png -vulkan)  # every library that has a feature by that name
+cme_profile(self-contained)            # a named file of these, beside the registry
+```
+
+A refusal is not a quiet override. If something in the graph genuinely needs
+what was refused, the build stops and says so, naming both sides: one of the
+two has to give.
+
+### Rules about a whole library
+
+```cmake
+cme_port_rule(skia AT_MOST_ONE_OF fontconfig fontmgr-directory)
+cme_port_rule(skia AT_LEAST_ONE_OF gl vulkan)
+cme_port_rule(skia EXACTLY_ONE_OF a b c)
+cme_port_rule(skia WITHOUT zlib DEPENDS miniz)
+```
+
+The first can only be broken by turning something on, so it is checked while
+the graph is walked and the error names what asked. The others can only be
+broken by leaving something out, which is not known until nothing more can
+ask, so they are checked when the library is about to be built. `WITHOUT` is
+a dependency that exists because a feature is *off* -- the substitute for
+something that was not enabled.
 
 ### Skia, as it is set up here
 
@@ -701,6 +580,53 @@ that supplies it. Those settings are read back out of GN afterwards rather
 than assumed. And since this build never runs Skia's dependency sync,
 `third_party/externals` is empty -- so a bundled path would not quietly
 happen, it would fail to find its sources.
+
+## Licences
+
+A port says what its library is under, and a project can say what it will
+accept:
+
+```cmake
+set(CME_ACCEPT_LICENSES "MIT;BSD-3-Clause;Zlib;Apache-2.0")
+```
+
+A library outside that list stops the build, naming what pulled it in --
+which matters here, because a feature can bring a dependency the project
+never mentioned. A port that does not say what it is under is refused too:
+not saying is not the same as being permissive. With no list set, there is no
+opinion and nothing is checked.
+
+One thing does not reach a library that describes itself: this is checked
+before the fetch, so a library whose only licence statement is in its own
+port is refused before it can make it. Whoever sets that variable has to say
+`LICENSE` in the declaration as well.
+
+## Reading what was decided
+
+```cmake
+cme_report()
+```
+
+at the end of the top-level `CMakeLists.txt` prints every library that was
+reached: where it came from, at what version, who asked for it, who ported
+it, and each of its features with whether it is on, who wanted it, and what
+it is for. The same text is written to `cme-lock.txt` in the build directory.
+
+## Options for a library being built
+
+```cmake
+cme_options(flac "WITH_OGG OFF")
+cme_options(libsndfile "ENABLE_MPEG ON")
+```
+
+Set in the same file that installs the provider, before the `find_package`
+that first asks for the library. They are appended after the port's own
+options, so they win. `-DCME_OPTIONS_flac="WITH_OGG OFF"` does the same from
+the command line.
+
+They apply only to a library that is being compiled. A copy taken from the
+system is taken as it was built, and nothing here can change that -- which is
+worth knowing rather than discovering.
 
 ## One way of building, for all of them at once
 
@@ -734,48 +660,10 @@ comes closest, with a system dependency and a wrap to fall back to; Spack has
 external packages you declare; Conan has system recipes for some things.
 vcpkg and Nix build everything on purpose and do not offer the choice at all.
 
-## Options for a library being built
+## Writing a port
 
-```cmake
-cme_options(flac "WITH_OGG OFF")
-cme_options(libsndfile "ENABLE_MPEG ON")
-```
-
-Set in the same file that installs the provider, before the `find_package`
-that first asks for the library. They are appended after the port's own
-options, so they win. `-DCME_OPTIONS_flac="WITH_OGG OFF"` does the same from
-the command line.
-
-They apply only to a library that is being compiled. A copy taken from the
-system is taken as it was built, and nothing here can change that -- which is
-worth knowing rather than discovering.
-
-## Why it built something you have installed
-
-Most distributions ship a `.pc` file and no CMake config, and CMake has no
-`FindOgg`, `FindVorbis`, `FindFLAC` or `FindSndFile` of its own. So a plain
-`find_package(Ogg)` fails on a machine that has libogg installed, and without
-help the port would be built for nothing.
-
-A port therefore also names the pkg-config modules it can be satisfied by,
-and the target each one should answer to:
-
-```cmake
-SYSTEM_PKGCONFIG
-  "vorbis:Vorbis::vorbis"
-  "vorbisenc:Vorbis::vorbisenc"
-  "vorbisfile:Vorbis::vorbisfile"
-```
-
-The order is: CMake config or Find module, then pkg-config, then build it.
-`cme-lock.txt` in the build directory says which of the three answered for
-each package, so a build that took longer than expected can be read rather
-than guessed at.
-
-## A port
-
-Adding a library is one directory in `registry/`. Everything except the
-adapter is data:
+A port is one directory in `registry/`, or one call in your own CMakeLists,
+or one file a library carries. Everything except the adapter is data:
 
 ```cmake
 cme_declare_port(
@@ -785,6 +673,7 @@ cme_declare_port(
   GITHUB_REPOSITORY pnggroup/libpng
   GIT_TAG v1.6.44
   DEPENDS zlib
+  LICENSE Libpng
   OPTIONS "PNG_SHARED OFF" "PNG_TESTS OFF" "PNG_TOOLS OFF"
 )
 
@@ -804,27 +693,95 @@ the scope of every later `find_package` of that package, not just the first,
 because a Find module sets its variables where it is called from and the
 third project to ask needs them as much as the first.
 
-## Old projects
+An adapter lives beside a `port.cmake` in a directory. A port declared in a
+CMakeLists can have one too -- it is an ordinary function -- but a port with
+`OVERLAY` cannot be exported, because an overlay is a directory and a
+declaration in a CMakeLists has none.
+
+### The names a library is known by
+
+```cmake
+PROVIDES Ogg ogg OGG
+```
+
+`find_package` is called all three ways by real projects, and the port
+answers to each.
+
+### Headers under the name they are used by
+
+A library's include directory in its own checkout and the same directory once
+it is installed are often not the same shape, and everything that consumes
+the library was written against the installed one.
+
+Opus keeps its headers flat, at `include/opus.h`, and puts them under `opus/`
+when it installs them -- so libsndfile's `#include <opus/opus.h>` compiles
+against an installed Opus and not against a checkout of it. Skia includes
+itself as `"include/core/SkCanvas.h"`, a path with nothing in it to say whose
+include directory that is.
+
+A port offers the directory a second time under the name consumers use:
+
+```cmake
+cme_header_prefix(prefix opus "${source}/include")
+```
+
+```cpp
+#include <opus/opus.h>
+#include <skia/core/SkCanvas.h>
+```
+
+Nothing is copied and nothing is rewritten. The name is a link, and the
+original directory stays on the interface too, so the library's own spelling
+keeps working -- which matters, because the library compiles itself with it.
+
+### What a bare library name means
+
+A project told to use the system's libpng ends up asking the linker for
+`-lpng`, and the linker answers with whatever it finds -- on a machine that
+has libpng installed, that is the system's copy, with headers from this build
+and a library from somewhere else, and it is silent about it. So a port says
+what it answers to:
+
+```cmake
+LINK_NAMES "png=PNG::PNG" "png16=PNG::PNG"
+```
+
+and a bare name that matches becomes that target. A target is an archive with
+a path, and a path cannot be mistaken for something else.
+
+### A port that is only for somewhere
+
+```cmake
+SYSTEMS Android
+```
+
+Oboe is Android's, and its build says so by compiling with warning flags only
+Clang has. A port that names the systems it is for is refused anywhere else,
+at the point somebody asks for it rather than at the first flag the compiler
+does not recognise. The build that checks the registry skips it rather than
+failing it.
+
+### Old projects
 
 CMake 4 refuses to configure a project whose `cmake_minimum_required` asks
 for less than 3.5, and released libraries ask for less than that -- libogg
-1.3.5 asks for 3.0. These are trees the registry did not write and cannot
-correct, so ports are configured with `CMAKE_POLICY_VERSION_MINIMUM` set to
-3.5. A port that needs another floor says `POLICY_MINIMUM` and gets it. The
-floor applies to ports only: your own project is configured exactly as you
-wrote it.
+1.3.5 asks for 3.0. These are trees this did not write and cannot correct, so
+ports are configured with `CMAKE_POLICY_VERSION_MINIMUM` set to 3.5
+(`CME_POLICY_VERSION_MINIMUM` to change it). A port that needs another floor
+says `POLICY_MINIMUM` and gets it. The floor applies to ports only: your own
+project is configured exactly as you wrote it.
 
-## Nothing of a dependency is installed
+### Nothing of a dependency is installed
 
 Ports are added with `EXCLUDE_FROM_ALL`, and the CMake documentation is
 explicit about what that means: "Any install rules defined in the
 subdirectory or below will be ignored when installing the parent directory."
-A library this registry built is part of your build, not part of what you
-ship: `make install` on your project installs your project.
+A library this built is part of your build, not part of what you ship:
+`make install` on your project installs your project.
 
-That is not quite enough, though, and the difference is worth knowing.
-CMake still *checks* an `install(EXPORT)` while generating, even one it will
-never run -- so libpng, which exports its targets and links zlib, fails there
+That is not quite enough, though, and the difference is worth knowing. CMake
+still *checks* an `install(EXPORT)` while generating, even one it will never
+run -- so libpng, which exports its targets and links zlib, fails there
 because zlib is in no export set of libpng's. The rules would never have run;
 the check does not care. So ports are additionally given `SKIP_INSTALL_ALL`
 and its three companions, which zlib introduced and libpng and freetype
@@ -832,7 +789,7 @@ followed. A project that has never heard of them ignores them.
 
 Their headers are added with `SYSTEM` as well. Their warnings are not yours.
 
-## Nothing is built at configure time
+### Nothing is built at configure time
 
 The `*-populate` steps in the log are FetchContent downloading, and they say
 so themselves: no configure step, no build step, no install step. Every
@@ -841,14 +798,16 @@ build, in parallel with everything else, with your flags and your generator.
 
 A port pinned to a branch instead of a commit makes those download steps run
 on every configure, because a moving ref has to be checked each time. That is
-what "Fetching latest from the remote origin" was, and it is why ports name
-commits or tags.
+why ports name commits or tags -- and why the lock records the commit that
+was actually fetched.
 
-## A library with no CMake
+## Libraries that are not a CMake subdirectory
+
+### A library with no CMake
 
 `OVERLAY` says the upstream has no build system of its own. The sources are
-downloaded and nothing is configured from them; the overlay directory in this
-registry is a normal CMake project that reads them through
+downloaded and nothing is configured from them; the overlay directory beside
+the port is a normal CMake project that reads them through
 `CME_UPSTREAM_SOURCE_DIR` and builds what it likes. Nothing is written into
 the fetched tree, so the checkout stays exactly as it was downloaded and the
 overlay can be read as ordinary CMake.
@@ -857,9 +816,78 @@ overlay can be read as ordinary CMake.
 its implementation behind a macro, turned into a static library by a
 three-line translation unit that lives in the overlay.
 
+### A library that refuses to be a subdirectory
+
+Some libraries will not be added to another build. libjpeg-turbo says so in
+as many words and stops: an upstream build system cannot anticipate every
+downstream one, and it would rather not try. That is a fair position, and it
+needs a different mechanism rather than an argument.
+
+So it is not made one:
+
+```cmake
+IMPORT cmake
+IMPORT_TARGETS "jpeg-static=JPEG::JPEG"
+```
+
+It is configured on its own, asked what it would build, and that is built
+here -- in your graph, with your generator, beside everything else. The same
+idea as the GN ports and for the same reason: a build system describes a
+build far better than it can be guessed at.
+
+Two sources, because one is not enough. CMake's File API describes every
+target: its sources, its defines, its include directories, and the exact
+flags each *group* of sources is compiled with, so a project that compiles
+one file differently from the rest still does. It does not describe custom
+commands at all, so those are read out of `build.ninja`, which is where the
+generator wrote them down, and run the way it would have run them: through a
+shell, from the directory they were written for. Reproducing them any other
+way is guessing.
+
+`EXTERNAL YES` still exists and is the escape hatch: configure, build and
+install on its own, and take the install prefix. Nothing uses it now.
+
+### A GN project
+
+```cmake
+GN_TARGETS "//:skia=Skia::skia"
+GN_ARGS
+  "cc=\"@CC@\"" "cxx=\"@CXX@\""
+  "target_os=\"@TARGET_OS@\"" "target_cpu=\"@TARGET_CPU@\""
+  "skia_use_vulkan=false"
+  "extra_cflags=[@DEP_INCLUDES@]"
+GN_CONFIRM "skia_use_vulkan=false"
+```
+
+GN is run once, at configure time, and only to describe the build:
+`gn gen --ide=json` reports every source, define, include directory and
+per-file compiler flag of every target, with the project's own hundred build
+arguments already evaluated by the thing that understands them. That
+description becomes ordinary CMake targets, compiled by your generator
+alongside everything else. GN is not part of the build; it is part of the
+configure.
+
+`cmake/gn.cmake` knows nothing about any particular project. A port supplies
+its project's own vocabulary -- one calls the compiler `cc`, the next calls
+it `clang_path` -- and asks for the values it cannot know by placeholder:
+`@CC@`, `@CXX@`, `@AR@`, `@SYSROOT@`, `@TARGET_OS@`, `@TARGET_CPU@`, and
+`@DEP_INCLUDES@` / `@DEP_LIBDIRS@` for the libraries this built for it.
+`GN_CONFIRM` reads back what GN actually settled on, because an argument that
+is misspelled or overridden still reads correctly in the command line that
+set it.
+
+The alternative -- reading a project's source lists and re-stating its
+conditions in CMake by hand -- is the same work again, done worse, once per
+release. This way a new file arrives on its own and a new condition is
+evaluated by GN.
+
+What is fragile: `action()` steps become `add_custom_command`, and GN rebases
+their script arguments against its build directory, so they are run from
+there. `gn` has to be on `PATH` at configure time, or named with `-DCME_GN=`.
+
 ### How good a port is
 
-Not every overlay is a full CMake build, and the ones that are not should say
+Not every port is a full CMake build, and the ones that are not should say
 so. Three shapes, best first:
 
 **A CMake build.** The library is built by CMake, as targets in your graph,
@@ -885,9 +913,9 @@ one thing. Acceptable as a stage on the way, not as a destination -- and a
 port that is one should say it in its first line, so nobody is surprised.
 
 The same ordering applies to what upstream should do, which is the point of
-the registry: a library that ships its own CMake needs no overlay at all.
+all this: a library that ships its own CMake needs no port at all.
 
-## The point is for a port to get thin
+## What a port still is, when nothing is missing
 
 A library that ships CMake, resolves its own dependencies instead of calling
 bare `find_package` and hoping, and exports namespaced targets needs nothing
@@ -897,7 +925,7 @@ work for a library to adopt.
 
 So most of a port is a note about one of three things being absent upstream:
 
-| | what is missing | what the registry does |
+| | what is missing | what is done about it |
 | --- | --- | --- |
 | 1 | no CMake at all | an overlay: a CMake project written here that builds the downloaded sources |
 | 2 | CMake, but dependencies are looked for with bare `find_package` | the provider answers those calls |
@@ -907,7 +935,7 @@ Those three shrink to nothing as upstreams improve, and a port deleted for
 that reason is this repository working rather than losing.
 
 But a port is not only those three, and this is worth being clear about,
-because it is easy to think a well-behaved library needs no entry here at
+because it is easy to think a well-behaved library needs no entry anywhere at
 all. What remains even when nothing is missing:
 
 * **Features.** A library has its own options -- `WITH_OGG`, `PNG_SHARED` --
@@ -920,7 +948,7 @@ all. What remains even when nothing is missing:
   to say that the pkg-config module `ogg` is this target -- however good
   libogg's own CMake is.
 * **What it answers to.** A bare `-lpng` finds whatever is installed, and
-  only the registry can say which target that name means here.
+  only a port can say which target that name means here.
 * **The names it is known by.** `Ogg`, `ogg`, `OGG`, `SndFile`, `sndfile`.
 * **What it is under**, so a project can refuse a licence it cannot carry.
 * **Variables its consumers read.** Exporting `Freetype::Freetype` correctly
@@ -928,16 +956,18 @@ all. What remains even when nothing is missing:
 
 `ogg` and `opus` are the shape a finished port has: no overlay, no adapter
 worth the name, and a dozen lines of the list above. That is the success
-condition -- ports that are thin, not a registry that is empty.
+condition -- ports that are thin, and most of them living with the library
+they describe rather than here.
 
 ## What is here
 
-zlib, libpng, libjpeg-turbo, libwebp, freetype, ogg, vorbis, FLAC,
-opus, libsndfile, minimp3, Skia.
+zlib, libpng, libjpeg-turbo, libwebp, freetype, expat, xz, libzip, ogg,
+vorbis, FLAC, opus, libsndfile, minimp3, openal-soft, oboe, Skia.
 
-That is not a registry yet. It is enough to show the three shapes -- a
-library with CMake, a library without one, and a library with a different
-build system entirely -- and enough to prove the interesting case:
+That is not a registry yet, and it is not trying to become one. It is enough
+to show the shapes -- a library with CMake, a library without one, a library
+that refuses to be a subdirectory, and a library with a different build
+system entirely -- and enough to prove the interesting case:
 `find_package(SndFile)` alone brings four more.
 
 ## Not building the same thing twice
@@ -978,10 +1008,10 @@ targets in a second: no fetch, no `gn gen`, no five hundred compiles.
 
 How much has to match is a choice, because two different things are mixed
 together in what decides a build. What the library *is* -- which library, at
-which version, from which sources, with which features and options -- is its
-identity, and a difference there is a different library whatever you say. The
-rest is the machine it was built on, and how much of that matters is a
-judgement:
+which version, from which sources, with which features and options, and what
+every declaration that contributed to its port said -- is its identity, and a
+difference there is a different library whatever you say. The rest is the
+machine it was built on, and how much of that matters is a judgement:
 
 | `CME_STORE_MATCH` | what has to match |
 | --- | --- |
@@ -1003,6 +1033,12 @@ back in, and everything that differs is printed:
 
 A reuse that is not exact is a decision, and a decision nobody is told about
 is a surprise later.
+
+The store is asked twice, before the fetch and after it, and the first ask is
+what keeps a build with a warm store from downloading anything at all. The
+second is for a port that was only a name and a URL until the tree arrived:
+what a library says about itself is part of what it is, and so part of the
+name its build is kept under.
 
 Two things this is careful about. The archives are copied when the build has
 made them and the stamp is written last, so an interrupted build leaves an
@@ -1027,8 +1063,9 @@ against.
 
 Turn it off with `-DCME_STORE=` (empty), or point it somewhere else with
 `-DCME_STORE=/path`. There is a compiler cache as well, used when one is
-installed, but it is the smaller half: it makes compiling cheaper, while this
-skips the compiling, the generating and the linking together.
+installed (`CME_COMPILER_CACHE`), but it is the smaller half: it makes
+compiling cheaper, while this skips the compiling, the generating and the
+linking together.
 
 ## A build with no network
 
@@ -1050,7 +1087,8 @@ Nothing is compiled; every library named, and everything underneath it, is
 fetched into `vendor/` and left there. Ask for the same features the real
 build will ask for -- a feature is what brings a dependency, so fetching Skia
 without `png` does not fetch libpng, and the offline build would stop at the
-first thing it could not reach.
+first thing it could not reach. `CME_FETCH_ONLY` is the same thing for a
+project that declares its own ports: it fetches and builds none of it.
 
 Then, wherever there is no network:
 
@@ -1083,10 +1121,22 @@ Locally:
 
 ```sh
 python3 check.py          # nothing is fetched: names, licences, targets
+test/decentral.sh         # a library nobody has ported, used every way there is
 test/store.sh             # built once, found again, not found when it should not be
 test/run.sh               # everything that needs no more than a compiler
 test/run.sh --with-skia-features   # and the ones that need gn and a wait
 ```
+
+`test/decentral.sh` builds an upstream repository, an overlay directory and
+an overlay repository a minute before using them, and then uses a library
+that is in no registry anywhere: declared by the project, read from an
+overlay directory, read from an overlay repository, carried by the library
+that needs it, installed into a prefix and read back from there, described in
+one place and located in another, and refused when nothing says where it
+comes from. It also asks the lock its questions: a run that reaches
+everything writes down the commit that was actually fetched and the digest of
+every port file, a commit that moved stops the build, and a port that is
+followed rather than pinned does not.
 
 `test/store.sh` asks the store three questions, and none of them is "was it
 faster" -- a timing is not an answer. Every build writes down where each
@@ -1095,11 +1145,11 @@ built is *built*; the same library in another build directory comes from the
 *store*; the same library with a difference the mode does not allow is
 *built* again, and with one the mode does allow it is found.
 
-Two kinds of check. The refusals configure a project against a registry of
-libraries that do not exist -- every one of those errors is decided while the
-graph is being walked, so nothing is ever fetched -- and each asserts not
-only that the build stopped but *why*: a refusal for the wrong reason fails
-the check, because the message is the feature.
+Two kinds of check in `test/run.sh`. The refusals configure a project against
+a registry of libraries that do not exist -- every one of those errors is
+decided while the graph is being walked, so nothing is ever fetched -- and
+each asserts not only that the build stopped but *why*: a refusal for the
+wrong reason fails the check, because the message is the feature.
 
 The builds are real. `test/features` asks freetype for colour bitmap glyphs,
 which brings libpng and zlib under it, and asks flac for nothing and gets its
@@ -1115,6 +1165,40 @@ cmake -S test/skia -B build/skia -G Ninja \
   -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=$PWD/cmake-everywhere.cmake \
   -DCME_FEATURES_skia="gl;png;freetype"
 ```
+
+## Every knob
+
+| | |
+| --- | --- |
+| `CME_SYSTEM` | `AUTO`, `ALWAYS`, `NEVER` |
+| `CME_SYSTEM_<PACKAGE>` | the same, for one package |
+| `CME_REGISTRY` | the ports that come with this |
+| `CME_OVERLAYS` | directories of ports, or URLs of repositories of them |
+| `CME_OVERLAY_CACHE` | where overlay repositories are cloned |
+| `CME_OVERLAY_REFRESH` | update the overlays that are not pinned |
+| `CME_SOURCE_PORTS` | read what a fetched library says about itself |
+| `CME_SYSTEM_PORTS` | read ports installed in the prefixes |
+| `CME_EXPORT_PORTS` | install the ports this project declares |
+| `CME_EXPORT_DESTINATION` | where, under the prefix |
+| `CME_LOCK` | the lock file to write and be held to |
+| `CME_LOCK_ALL` | reach everything and write a whole lock |
+| `CME_LOCK_UPDATE` | take what this build resolved to as the new lock |
+| `CME_UNLOCKED` | ports being followed rather than pinned |
+| `CME_LOCK_FILE` | where the report of one build is written |
+| `CME_STORE` | where built libraries are kept, or empty for none |
+| `CME_STORE_MATCH` | `EXACT`, `COMPATIBLE`, `LOOSE` |
+| `CME_COMPILER_CACHE` | the compiler cache to give ports, or `OFF` |
+| `CME_FEATURES_<port>` | features wanted |
+| `CME_FEATURES_OFF_<port>` | features refused |
+| `CME_DEFAULT_FEATURES` | features wanted, or refused with `-`, wherever they exist |
+| `CME_OPTIONS_<port>` | options for one library being built |
+| `CME_GN_ARGS_<port>` | GN arguments for one GN library |
+| `CME_VERSION_<port>` | the version to build |
+| `CME_ACCEPT_LICENSES` | the licences this build will carry |
+| `CME_POLICY_VERSION_MINIMUM` | the policy floor ports are configured with |
+| `CME_OFFLINE` | refuse to fetch |
+| `CME_FETCH_ONLY` | fetch and build nothing |
+| `CME_GN` | the `gn` to use |
 
 ## Licence
 
