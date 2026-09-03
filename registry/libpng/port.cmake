@@ -9,6 +9,7 @@ cme_declare_port(
   GIT_TAG v1.6.44
   DEPENDS zlib
   OPTIONS
+    "SKIP_INSTALL_ALL ON"
     "PNG_SHARED OFF"
     "PNG_STATIC ON"
     "PNG_TESTS OFF"
@@ -31,6 +32,5 @@ function(cme_adapt_libpng source binary)
   cme_export_variable(PNG PNG_INCLUDE_DIR "${source};${binary}")
   cme_export_variable(PNG PNG_INCLUDE_DIRS "${source};${binary}")
   cme_export_variable(PNG PNG_VERSION_STRING 1.6.44)
-  target_include_directories(png_static PUBLIC "${source}" "${binary}")
-endfunction(  SYSTEM_PKGCONFIG "libpng:PNG::PNG"
-)
+  cme_build_includes(png_static "${source}" "${binary}")
+endfunction()

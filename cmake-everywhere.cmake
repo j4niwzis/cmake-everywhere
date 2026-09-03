@@ -105,6 +105,22 @@ function(cme_version port version)
     "Version of the ${port} port to build" FORCE)
 endfunction()
 
+# Include directories for a build tree, for the libraries that attach none to
+# their targets and expect their install to do it.
+#
+# BUILD_INTERFACE is not decoration: a plain absolute path inside the build
+# tree in INTERFACE_INCLUDE_DIRECTORIES is an error for any target that is
+# exported, since that path means nothing on another machine.
+function(cme_build_includes target)
+  if(NOT TARGET ${target})
+    message(FATAL_ERROR "cmake-everywhere: ${target} was not built")
+  endif()
+  foreach(directory IN LISTS ARGN)
+    target_include_directories(${target} PUBLIC
+      "$<BUILD_INTERFACE:${directory}>")
+  endforeach()
+endfunction()
+
 # An alias so that whatever the upstream calls its target -- zlibstatic,
 # png_static, FLAC -- can be linked under the name its consumers expect.
 function(cme_alias alias target)
@@ -279,7 +295,15 @@ function(cme_build_port port package version exact)
   set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
                "${port_version}")
 
-  set(arguments NAME ${port})
+  # EXCLUDE_FROM_ALL: "Any install rules defined in the subdirectory or below
+  # will be ignored when installing the parent directory." A dependency this
+  # registry built is part of the consumer's build, not part of what the
+  # consumer installs -- and a project whose install(EXPORT) names a target
+  # from another port would otherwise fail at generate time, because that
+  # target is in no export set of its own.
+  #
+  # SYSTEM: their headers are not yours, so their warnings are not yours.
+  set(arguments NAME ${port} EXCLUDE_FROM_ALL YES SYSTEM YES)
   foreach(field GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
                 URL URL_HASH)
     cme_port_field(value ${port} ${field})

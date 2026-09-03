@@ -7,6 +7,7 @@ cme_declare_port(
   GITHUB_REPOSITORY madler/zlib
   GIT_TAG v1.3.1
   OPTIONS
+    "SKIP_INSTALL_ALL ON"
     "ZLIB_BUILD_EXAMPLES OFF"
   SYSTEM_PKGCONFIG "zlib:ZLIB::ZLIB"
   GIT_TAG_TEMPLATE "v@VERSION@"
@@ -27,6 +28,5 @@ function(cme_adapt_zlib source binary)
   cme_export_variable(ZLIB ZLIB_INCLUDE_DIRS "${source};${binary}")
   cme_export_variable(ZLIB ZLIB_VERSION 1.3.1)
   cme_export_variable(ZLIB ZLIB_VERSION_STRING 1.3.1)
-  target_include_directories(zlibstatic PUBLIC "${source}" "${binary}")
-endfunction(  SYSTEM_PKGCONFIG "zlib:ZLIB::ZLIB"
-)
+  cme_build_includes(zlibstatic "${source}" "${binary}")
+endfunction()

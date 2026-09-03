@@ -161,6 +161,21 @@ correct, so ports are configured with `CMAKE_POLICY_VERSION_MINIMUM` set to
 floor applies to ports only: your own project is configured exactly as you
 wrote it.
 
+## Nothing of a dependency is installed
+
+Ports are added with `EXCLUDE_FROM_ALL`, and the CMake documentation is
+explicit about what that means: "Any install rules defined in the
+subdirectory or below will be ignored when installing the parent directory."
+A library this registry built is part of your build, not part of what you
+ship: `make install` on your project installs your project.
+
+It also removes a failure that has nothing to do with installing. libpng
+exports its targets, `png_static` links zlib, and zlib is in no export set of
+libpng's -- so a build that added both failed at generate time over an
+install neither of them was going to perform.
+
+Their headers are added with `SYSTEM` as well. Their warnings are not yours.
+
 ## Nothing is built at configure time
 
 The `*-populate` steps in the log are FetchContent downloading, and they say
