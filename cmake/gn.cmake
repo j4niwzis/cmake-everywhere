@@ -537,15 +537,28 @@ function(cme_gn_import port description)
       endif()
     endforeach()
 
+    # Built because something asks for it, and not because it is described.
+    #
+    # A GN description is the whole project: Skia's is ninety-four targets,
+    # among them the libraries its own test suite is made of. Those were in
+    # this build's ALL, so a consumer that asked for one library compiled all
+    # of them -- minutes of a machine on code nobody here links, and a build
+    # that stops when one of them does not compile with this compiler, which
+    # is where a Skia build stopped: tests/Test.h names nullptr_t unqualified
+    # and clang with this libstdc++ does not have it.
+    #
+    # What the port exports is what is asked for, and the export marks it
+    # below; everything under it is built because it is under it, which is
+    # what CMake does with a dependency of something in ALL.
     if(type STREQUAL "static_library" OR type STREQUAL "shared_library")
       if(compiled)
-        add_library(${target} STATIC ${compiled})
+        add_library(${target} STATIC EXCLUDE_FROM_ALL ${compiled})
       else()
         add_library(${target} INTERFACE)
       endif()
     elseif(type STREQUAL "source_set")
       if(compiled)
-        add_library(${target} OBJECT ${compiled})
+        add_library(${target} OBJECT EXCLUDE_FROM_ALL ${compiled})
       else()
         add_library(${target} INTERFACE)
       endif()
@@ -751,6 +764,13 @@ function(cme_gn_export port)
       message(FATAL_ERROR
         "cmake-everywhere: ${port} says it exports ${label}, and gn's "
         "description has no such target")
+    endif()
+    # And this is the one that is built. Everything imported is excluded
+    # from ALL, so what a consumer gets is this target and whatever it is
+    # made of, rather than every target the project happens to describe.
+    get_target_property(kind ${port}_${name} TYPE)
+    if(NOT kind STREQUAL "INTERFACE_LIBRARY")
+      set_target_properties(${port}_${name} PROPERTIES EXCLUDE_FROM_ALL FALSE)
     endif()
     cme_alias(${alias} ${port}_${name})
   endforeach()
