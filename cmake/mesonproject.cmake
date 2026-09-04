@@ -90,6 +90,18 @@ function(cme_meson_machine_file port out_file out_kind)
   if(CMAKE_CXX_FLAGS)
     separate_arguments(cpp_args UNIX_COMMAND "${CMAKE_CXX_FLAGS}")
   endif()
+  # What linking here takes, which is not the same as what compiling takes.
+  #
+  # Meson decides whether a compiler supports a flag by compiling a program
+  # and linking it, so a build whose link needs saying -- another linker,
+  # another runtime library, no shared libraries at all -- answers "no" to
+  # every question when it is not told. What that looks like is a compiler
+  # that does not support -Wno-unused-parameter, and then a header that does
+  # not define a constant it plainly defines.
+  if(CMAKE_EXE_LINKER_FLAGS)
+    separate_arguments(cme_linker UNIX_COMMAND "${CMAKE_EXE_LINKER_FLAGS}")
+    list(APPEND link_args ${cme_linker})
+  endif()
   if(CMAKE_SYSROOT)
     list(APPEND c_args "--sysroot=${CMAKE_SYSROOT}")
     list(APPEND cpp_args "--sysroot=${CMAKE_SYSROOT}")
