@@ -75,6 +75,11 @@ cme_declare_port(
 # The drivers, one feature each: what a build asks for is what it carries,
 # and what it carries is what it can draw on.
 #
+# The gallium ones have no target of their own: they end up inside the one
+# gallium object, which EGL links, so asking for the feature is the whole of
+# it. Each Vulkan driver is a target, because a Vulkan driver is a thing a
+# program picks between at run time and this is where the picking starts.
+#
 # Each names the kernel wrapper it speaks through, because a driver without
 # it compiles and then cannot open a device.
 
@@ -114,32 +119,39 @@ cme_port_feature(mesa gl-software
 cme_port_feature(mesa vulkan-amd
   SUMMARY "Vulkan on AMD, through RADV"
   DEPENDS "libdrm[amdgpu]"
-  OPTIONS "vulkan-drivers +amd")
+  OPTIONS "vulkan-drivers +amd"
+  IMPORT_TARGETS "vulkan_radeon=Mesa::vulkan-amd")
 
 cme_port_feature(mesa vulkan-intel
   SUMMARY "Vulkan on Intel, through ANV"
   DEPENDS "libdrm[intel]"
-  OPTIONS "vulkan-drivers +intel")
+  OPTIONS "vulkan-drivers +intel"
+  IMPORT_TARGETS "vulkan_intel=Mesa::vulkan-intel")
 
 cme_port_feature(mesa vulkan-nouveau
   SUMMARY "Vulkan on NVIDIA Turing and later, through NVK"
   DEPENDS "libdrm[nouveau]"
-  OPTIONS "vulkan-drivers +nouveau")
+  OPTIONS "vulkan-drivers +nouveau"
+  IMPORT_TARGETS "vulkan_nouveau=Mesa::vulkan-nouveau")
 
 cme_port_feature(mesa vulkan-adreno
   SUMMARY "Vulkan on Adreno, through Turnip"
   DEPENDS "libdrm[freedreno]"
-  OPTIONS "vulkan-drivers +freedreno")
+  OPTIONS "vulkan-drivers +freedreno"
+  IMPORT_TARGETS "vulkan_freedreno=Mesa::vulkan-adreno")
 
 cme_port_feature(mesa vulkan-mali
   SUMMARY "Vulkan on Mali, through PanVK"
-  OPTIONS "vulkan-drivers +panfrost")
+  OPTIONS "vulkan-drivers +panfrost"
+  IMPORT_TARGETS "vulkan_panfrost=Mesa::vulkan-mali")
 
 cme_port_feature(mesa vulkan-broadcom
   SUMMARY "Vulkan on VideoCore, through V3DV"
-  OPTIONS "vulkan-drivers +broadcom")
+  OPTIONS "vulkan-drivers +broadcom"
+  IMPORT_TARGETS "vulkan_broadcom=Mesa::vulkan-broadcom")
 
 cme_port_feature(mesa vulkan-software
   SUMMARY "Vulkan on the processor, through lavapipe"
   DEPENDS llvm
-  OPTIONS "vulkan-drivers +swrast" "llvm enabled")
+  OPTIONS "vulkan-drivers +swrast" "llvm enabled"
+  IMPORT_TARGETS "vulkan_lvp=Mesa::vulkan-software")
