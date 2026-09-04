@@ -78,10 +78,16 @@ set(CME_TOOLCHAIN_RUNTIME \"${runtime_prefix}\")
 # The compiler's own runtime is LLVM's, not GCC's: this build has no libgcc
 # in it and wants none -- the unwinder, the builtins and the C++ ABI all come
 # from the same place the compiler does.
+#
+# Said where linking happens and not where compiling does. -rtlib is a flag
+# about the link, and a compiler handed it while only compiling warns that
+# nothing used it -- which is an error under -Werror, and a build system
+# that tests flags by compiling with -Werror then concludes the compiler
+# supports nothing at all.
 set(CMAKE_C_FLAGS_INIT
-    \"--sysroot=${musl_prefix} -nostdinc -isystem ${musl_prefix}/include -rtlib=compiler-rt\")
+    \"--sysroot=${musl_prefix} -nostdinc -isystem ${musl_prefix}/include\")
 set(CMAKE_CXX_FLAGS_INIT
-    \"--sysroot=${musl_prefix} -nostdinc -isystem ${runtime_prefix}/include/c++/v1 -isystem ${musl_prefix}/include -stdlib=libc++ -rtlib=compiler-rt\")
+    \"--sysroot=${musl_prefix} -nostdinc -isystem ${runtime_prefix}/include/c++/v1 -isystem ${musl_prefix}/include -stdlib=libc++\")
 set(CMAKE_EXE_LINKER_FLAGS_INIT
     \"--sysroot=${musl_prefix} -static -fuse-ld=lld -rtlib=compiler-rt --unwindlib=libunwind -nostdlib++ -L${runtime_prefix}/lib -L${musl_prefix}/lib\")
 set(CMAKE_CXX_STANDARD_LIBRARIES \"-lc++ -lc++abi -lunwind\")
