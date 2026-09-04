@@ -14,7 +14,16 @@ include_guard(GLOBAL)
 # Where the project is configured so that it can be asked. Nothing is built
 # there; it exists to hold the answer and the headers the answer refers to.
 function(cme_cmake_probe port source out_build)
-  set(build "${CMAKE_BINARY_DIR}/_cme/${port}-probe")
+  cme_cmake_configure(${port} "${source}" "${CMAKE_BINARY_DIR}/_cme/${port}-probe"
+                      "" build)
+  set(${out_build} "${build}" PARENT_SCOPE)
+endfunction()
+
+# Configuring a CMake project on its own, which is the same work whether it
+# is about to be asked what it would build or about to be built and
+# installed. A prefix is given for the second and empty for the first.
+function(cme_cmake_configure port source where prefix out_build)
+  set(build "${where}")
   file(MAKE_DIRECTORY "${build}/.cmake/api/v1/query")
   # Asking is a file with the name of the question in it.
   file(TOUCH "${build}/.cmake/api/v1/query/codemodel-v2")
@@ -30,6 +39,9 @@ function(cme_cmake_probe port source out_build)
   endforeach()
   list(APPEND arguments "-DBUILD_SHARED_LIBS=OFF"
                         "-DCMAKE_POSITION_INDEPENDENT_CODE=ON")
+  if(prefix)
+    list(APPEND arguments "-DCMAKE_INSTALL_PREFIX=${prefix}")
+  endif()
 
   cme_enabled_features(${port} features)
   cme_port_field(options ${port} OPTIONS)
@@ -44,15 +56,56 @@ function(cme_cmake_probe port source out_build)
     list(APPEND arguments "-D${name}=${value}")
   endforeach()
 
-  message(STATUS "cmake-everywhere: asking ${port} what it would build")
+  if(prefix)
+    message(STATUS "cmake-everywhere: configuring ${port} to build it")
+  else()
+    message(STATUS "cmake-everywhere: asking ${port} what it would build")
+  endif()
   execute_process(COMMAND ${CMAKE_COMMAND} ${arguments}
                   RESULT_VARIABLE code OUTPUT_VARIABLE output
                   ERROR_VARIABLE output)
   if(NOT code EQUAL 0)
     message(FATAL_ERROR
-      "cmake-everywhere: configuring ${port} to ask it failed\n${output}")
+      "cmake-everywhere: configuring ${port} failed\n${output}")
   endif()
   set(${out_build} "${build}" PARENT_SCOPE)
+endfunction()
+
+# A CMake project built its own way, into a prefix.
+#
+# The fourth shape, and the one for a project nothing can usefully import:
+# LLVM is thousands of targets and what wants it -- Mesa -- does not want
+# targets at all, it wants llvm-config in a prefix and asks that program
+# what to link. So this configures it, builds it and installs it, and what
+# comes out is what the port says comes out, exactly as for a project with a
+# configure script of its own.
+#
+# Nothing here compiles in the consumer's graph, which is the price. It is
+# paid where the alternative is not having the library.
+function(cme_cmake_prefix_build port source prefix)
+  if(EXISTS "${prefix}/.cme-installed")
+    message(STATUS "cmake-everywhere: ${port} is already built in ${prefix}")
+    return()
+  endif()
+  cme_cmake_configure(${port} "${source}"
+                      "${CMAKE_BINARY_DIR}/_cme/${port}-build" "${prefix}" build)
+  message(STATUS "cmake-everywhere: building ${port}")
+  execute_process(COMMAND ${CMAKE_COMMAND} --build "${build}"
+                  RESULT_VARIABLE code OUTPUT_VARIABLE output
+                  ERROR_VARIABLE output)
+  if(NOT code EQUAL 0)
+    message(FATAL_ERROR "cmake-everywhere: building ${port} failed\n${output}")
+  endif()
+  execute_process(COMMAND ${CMAKE_COMMAND} --install "${build}"
+                  RESULT_VARIABLE code OUTPUT_VARIABLE output
+                  ERROR_VARIABLE output)
+  if(NOT code EQUAL 0)
+    message(FATAL_ERROR "cmake-everywhere: installing ${port} failed\n${output}")
+  endif()
+  # Said after the install rather than before it, so that an interrupted
+  # build leaves a prefix that is built again rather than one that is half
+  # there and believed.
+  file(WRITE "${prefix}/.cme-installed" "${port}\n")
 endfunction()
 
 # The answer, as CMake data.

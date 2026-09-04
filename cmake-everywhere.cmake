@@ -5475,14 +5475,22 @@ function(cme_build_port port package version exact)
     cme_build_external(${port} "${package}" "${port_version}" "${entry}")
     set(CME_INSTALLED_${port} "${entry}" CACHE INTERNAL "" FORCE)
   elseif(configure)
-    # A project with a configure script of its own cannot be asked what it
-    # would build, so it is built its own way into a prefix and what comes
-    # out is what the port says comes out.
+    # A project built its own way into a prefix, because what comes out is
+    # a prefix rather than targets: a configure script cannot be asked what
+    # it would build, and a CMake project can be asked and is sometimes not
+    # worth asking -- LLVM is thousands of targets, and what wants it asks
+    # llvm-config in a prefix rather than linking any of them.
+    #
+    # What comes out either way is what the port says comes out.
     cme_store_entry(entry ${port} "${port_version}")
     if(NOT entry)
       set(entry "${CMAKE_BINARY_DIR}/_cme/${port}-installed")
     endif()
-    cme_configure_build(${port} "${${port}_SOURCE_DIR}" "${entry}")
+    if(configure STREQUAL "cmake")
+      cme_cmake_prefix_build(${port} "${${port}_SOURCE_DIR}" "${entry}")
+    else()
+      cme_configure_build(${port} "${${port}_SOURCE_DIR}" "${entry}")
+    endif()
     set(CME_INSTALLED_${port} "${entry}" CACHE INTERNAL "" FORCE)
   elseif(gn_targets)
     cme_gn_build(${port} "${${port}_SOURCE_DIR}")
