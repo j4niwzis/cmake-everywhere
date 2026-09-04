@@ -215,6 +215,14 @@ set(CMAKE_CXX_FLAGS_INIT
 set(CMAKE_EXE_LINKER_FLAGS_INIT
     \"--sysroot=${CME_TOOLCHAIN_PREFIX} -static -fuse-ld=lld -rtlib=compiler-rt --unwindlib=libunwind -nostdlib++ -L${CME_TOOLCHAIN_PREFIX}/lib\")
 set(CMAKE_CXX_STANDARD_LIBRARIES \"-lc++ -lc++abi -lunwind\")
+
+# A shared library links too, and with the same linker: a project that
+# builds one -- LLVM builds two whether or not anybody wants them -- gets
+# whatever the machine calls ld unless this says otherwise, and then stops
+# on a flag that only lld has.
+set(CMAKE_SHARED_LINKER_FLAGS_INIT
+    \"--sysroot=${CME_TOOLCHAIN_PREFIX} -fuse-ld=lld -rtlib=compiler-rt --unwindlib=libunwind -L${CME_TOOLCHAIN_PREFIX}/lib\")
+set(CMAKE_MODULE_LINKER_FLAGS_INIT \"\${CMAKE_SHARED_LINKER_FLAGS_INIT}\")
 ")
 
 message(STATUS

@@ -35,6 +35,12 @@ cme_declare_port(
   OPTIONS
     "LLVM_TARGETS_TO_BUILD Native|AMDGPU"
     "LLVM_BUILD_LLVM_DYLIB OFF"
+    # And the two shared wrappers LLVM builds beside it, which nothing here
+    # links: a static program cannot use them, and building them is a link
+    # of every LLVM archive for nobody.
+    "LLVM_TOOL_LLVM_SHLIB_BUILD OFF"
+    "LLVM_TOOL_REMARKS_SHLIB_BUILD OFF"
+    "LLVM_BUILD_LLVM_C_DYLIB OFF"
     "LLVM_LINK_LLVM_DYLIB OFF"
     "LLVM_ENABLE_PIC ON"
     "LLVM_ENABLE_TERMINFO OFF"

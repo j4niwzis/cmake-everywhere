@@ -38,7 +38,18 @@ function(cme_cmake_configure port source where prefix out_build)
                CMAKE_MAKE_PROGRAM CMAKE_PREFIX_PATH CMAKE_CXX_STANDARD
                CMAKE_INTERPROCEDURAL_OPTIMIZATION
                CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS
-               CMAKE_MODULE_LINKER_FLAGS)
+               CMAKE_MODULE_LINKER_FLAGS
+               # And what this build type adds, which is where the tuning
+               # lives: -O3 and link-time optimisation are written into the
+               # per-configuration flags, and a port handed only the plain
+               # ones is a port compiled without any of it -- and, with LTO,
+               # an archive with machine code in it where the program
+               # linking it expected bitcode.
+               CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE
+               CMAKE_EXE_LINKER_FLAGS_RELEASE
+               CMAKE_SHARED_LINKER_FLAGS_RELEASE
+               CMAKE_MODULE_LINKER_FLAGS_RELEASE
+               CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO)
     if(${name})
       list(APPEND arguments "-D${name}=${${name}}")
     endif()
