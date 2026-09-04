@@ -4464,6 +4464,30 @@ function(cme_system_has_features out package port features)
   if(NOT libraries)
     set(libraries "${${package}_LIBRARY}")
   endif()
+  # What pkg-config found, where pkg-config is who answered.
+  #
+  # This runs before the answer is taken, and the variables a consumer reads
+  # are part of taking it -- so on that path there was nothing here: a port
+  # with SYSTEM_CODE had its program compiled with no include path and no
+  # library, which fails on the first header and reads as a machine that has
+  # nothing. What the asking half found is written down, and this is what it
+  # was written down for.
+  if(NOT includes)
+    get_property(includes GLOBAL PROPERTY CME_PC_TAKE_${port}_INCLUDES)
+  endif()
+  if(NOT libraries)
+    get_property(libraries GLOBAL PROPERTY CME_PC_TAKE_${port}_IMPORTED)
+  endif()
+  # And arranged the way this port arranges an installed copy, because that
+  # is how the consumer will see it. A library whose headers include each
+  # other by a spelling the machine does not install them under compiles for
+  # a consumer and not for a probe that was handed the bare directory.
+  if(COMMAND cme_arrange_${port}_system)
+    cmake_language(CALL cme_arrange_${port}_system cme_arranged "${includes}")
+    if(cme_arranged)
+      list(APPEND includes ${cme_arranged})
+    endif()
+  endif()
   if(NOT libraries)
     # A config file a distribution ships defines a target and sets no
     # variables, so the target is the only way to link what was found --

@@ -710,7 +710,19 @@ endfunction()
 # a different library than the one that was compiled -- different fields in
 # the same class -- so the ones matching the features that were found to link
 # are defined here.
-function(cme_adapt_skia_system includes targets)
+# How an installed Skia's headers have to be arranged before anything can
+# compile against them, asked on its own.
+#
+# Skia's headers include each other as "include/core/SkCanvas.h" -- a path
+# relative to the root of its checkout -- and a machine installs them
+# somewhere else. Where the copy carries that layout under some directory,
+# the directory is offered a second time under the name the headers expect.
+#
+# Separate from taking the copy, because it is also the answer to a question
+# asked before: whether a program of this build's own compiles against that
+# copy at all. A probe handed the bare directory fails on the first header
+# Skia includes of its own, which says nothing about the copy.
+function(cme_arrange_skia_system out includes)
   set(arranged "")
   foreach(directory IN LISTS includes)
     if(EXISTS "${directory}/core/SkCanvas.h")
@@ -718,6 +730,11 @@ function(cme_adapt_skia_system includes targets)
       set(arranged "${root}")
     endif()
   endforeach()
+  set(${out} "${arranged}" PARENT_SCOPE)
+endfunction()
+
+function(cme_adapt_skia_system includes targets)
+  cme_arrange_skia_system(arranged "${includes}")
   cme_skia_defines(defines)
   foreach(target IN LISTS targets)
     if(NOT TARGET ${target})
