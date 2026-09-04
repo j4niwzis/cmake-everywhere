@@ -267,11 +267,23 @@ function(cme_meson_probe port source out_build)
   if(DEFINED ENV{PKG_CONFIG_PATH})
     set(path "${pkgconfig}:$ENV{PKG_CONFIG_PATH}")
   endif()
+  # And what a dependency built into a prefix put there: its own .pc files,
+  # written by its install rather than by this, and its programs. Mesa asks
+  # llvm-config what to link, and finds it on PATH or not at all.
+  cme_dependency_prefixes(${port} prefix_pkgconfig prefix_programs)
+  foreach(one IN LISTS prefix_pkgconfig)
+    set(path "${path}:${one}")
+  endforeach()
+  set(program_path "$ENV{PATH}")
+  foreach(one IN LISTS prefix_programs)
+    set(program_path "${one}:${program_path}")
+  endforeach()
 
   message(STATUS "cmake-everywhere: asking ${port} what it would build")
   execute_process(
     COMMAND ${CMAKE_COMMAND} -E env "NINJA=${CME_NINJA}"
             "PKG_CONFIG_PATH=${path}"
+            "PATH=${program_path}"
             "${CME_MESON}" ${arguments}
     RESULT_VARIABLE code OUTPUT_VARIABLE output ERROR_VARIABLE output)
   if(NOT code EQUAL 0)

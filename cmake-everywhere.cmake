@@ -4824,6 +4824,34 @@ endfunction()
 #
 # And a patch that does not apply is an error rather than a warning. A
 # library that moved on is a port that has to be looked at.
+# What the prefixes of this port's dependencies offer it.
+#
+# A port built its own way is installed into a prefix of its own that
+# nothing on this machine knows about: its .pc files are in there, correct
+# and unread, and so are its programs. A build that looks for a library with
+# pkg-config needs the first; one that runs a tool of another project --
+# Mesa asks llvm-config what to link -- needs the second.
+function(cme_dependency_prefixes port out_pkgconfig out_programs)
+  cme_gn_dependency_ports(${port} deps)
+  set(pkgconfig "")
+  set(programs "")
+  foreach(dep IN LISTS deps)
+    if(NOT CME_INSTALLED_${dep})
+      continue()
+    endif()
+    foreach(where "lib/pkgconfig" "lib64/pkgconfig" "share/pkgconfig")
+      if(IS_DIRECTORY "${CME_INSTALLED_${dep}}/${where}")
+        list(APPEND pkgconfig "${CME_INSTALLED_${dep}}/${where}")
+      endif()
+    endforeach()
+    if(IS_DIRECTORY "${CME_INSTALLED_${dep}}/bin")
+      list(APPEND programs "${CME_INSTALLED_${dep}}/bin")
+    endif()
+  endforeach()
+  set(${out_pkgconfig} "${pkgconfig}" PARENT_SCOPE)
+  set(${out_programs} "${programs}" PARENT_SCOPE)
+endfunction()
+
 function(cme_apply_patches port source)
   cme_port_field(patches ${port} PATCHES)
   # And whatever a feature that is on carries. A patch is how a library is

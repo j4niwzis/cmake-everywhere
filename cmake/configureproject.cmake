@@ -348,17 +348,13 @@ function(cme_configure_configure port source build prefix)
   # this build installed a moment ago is in a prefix of its own that nothing
   # on this machine knows about. Its .pc file is in there, correct and
   # unread; naming the directory is all it takes.
-  cme_gn_dependency_ports(${port} cme_deps)
-  set(cme_pkg_dirs "")
-  foreach(cme_dep IN LISTS cme_deps)
-    if(CME_INSTALLED_${cme_dep})
-      foreach(cme_where "lib/pkgconfig" "lib64/pkgconfig" "share/pkgconfig")
-        if(IS_DIRECTORY "${CME_INSTALLED_${cme_dep}}/${cme_where}")
-          list(APPEND cme_pkg_dirs "${CME_INSTALLED_${cme_dep}}/${cme_where}")
-        endif()
-      endforeach()
-    endif()
-  endforeach()
+  cme_dependency_prefixes(${port} cme_pkg_dirs cme_program_dirs)
+  # And the programs in them. A project that runs another project's tool --
+  # llvm-config, wayland-scanner -- finds it on PATH and nowhere else.
+  if(cme_program_dirs)
+    list(JOIN cme_program_dirs ":" cme_program_path)
+    list(APPEND environment "PATH=${cme_program_path}:$ENV{PATH}")
+  endif()
   if(cme_pkg_dirs)
     list(JOIN cme_pkg_dirs ":" cme_pkg_path)
     if(DEFINED ENV{PKG_CONFIG_PATH} AND NOT "$ENV{PKG_CONFIG_PATH}" STREQUAL "")
