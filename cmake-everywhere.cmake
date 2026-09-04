@@ -5514,10 +5514,18 @@ function(cme_build_port port package version exact)
     if(NOT entry)
       set(entry "${CMAKE_BINARY_DIR}/_cme/${port}-installed")
     endif()
+    # Where the project is, which is not always where its sources were
+    # fetched to: a port whose sources are a directory inside another port's
+    # is handed the other port's root, and what is built is the directory.
+    # LLVM's runtimes are that -- one archive, two projects in it.
+    set(cme_project "${${port}_SOURCE_DIR}")
+    if(source_subdir)
+      set(cme_project "${cme_project}/${source_subdir}")
+    endif()
     if(configure STREQUAL "cmake")
-      cme_cmake_prefix_build(${port} "${${port}_SOURCE_DIR}" "${entry}")
+      cme_cmake_prefix_build(${port} "${cme_project}" "${entry}")
     else()
-      cme_configure_build(${port} "${${port}_SOURCE_DIR}" "${entry}")
+      cme_configure_build(${port} "${cme_project}" "${entry}")
     endif()
     set(CME_INSTALLED_${port} "${entry}" CACHE INTERNAL "" FORCE)
   elseif(gn_targets)
