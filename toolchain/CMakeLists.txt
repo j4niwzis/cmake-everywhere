@@ -27,6 +27,7 @@ set(CME_TOOLCHAIN_PREFIX "${CMAKE_BINARY_DIR}/prefix" CACHE PATH
 
 # The C library first: the runtime below is compiled against it.
 find_package(musl REQUIRED)
+find_package(kernel-headers REQUIRED)
 find_package(llvm-runtimes REQUIRED)
 
 # And the file that says where all of it is.
@@ -43,6 +44,32 @@ if(NOT musl_prefix)
 endif()
 if(NOT runtime_prefix)
   set(runtime_prefix "${CME_INSTALLED_llvm-runtimes}")
+endif()
+
+# The kernel's headers, beside the C library's.
+#
+# A program includes both without knowing the difference -- linux/limits.h
+# and stdio.h are one include path to it -- so they are installed into the
+# same prefix. Two directories: what every architecture shares, and what
+# this one adds.
+set(cme_arch "${CMAKE_SYSTEM_PROCESSOR}")
+if(cme_arch STREQUAL "" OR cme_arch STREQUAL "AMD64")
+  set(cme_arch "x86_64")
+endif()
+if(cme_arch STREQUAL "arm64")
+  set(cme_arch "aarch64")
+endif()
+if(NOT EXISTS "${musl_prefix}/include/linux/limits.h")
+  file(COPY "${KERNEL_HEADERS_DIR}/generic/include/"
+       DESTINATION "${musl_prefix}/include")
+  if(IS_DIRECTORY "${KERNEL_HEADERS_DIR}/${cme_arch}/include")
+    file(COPY "${KERNEL_HEADERS_DIR}/${cme_arch}/include/"
+         DESTINATION "${musl_prefix}/include")
+  else()
+    message(FATAL_ERROR
+      "cmake-everywhere: the kernel headers carry nothing for ${cme_arch}, "
+      "and a program built for it includes them")
+  endif()
 endif()
 
 # The archive a distribution's compiler links by name.
