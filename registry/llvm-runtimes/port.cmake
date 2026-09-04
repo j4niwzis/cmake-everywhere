@@ -34,10 +34,10 @@ cme_declare_port(
   TARGETS LLVM::cxx
   CHECK_HEADER c++/v1/version
   OPTIONS
-    # Escaped, because a semicolon is how CMake separates a list: written
-    # plainly, this option is three options, and what gets built is the
-    # first of the three.
-    "LLVM_ENABLE_RUNTIMES libcxx\;libcxxabi\;libunwind"
+    # Bars, which the provider turns into the list CMake reads: a semicolon
+    # written here would split this into three options and build one of
+    # them.
+    "LLVM_ENABLE_RUNTIMES libcxx|libcxxabi|libunwind"
     # Archives, and the ABI library inside libc++ rather than beside it: a
     # program links one thing and gets all of it.
     "LIBCXX_ENABLE_SHARED OFF"

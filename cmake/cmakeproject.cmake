@@ -53,6 +53,20 @@ function(cme_cmake_configure port source where prefix out_build)
   foreach(option IN LISTS options)
     string(REGEX REPLACE "^([^ ]+) +(.*)$" "\\1" name "${option}")
     string(REGEX REPLACE "^([^ ]+) +(.*)$" "\\2" value "${option}")
+    # An option whose value is a list, written with bars.
+    #
+    # CMake's list separator is the semicolon, and a port cannot write one:
+    # the options a port declares are themselves a list, so a semicolon in a
+    # value splits the option into several -- and no amount of escaping
+    # survives, because what splits it is the list the options arrive in.
+    # LLVM_ENABLE_RUNTIMES is three names, and written plainly it became
+    # three options and one runtime, which is a libc++ built without the
+    # library that implements its exceptions.
+    #
+    # So a port writes bars, and they are semicolons by the time the project
+    # is configured -- escaped here, so that this stays one argument on the
+    # way out as well.
+    string(REPLACE "|" "\\;" value "${value}")
     list(APPEND arguments "-D${name}=${value}")
   endforeach()
 
