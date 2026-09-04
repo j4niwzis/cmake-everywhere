@@ -29,6 +29,22 @@ set(CME_TOOLCHAIN_PREFIX "${CMAKE_BINARY_DIR}/prefix" CACHE PATH
 find_package(musl REQUIRED)
 find_package(llvm-runtimes REQUIRED)
 
+# And the file that says where all of it is.
+#
+# Everything after this is compiled with these headers and linked against
+# these archives, and against nothing on the machine: -nostdinc and
+# -nostdlib say so outright, so that a header or a library that was not
+# named here is a build that stops rather than a program that mixes two C
+# libraries.
+get_property(musl_prefix GLOBAL PROPERTY CME_INSTALLED_musl)
+get_property(runtime_prefix GLOBAL PROPERTY CME_INSTALLED_llvm-runtimes)
+if(NOT musl_prefix)
+  set(musl_prefix "${CME_INSTALLED_musl}")
+endif()
+if(NOT runtime_prefix)
+  set(runtime_prefix "${CME_INSTALLED_llvm-runtimes}")
+endif()
+
 # The archive a distribution's compiler links by name.
 #
 # Alpine builds its clang to pass -lssp_nonshared on every link: that is
@@ -47,22 +63,6 @@ if(NOT EXISTS "${musl_prefix}/lib/libssp_nonshared.a")
       "cmake-everywhere: could not write libssp_nonshared.a, and a compiler "
       "that links it by name will not find it")
   endif()
-endif()
-
-# And the file that says where all of it is.
-#
-# Everything after this is compiled with these headers and linked against
-# these archives, and against nothing on the machine: -nostdinc and
-# -nostdlib say so outright, so that a header or a library that was not
-# named here is a build that stops rather than a program that mixes two C
-# libraries.
-get_property(musl_prefix GLOBAL PROPERTY CME_INSTALLED_musl)
-get_property(runtime_prefix GLOBAL PROPERTY CME_INSTALLED_llvm-runtimes)
-if(NOT musl_prefix)
-  set(musl_prefix "${CME_INSTALLED_musl}")
-endif()
-if(NOT runtime_prefix)
-  set(runtime_prefix "${CME_INSTALLED_llvm-runtimes}")
 endif()
 
 file(WRITE "${CMAKE_BINARY_DIR}/cme-toolchain.cmake"
