@@ -407,6 +407,34 @@ endfunction()
 
 # Configured, made and installed: the whole project as its own build sees
 # it, with an archive at the end that this build imports as a file.
+# What a released archive already contains, said to be newer than what
+# would regenerate it.
+#
+# An autotools release carries the configure script and the Makefile.in
+# files; the sources they were generated from are in it too, and an archive
+# unpacks with whatever timestamps it feels like. Where a .ac or .am file
+# lands a second newer than what it generates, make decides the generated
+# file is stale and runs autoconf -- which a machine that only builds
+# software does not have, and should not need.
+#
+# So the generated files are touched in the order they depend on each other.
+# It is the oldest trick in the autotools book and it is what every
+# distribution's build does.
+function(cme_configure_settle source)
+  foreach(pattern "configure.ac" "configure.in" "*.am" "acinclude.m4")
+    file(GLOB_RECURSE found "${source}/${pattern}")
+    foreach(file IN LISTS found)
+      file(TOUCH_NOCREATE "${file}")
+    endforeach()
+  endforeach()
+  foreach(pattern "aclocal.m4" "configure" "*.in")
+    file(GLOB_RECURSE found "${source}/${pattern}")
+    foreach(file IN LISTS found)
+      file(TOUCH_NOCREATE "${file}")
+    endforeach()
+  endforeach()
+endfunction()
+
 function(cme_configure_build port source entry)
   if(EXISTS "${entry}/complete")
     message(STATUS "cmake-everywhere: ${port} is already built")
@@ -414,6 +442,7 @@ function(cme_configure_build port source entry)
     return()
   endif()
   set(build "${CMAKE_BINARY_DIR}/_cme/${port}-build")
+  cme_configure_settle("${source}")
   cme_configure_configure(${port} "${source}" "${build}" "${entry}")
 
   find_program(CME_MAKE NAMES gmake make)
