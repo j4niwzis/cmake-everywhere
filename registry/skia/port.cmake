@@ -611,53 +611,15 @@ cme_port_feature(skia unicode
 #                          Lua bindings. Both are modules for tools rather
 #                          than for a library a program links.
 
-function(cme_adapt_skia source binary)
-  # Skia includes itself as "include/core/SkCanvas.h" -- a path relative to
-  # the root of its own checkout, with nothing in it to say whose include
-  # directory that is. In a project of any size that is a name waiting to
-  # collide, and a consumer that writes it has said nothing about which
-  # library it meant.
-  #
-  # So its include directory is offered a second time under a name of its
-  # own, and a consumer writes <skia/core/SkCanvas.h>. Skia itself is
-  # unchanged and still compiles against its own spelling, because the root
-  # of the checkout is on the interface as well -- which is also how the
-  # things outside include/, like modules/skottie/include, are still
-  # reachable. The name is a link rather than a copy.
-  cme_header_prefix(named skia "${source}/include")
-  target_include_directories(skia_skia INTERFACE
-    "$<BUILD_INTERFACE:${named}>" "$<BUILD_INTERFACE:${source}>")
-  cme_export_variable(Skia SKIA_FOUND TRUE)
-  cme_export_variable(Skia SKIA_LIBRARY Skia::skia)
-  cme_export_variable(Skia SKIA_LIBRARIES Skia::skia)
-  cme_export_variable(Skia SKIA_INCLUDE_DIR "${named};${source}")
-  cme_export_variable(Skia SKIA_INCLUDE_DIRS "${named};${source}")
-endfunction()
-
-# What an installed Skia needs before this project can compile against it.
+# What Skia's headers are cut by, worked out from the features that are on.
 #
-# Two things, and both are about spelling rather than about code.
-#
-# Skia's own headers say #include "include/core/SkCanvas.h", and that is what
-# everything written against Skia says too. Debian rewrites those to
-# <skia/core/...> as it installs them and puts them under /usr/include/skia,
-# so the upstream spelling finds nothing. The directory is offered a second
-# time under the name include/, and both spellings then work.
-#
-# And the macros. Skia's public headers are cut by SK_GANESH, SK_GL and the
-# SK_CODEC_DECODES_* set, which the build passes on the command line and no
-# installed file records. A consumer that does not define the same ones sees
-# a different library than the one that was compiled -- different fields in
-# the same class -- so the ones matching the features that were found to link
-# are defined here.
-function(cme_adapt_skia_system includes targets)
-  set(arranged "")
-  foreach(directory IN LISTS includes)
-    if(EXISTS "${directory}/core/SkCanvas.h")
-      cme_header_prefix(root include "${directory}")
-      set(arranged "${root}")
-    endif()
-  endforeach()
+# GN calls these public_defines: they are Skia's statement to whoever links
+# it about which declarations in its headers are real. The description this
+# registry reads flattens public and private into one list, which lands on
+# the library and not on its interface -- so a consumer compiled against a
+# built Skia saw none of them, and had to know for itself. It is told here
+# instead, from the features it asked for, which is the same list either way.
+function(cme_skia_defines out)
   cme_enabled_features(skia features)
   set(defines "")
   if("gl" IN_LIST features)
@@ -687,6 +649,76 @@ function(cme_adapt_skia_system includes targets)
   if(defines)
     list(REMOVE_DUPLICATES defines)
   endif()
+  set(${out} "${defines}" PARENT_SCOPE)
+endfunction()
+
+function(cme_adapt_skia source binary)
+  # Skia includes itself as "include/core/SkCanvas.h" -- a path relative to
+  # the root of its own checkout, with nothing in it to say whose include
+  # directory that is. In a project of any size that is a name waiting to
+  # collide, and a consumer that writes it has said nothing about which
+  # library it meant.
+  #
+  # So its include directory is offered a second time under a name of its
+  # own, and a consumer writes <skia/core/SkCanvas.h>. Skia itself is
+  # unchanged and still compiles against its own spelling, because the root
+  # of the checkout is on the interface as well -- which is also how the
+  # things outside include/, like modules/skottie/include, are still
+  # reachable. The name is a link rather than a copy.
+  cme_header_prefix(named skia "${source}/include")
+  target_include_directories(skia_skia INTERFACE
+    "$<BUILD_INTERFACE:${named}>" "$<BUILD_INTERFACE:${source}>")
+  cme_export_variable(Skia SKIA_FOUND TRUE)
+  cme_export_variable(Skia SKIA_LIBRARY Skia::skia)
+  cme_export_variable(Skia SKIA_LIBRARIES Skia::skia)
+  cme_export_variable(Skia SKIA_INCLUDE_DIR "${named};${source}")
+  cme_export_variable(Skia SKIA_INCLUDE_DIRS "${named};${source}")
+  cme_skia_defines(defines)
+  foreach(define IN LISTS defines)
+    target_compile_definitions(skia_skia INTERFACE ${define})
+  endforeach()
+
+  # And the Vulkan headers, where this Skia has a Vulkan backend in it.
+  #
+  # Its public headers include <vulkan/vulkan_core.h> once SK_VULKAN is on --
+  # SkiaVulkan.h does, and everything about either Vulkan backend goes
+  # through it -- so a consumer needs them to compile against those headers
+  # at all. Skia's own build does not need them said: it compiles against the
+  # copy in its checkout, under include/third_party/vulkan, which is not a
+  # place anyone else should be reading from.
+  #
+  # The port already depends on them; this is what puts them where a consumer
+  # of this target will find them.
+  if("SK_VULKAN" IN_LIST defines AND TARGET Vulkan::Headers)
+    target_link_libraries(skia_skia INTERFACE Vulkan::Headers)
+  endif()
+endfunction()
+
+# What an installed Skia needs before this project can compile against it.
+#
+# Two things, and both are about spelling rather than about code.
+#
+# Skia's own headers say #include "include/core/SkCanvas.h", and that is what
+# everything written against Skia says too. Debian rewrites those to
+# <skia/core/...> as it installs them and puts them under /usr/include/skia,
+# so the upstream spelling finds nothing. The directory is offered a second
+# time under the name include/, and both spellings then work.
+#
+# And the macros. Skia's public headers are cut by SK_GANESH, SK_GL and the
+# SK_CODEC_DECODES_* set, which the build passes on the command line and no
+# installed file records. A consumer that does not define the same ones sees
+# a different library than the one that was compiled -- different fields in
+# the same class -- so the ones matching the features that were found to link
+# are defined here.
+function(cme_adapt_skia_system includes targets)
+  set(arranged "")
+  foreach(directory IN LISTS includes)
+    if(EXISTS "${directory}/core/SkCanvas.h")
+      cme_header_prefix(root include "${directory}")
+      set(arranged "${root}")
+    endif()
+  endforeach()
+  cme_skia_defines(defines)
   foreach(target IN LISTS targets)
     if(NOT TARGET ${target})
       continue()
