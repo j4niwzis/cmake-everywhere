@@ -1,0 +1,1100 @@
+{
+  "about": "Written by cmake-everywhere. Commit this file. Every value is a fact about something outside this project that has to stay true: the commit a library was fetched at, the digest of an archive, and the digest of a port file read from somewhere else. Configure with -DCME_LOCK_ALL=ON to write it again.",
+  "lock": 1,
+  "ports": {
+    "basu": {
+      "port": [
+        "0ac73758bb7b5eaae79f968df7c036df98588b7446fa5279a65480285d542a85"
+      ]
+    },
+    "boost": {
+      "port": [
+        "46d85b36f5549abbe63b2f921ab1bbb4fde2371c97019b90475c167bbd50dac4"
+      ]
+    },
+    "boost-accumulators": {
+      "port": [
+        "89d295ad9e0aad5a3f70da7756f06f26a203cc0b366cea44f1302dee77917062"
+      ]
+    },
+    "boost-algorithm": {
+      "port": [
+        "1607bdaae9cac233a9404a50fe6c125f8bdc9145c5c76d9f2cbcaab108800709"
+      ]
+    },
+    "boost-align": {
+      "port": [
+        "7705656b85847b3179b580a87861fcdcd9b533707a77837aa066006b44514f35"
+      ]
+    },
+    "boost-any": {
+      "port": [
+        "5c872431c09ae234533edd1f1526b948f9b1165b05a52d3b15dfe69bfff64d57"
+      ]
+    },
+    "boost-archive": {
+      "port": [
+        "ef7cf62d3c4b9d58e988189a2d35661fd7453a8fce055d57f37ce03b01901eb1"
+      ]
+    },
+    "boost-array": {
+      "port": [
+        "e238334b752b28b3c47712b2ad92b714ac7212f27b706a1170b25500e885ca2a"
+      ]
+    },
+    "boost-asio": {
+      "port": [
+        "3c07af970262b4de101639b8c2f74e345fae7d49a5a10ef8c8d011eda97e69d0"
+      ]
+    },
+    "boost-asio-core": {
+      "port": [
+        "f41d6d6430e76585e3c14528543ae8971b8d055f0e8fe2b0accb3f11863f180a"
+      ]
+    },
+    "boost-asio-deadline-timer": {
+      "port": [
+        "7cdedf7ba52c6fc1c011ecd6e272338bee8184de9e6063888655b51aa0650b05"
+      ]
+    },
+    "boost-asio-spawn": {
+      "port": [
+        "46e713e9b86630dabb80753f5ebcef22c76dba4f72e988ded060ad92cfc3a848"
+      ]
+    },
+    "boost-assert": {
+      "port": [
+        "a102a002dba1bf2c6d9e9ccf04de3a9bc0938f405117a9b53872d2076c5b4ef9"
+      ]
+    },
+    "boost-assign": {
+      "port": [
+        "e2964ee288b036aa713c3f96ebf1718d3fccb10cd1f6c80eae02a6a11644c03b"
+      ]
+    },
+    "boost-atomic": {
+      "port": [
+        "6cd3bd87f68514dbb53d5961f275d75ba2fb78a3a00fa242d17bab8f89c73ae9"
+      ]
+    },
+    "boost-beast": {
+      "port": [
+        "8d1143d7975ef73be83d07fa73f631442592b60e1d9e31b62afd98b5d7b5f47b"
+      ]
+    },
+    "boost-bimap": {
+      "port": [
+        "70cbe8a222f7df2be14dd21b572608481b3165e9339790895db1cd72670f3485"
+      ]
+    },
+    "boost-bind": {
+      "port": [
+        "4df12ada6732748eec5e5377ac6870168b8b80967f32789cd28f034263ffe4ae"
+      ]
+    },
+    "boost-bloom": {
+      "port": [
+        "20ab460525504dfcba14ef94eddb2943482ffac4bb9c549157592d9937546895"
+      ]
+    },
+    "boost-callable-traits": {
+      "port": [
+        "23f436bc873e5b53bc4d31be149555d69b5da9a49d0ed23fd92bbd45d0e68ce5"
+      ]
+    },
+    "boost-charconv": {
+      "port": [
+        "25eac71dd42b5a0c5a2ad884d0aaf122aec9ba14df95a2efe5aeddaf920e8f18"
+      ]
+    },
+    "boost-chrono": {
+      "port": [
+        "2524d306971dc8513ff06a1a99cbd92d8b0d12a48931130e05f8e7534034162d"
+      ]
+    },
+    "boost-circular-buffer": {
+      "port": [
+        "7719f68ebd6a9709e7ebc1ba841dfbda26af4ba4394049e20919037e85ed7765"
+      ]
+    },
+    "boost-cobalt": {
+      "port": [
+        "ae857e21ffeeee237183b4fe4176749d396d8cf8aa06efd52d95012d900b22bc"
+      ]
+    },
+    "boost-compat": {
+      "port": [
+        "c1dffa9b649d9fcff4a25d7b0cef60a3f6652d5e5825a88e448ed0f83bd41154"
+      ]
+    },
+    "boost-compute": {
+      "port": [
+        "0a276e401f41628433c2dbe02199a28af809e176f804d7f59d8803a7c786f072"
+      ]
+    },
+    "boost-concept-check": {
+      "port": [
+        "b0a7d2c99824d0216f9f9c37aeef7442cdbb6fc788801d76bd891f443b14fa2c"
+      ]
+    },
+    "boost-config": {
+      "port": [
+        "f1a67299dae20ac348afaaf8a159be2c2f1360bb6f5f350010b9793b7cc39f93"
+      ]
+    },
+    "boost-container": {
+      "port": [
+        "6497e0973c483212088a4555b6a24707e2814abb54aa1d2d420fd806a6a443e4"
+      ]
+    },
+    "boost-container-hash": {
+      "port": [
+        "ffc66e2a03965a16cc76ec72238e6f5a60c75e7cc840cbcdb77c51eb50197b4e"
+      ]
+    },
+    "boost-context": {
+      "port": [
+        "2e31fa76f74b95da78843ddcc756e08066134b9bcfdf34eacd7b69cd8519ebcf"
+      ]
+    },
+    "boost-contract": {
+      "port": [
+        "e43b1971c7285f2e6d50d170717ca7625bb64c6a7770e87099659a198296aabb"
+      ]
+    },
+    "boost-conversion": {
+      "port": [
+        "4e4d8e10e24b88f3a44f6e54fb5c9d6535b31237b72f9e2549dcd565392fb826"
+      ]
+    },
+    "boost-convert": {
+      "port": [
+        "738a17d8a170e8bb1bcc6208c3b9d0466e41768c632c809ff6670fea27ad25a9"
+      ]
+    },
+    "boost-core": {
+      "port": [
+        "6a55362e2a9abe1d36fb574a7292ba067bab4c5e8e6e12a621096066cc896763"
+      ]
+    },
+    "boost-coroutine": {
+      "port": [
+        "e1bf9f4ffd69af56a8053b19dfe70d407ba35cdccd2ce20c5c35c97056624c0a"
+      ]
+    },
+    "boost-coroutine2": {
+      "port": [
+        "b5d796769469f69f6fb8d5518d92b020fc0be139406fb63f240c433fcf1baf8a"
+      ]
+    },
+    "boost-crc": {
+      "port": [
+        "9ab8853e37fa2eef9e3b40ee8a8dae2b1ce8a44b0ab645c978fa09794aa8a74c"
+      ]
+    },
+    "boost-date-time": {
+      "port": [
+        "eb8b5485d8381f30fd6a1c5a460f24513c66887ae601f1469154287e38135c2d"
+      ]
+    },
+    "boost-decimal": {
+      "port": [
+        "24f3ae68c0f0be4a37c511067c6d8028a8b4b2c87204efa8c0bcb4064794f3c4"
+      ]
+    },
+    "boost-describe": {
+      "port": [
+        "07cfd757181dd3e5d152054bf44b4eddc60cd492923aef36c9a8126da7950d6a"
+      ]
+    },
+    "boost-detail": {
+      "port": [
+        "88492b582cc7a6be654f1c976f29f0b0e5238e9d8cc4f827e7f7336e0cf8702d"
+      ]
+    },
+    "boost-dll": {
+      "port": [
+        "262b7340d143be9bb3592d68ea51a22d406ee6038dcb0f31cf0213d5f870533f"
+      ]
+    },
+    "boost-dynamic-bitset": {
+      "port": [
+        "05ef46b5b6b2914572dc1b5f3c41ff7b24347c85c6cc2b89eed90cbdfe590a4a"
+      ]
+    },
+    "boost-endian": {
+      "port": [
+        "bab227c456dbb41e2d5f75c239a4ab6e6890f8494aa1bd465857e9c8d353ffae"
+      ]
+    },
+    "boost-exception": {
+      "port": [
+        "962ba7a29b97b0abbbd3caeaec12aa744615bcd449a56f1b33aeef95cbf57c3d"
+      ]
+    },
+    "boost-fiber": {
+      "port": [
+        "90a79ae899e1edc767af0a7cd6291738dabda780f87234b60d33d56f1e380596"
+      ]
+    },
+    "boost-filesystem": {
+      "port": [
+        "0302e61e40d665f54c5e0e2b423e8f823a202f22669c8d3e944011ad6dab8a26"
+      ]
+    },
+    "boost-flyweight": {
+      "port": [
+        "38390518bfa4642d8412a71c22bba376167797999f7c33a36721c783d3394e67"
+      ]
+    },
+    "boost-foreach": {
+      "port": [
+        "65cb2d64437c291763ddf37ea754884702cea1468ae8582efec15210b5e0fb1c"
+      ]
+    },
+    "boost-format": {
+      "port": [
+        "e98a90a661086de5d01f8de76adc5590898cfefa756ea054284bb2202bb174e5"
+      ]
+    },
+    "boost-function": {
+      "port": [
+        "7d1dde6c2ddb2839f19418dfd119bcb773c503e42a13e6e16c33308a097dc1fe"
+      ]
+    },
+    "boost-function-types": {
+      "port": [
+        "42b87eac77c1efb52a05b61de4bcb4a228d5a39af51e6b44f6048409a283f64b"
+      ]
+    },
+    "boost-functional": {
+      "port": [
+        "d70b91e6d5904d8a8b5a1d6b8faac082658c6c545503c06467bf5e1477ab2a8f"
+      ]
+    },
+    "boost-fusion": {
+      "port": [
+        "7247baf058502b5f216c52b901cf734b1777f50ff5b10d34cdd482dcd6de72ad"
+      ]
+    },
+    "boost-geometry": {
+      "port": [
+        "4c8316f00ae9647539bdaa676e998c722294e5d368d9175d05409c9a18bcc5a5"
+      ]
+    },
+    "boost-gil": {
+      "port": [
+        "bd570a3de663ac3480e0502837151b498da963fc254ae3d110fb829a91d152e3"
+      ]
+    },
+    "boost-graph": {
+      "port": [
+        "eaae68cd77341b4f5076f49ca9d9060ccab5f99ebf5e473db9c7adc2f77763d3"
+      ]
+    },
+    "boost-graph-parallel": {
+      "port": [
+        "535f0457229f5636efeef2fa4f70d3c9d0481a151a9625949e8aa713307d9749"
+      ]
+    },
+    "boost-hana": {
+      "port": [
+        "87002976ac3022a2336f89b68a74723a1ef024b02db1cdb43b804cc934d4ca78"
+      ]
+    },
+    "boost-hash2": {
+      "port": [
+        "072cf4d71d7689b543039b78341cc28121509fa02532d5d387d8073730499a28"
+      ]
+    },
+    "boost-headers": {
+      "port": [
+        "02732cf0d500315b51636d64a620798d46489a30b4acaac8a83d3a2f11edb557"
+      ]
+    },
+    "boost-heap": {
+      "port": [
+        "0bef2f623beccdb21c84bcbf1c4a820221f1dc90b45c5437b4a59f0621e76568"
+      ]
+    },
+    "boost-histogram": {
+      "port": [
+        "5cdf2ac652ece87e8978e67f7cc6f80e3de68ba0d3c46b9b6c0649481ecde6a6"
+      ]
+    },
+    "boost-hof": {
+      "port": [
+        "4b89dec00e9202513becdca97f75a692d920507a1343d4c21f7d8b9c5ce53d62"
+      ]
+    },
+    "boost-icl": {
+      "port": [
+        "f504d63a86d70cd65b50c14a54df94dee70c4054f068e29a20ee64850608a16e"
+      ]
+    },
+    "boost-integer": {
+      "port": [
+        "952abad71866f29d8dea7fad160fdb121f55d41f537d5549145e1d51d7588390"
+      ]
+    },
+    "boost-interprocess": {
+      "port": [
+        "ba873bc40ea781ec6b46795d287fb24d46baceff19ba3d0f70b01b5366a9f157"
+      ]
+    },
+    "boost-intrusive": {
+      "port": [
+        "b1e68265c925d2778228ab446c8cd5933be41b0f7d5e28a639c500bc29e9edb2"
+      ]
+    },
+    "boost-io": {
+      "port": [
+        "b36bc88e9bd47c69a3d6ec297cadb1a0ce7684726b0447d08674f99a9967992f"
+      ]
+    },
+    "boost-iostreams": {
+      "port": [
+        "f2550298afeef8184d8e43bcb4ea9dca9357774eada66e95484f7d6b23f69f5f"
+      ]
+    },
+    "boost-iterator": {
+      "port": [
+        "ef645146b890c418a00b6b6a3b55c45c2420e6b232233950e13b218560037a7c"
+      ]
+    },
+    "boost-json": {
+      "port": [
+        "c962be06ad8ecdb0454dbb098e9bba179b998574fb728f74c88b7c44d7195842"
+      ]
+    },
+    "boost-lambda": {
+      "port": [
+        "3237b667894253ce7d1f07ae5098ca54dd6d7fdad375edbbcb1bb31c03101d92"
+      ]
+    },
+    "boost-lambda2": {
+      "port": [
+        "f86dd55bd11019d600a7adbe7f6e9994470d6e6aefb6228c21bb0fd112558284"
+      ]
+    },
+    "boost-leaf": {
+      "port": [
+        "dd4662bd91c8a95efa1756b41748d94cd6d994e4f7bc4f9b1b5705f7645e019a"
+      ]
+    },
+    "boost-lexical-cast": {
+      "port": [
+        "d5f103cc90a6d9b06ed84ffa43a23657ef1ef84d46e48dcb759296be1e244cbf"
+      ]
+    },
+    "boost-local-function": {
+      "port": [
+        "44a38e27f853424b2a8eccaf473e05623a7f8cbc60a22b223cd42e0d56cfa132"
+      ]
+    },
+    "boost-locale": {
+      "port": [
+        "a136985e72ac4d0dffed318e7091b86f098d7cd11348328797679f54fa347a08"
+      ]
+    },
+    "boost-lockfree": {
+      "port": [
+        "5a2c06a75880afa59bfb85315b5b65970a724f62325283b62f3c5f74fa287cc0"
+      ]
+    },
+    "boost-log": {
+      "port": [
+        "ddf1ad3dce2c789a47b426b709ce7199748008af00c60f6f3c0bbc1c7f9c9827"
+      ]
+    },
+    "boost-logic": {
+      "port": [
+        "8569ae961dd1062ef89e328735dd1b8aa866200440a0a3c541221cbb9942022b"
+      ]
+    },
+    "boost-math": {
+      "port": [
+        "33d8079c56152d60b970fff32b1379c1fe5e71d92abc4ea5062e69ce6d7ca879"
+      ]
+    },
+    "boost-metaparse": {
+      "port": [
+        "5739838607ece9f9629801a4942f5fe9ba86d8121500e81e9e518ecd2c51b0d6"
+      ]
+    },
+    "boost-move": {
+      "port": [
+        "681549f527e558e4164c7b54afaca498c27e3bd83287f022b88d60190b305790"
+      ]
+    },
+    "boost-mp11": {
+      "port": [
+        "dac39f8eae378c400a3cde4bb5efa2b36959cedf066b996f79f0fea178fd3802"
+      ]
+    },
+    "boost-mpi": {
+      "port": [
+        "f21478014528af5a15fbac9af2443815f5c4949ed57834d508c766a749e644e1"
+      ]
+    },
+    "boost-mpl": {
+      "port": [
+        "18d8ed9a190aabf7a94cc6659359a23e945f0ad7590ae552d5b41ad74b13952a"
+      ]
+    },
+    "boost-mqtt5": {
+      "port": [
+        "98bd0e4486ce964afcd591772f6313d8f8249e4c558996dbc5663ce40fd3b683"
+      ]
+    },
+    "boost-msm": {
+      "port": [
+        "9575144fbf34b6e834496e88855f0558e4410a3e2e35b55830f37c44c177092a"
+      ]
+    },
+    "boost-multi-array": {
+      "port": [
+        "3d8ee5b2c491566a3ebc22b18d677092ce6fca16e67ce2eeb7d54f53780d8f35"
+      ]
+    },
+    "boost-multi-index": {
+      "port": [
+        "b7b68a78ff7928bf5f5972b575d80280b44cb9d89c7feb52c8a5a6ec38450415"
+      ]
+    },
+    "boost-multiprecision": {
+      "port": [
+        "323c792ccc3cae90a6dfd94c0bcafe38a7a4e2b07b16dc24a69a177d1c4d681d"
+      ]
+    },
+    "boost-mysql": {
+      "port": [
+        "e98d263a17ab920e9ce06462b5736c26793edd555da381b8e1943e7ae44e8ecb"
+      ]
+    },
+    "boost-nowide": {
+      "port": [
+        "795c9f1cbfc5c79f5a7026179c42c253f92e40a65096b78d3bc446d78719bcf8"
+      ]
+    },
+    "boost-numeric-conversion": {
+      "port": [
+        "202d61841716ef76156e44df70c74318579ee6aaed5587a90d3b7f7b6ce0f6c7"
+      ]
+    },
+    "boost-numeric-interval": {
+      "port": [
+        "79c19561b0d3b3bfca7aac7a05834a6a76bdd8b9f88a8c0245e72d241bbe434c"
+      ]
+    },
+    "boost-numeric-odeint": {
+      "port": [
+        "d1c6ccc7feeaff77e3eea777820fc3a74c88ba5ae470e4194a1c0a4916650034"
+      ]
+    },
+    "boost-numeric-ublas": {
+      "port": [
+        "2c1707a2638b1208ebeae490bc85f6cf6a14c119118fe4f39dea0ee9b6d0587d"
+      ]
+    },
+    "boost-openmethod": {
+      "port": [
+        "44ad3466449f076661ed38edf7e6be7f031c7ffe99bf392c6ccccaf250018d06"
+      ]
+    },
+    "boost-optional": {
+      "port": [
+        "0ecfcbab3198f56f31ca4589ece9c2414452334f3d4e7613760559527f5a5cf3"
+      ]
+    },
+    "boost-outcome": {
+      "port": [
+        "3aae885dc7381c3d86635ce479078520ffc64f52b539e1aac8e93ad7ef5fd344"
+      ]
+    },
+    "boost-parameter": {
+      "port": [
+        "33e936984903b89c9ceb68441c57f5dc36bd46116a1f61ad5d0f2aed2e295e08"
+      ]
+    },
+    "boost-parameter-python": {
+      "port": [
+        "6d5d061691ad717dc4042fe0f44d0853d63a8989d2b41156c7ad4974cefb9973"
+      ]
+    },
+    "boost-parser": {
+      "port": [
+        "240f1e47b694a6622551820702154ae13118b0fa8393618597569e7e5dbadc52"
+      ]
+    },
+    "boost-pfr": {
+      "port": [
+        "61abb9313c6f9139f9ff1fd7cd2039748aa0acfc0eaff2c455b086bb1270e192"
+      ]
+    },
+    "boost-phoenix": {
+      "port": [
+        "ffb82c662e8f28f776887379077027a1c0349f88c1d4eba53db36575e4bec06c"
+      ]
+    },
+    "boost-poly-collection": {
+      "port": [
+        "4e845174ef146acdd337707db82be03d835971f8a88993f43d63826a6d099cf1"
+      ]
+    },
+    "boost-polygon": {
+      "port": [
+        "aaea760a8cbe481b9e2c045f3bfef7d8526f6f14c7e8da7c1f19e91270a1bb65"
+      ]
+    },
+    "boost-pool": {
+      "port": [
+        "73f070c837e382046ff32d6667925fe5bbb340e68e2093ecf84cb6f79cbfd8b5"
+      ]
+    },
+    "boost-predef": {
+      "port": [
+        "0fa4744f43d42c9951ac85f2ac187cd0f3e16009afd0f8513648d40b4ae43b23"
+      ]
+    },
+    "boost-preprocessor": {
+      "port": [
+        "36fe7e0b3ecd372c61081a40a317bbcca211b0cce527780314a97e7416512aa6"
+      ]
+    },
+    "boost-process": {
+      "port": [
+        "fc7269179fde574f9ed1c82ac0fecc2b23936a38fd297a0afb89354ecb820ed9"
+      ]
+    },
+    "boost-program-options": {
+      "port": [
+        "8ee3af5ca9ff4e302494f0dae2c3340afc20a5102bc4b0822b64985a5e824c9c"
+      ]
+    },
+    "boost-property-map": {
+      "port": [
+        "acf2d8cd926c851271a4b6bc6ca169785f00eac8fb7e3be551fcd60bf17fce6e"
+      ]
+    },
+    "boost-property-map-parallel": {
+      "port": [
+        "7746bff23a30b7bf47979246b5de06301d1f497361621214ccf296b799290eca"
+      ]
+    },
+    "boost-property-tree": {
+      "port": [
+        "432752a091260f84756da32cc09fae2cd51dfee8ff21805600723ca1307d1929"
+      ]
+    },
+    "boost-proto": {
+      "port": [
+        "1201dfc91634a05537ed0d03bdaab153104734df5bd62b19c02241b2fa9dce1e"
+      ]
+    },
+    "boost-ptr-container": {
+      "port": [
+        "90fd0e49845b1065ec886ee6069381b5725d7ca49acc937e0b36b154baa18bbb"
+      ]
+    },
+    "boost-python": {
+      "port": [
+        "663b3b252fceacb4a2e8a0a06c5b5491efe2c5bc087976695d084608f5bbdd36"
+      ]
+    },
+    "boost-qvm": {
+      "port": [
+        "4bd246cfc9f96a1788ecd14ed5d41858044a5f820ae4af671146dedc52eac326"
+      ]
+    },
+    "boost-random": {
+      "port": [
+        "a7f932425410e0ebfa86fc877636f31e57009baa53113e65a60aa45dc071cc4a"
+      ]
+    },
+    "boost-range": {
+      "port": [
+        "f0319d1457a9c12eba8d52667660f39e1123bb9dfbb365931d14d571ead390cd"
+      ]
+    },
+    "boost-ratio": {
+      "port": [
+        "223daed1b828a18c6ce7e90c92874e55c95434484b458c91ec7e05c4c57b5403"
+      ]
+    },
+    "boost-rational": {
+      "port": [
+        "eeba01af25a1fddf206b74f9d9aa8632ab33f203a908246d0a123496392d6bb7"
+      ]
+    },
+    "boost-redis": {
+      "port": [
+        "095b407ff75288d256b82947a6940f41c6f1d5ecea1b1ef6f5457a7e862385d4"
+      ]
+    },
+    "boost-regex": {
+      "port": [
+        "a91f51ae41c4b6f24b91f3c2dd13e80efc164a43f1bb7ffa29fbcccd9d921943"
+      ]
+    },
+    "boost-safe-numerics": {
+      "port": [
+        "b3c5ad07c1742ddb6ef8c881172f817bcee683e259a12b807cb4642220bb6446"
+      ]
+    },
+    "boost-scope": {
+      "port": [
+        "62c2ccfd68956c677dd4c49fba00d45ed428eb95440ea259da0969fc375ab2a8"
+      ]
+    },
+    "boost-scope-exit": {
+      "port": [
+        "def85b4bdb2917dd227e2f1bd801518e5595eaf9667c793618ecee9d43c39638"
+      ]
+    },
+    "boost-serialization": {
+      "port": [
+        "61b134876236828e111c7e8798f41968b89c2ad23a3d9f5429aaa54ae1a5ebd3"
+      ]
+    },
+    "boost-signals2": {
+      "port": [
+        "ce5911cf4fe35e481df87e8724ab3e7ae0f709ddcf40541861c7703502431081"
+      ]
+    },
+    "boost-smart-ptr": {
+      "port": [
+        "db7efb75a8ac362b71fd844d1960d9789684b462c1d737a1bbd473e64cad214b"
+      ]
+    },
+    "boost-sort": {
+      "port": [
+        "9892798a4e2bc556d1430608671d7e94b9c4978cc73340e7e57b25f6f7447b10"
+      ]
+    },
+    "boost-spirit": {
+      "port": [
+        "d078e2fd878264f402bbade68a42743c9840ae6763582d97e3dd9579722bfa5a"
+      ]
+    },
+    "boost-stacktrace": {
+      "port": [
+        "c7965cbd2f9ec8a91e38f7d547c3e8e45ac0591adadfe34891c1cc8f889d4bfd"
+      ]
+    },
+    "boost-statechart": {
+      "port": [
+        "2a7d90ec0dfa682ea9c456f06ca020b52b57f6cd87ad798f3bd9d746962428c8"
+      ]
+    },
+    "boost-static-assert": {
+      "port": [
+        "e602b684a12f7fb2ad923bf64d13bbc0df81807971c7b1f9cc02b43b9d1eaa63"
+      ]
+    },
+    "boost-static-string": {
+      "port": [
+        "affa2fc16e308c31eecc7b6329faee8fcc70b8307fcbbe220493cdf5874fd730"
+      ]
+    },
+    "boost-stl-interfaces": {
+      "port": [
+        "dad4c4dba232282c95dd763295b57e1d85dd3c2a166a6a6d0b3b438dd9891584"
+      ]
+    },
+    "boost-system": {
+      "port": [
+        "705960d8f8f9d71f42037a7a782f94f04c5b3f59446fb11b871da9adf9782593"
+      ]
+    },
+    "boost-test": {
+      "port": [
+        "d4080e2dea7772ff716e678fd220e08fe84860157a61aa6849c92d52585b9d0c"
+      ]
+    },
+    "boost-thread": {
+      "port": [
+        "71c78698cb09468288047cff0196eda6ac1d1ab2d1abb456b8010e5e2042812a"
+      ]
+    },
+    "boost-throw-exception": {
+      "port": [
+        "43c76318af02590c52174a0fe9d3fc74da167c9073892e32210fc1f5022e8626"
+      ]
+    },
+    "boost-timer": {
+      "port": [
+        "d0a4e91f17b10749341d81a724af05918034f376a5c1b203360c5882f3c9f9d6"
+      ]
+    },
+    "boost-tokenizer": {
+      "port": [
+        "b0266705f2c2840c5f674ed5b93658f4f5946583762498474233ddb74dc31abe"
+      ]
+    },
+    "boost-tti": {
+      "port": [
+        "75f1a4d84c50a6b54db6b4e06d0bef58e5243dc7fd97fe1e24b2819a2f7697f4"
+      ]
+    },
+    "boost-tuple": {
+      "port": [
+        "7f4ff268b159d3fad1799156dd9f3b1cc682982759e7a7efac81f3cac99771de"
+      ]
+    },
+    "boost-type-erasure": {
+      "port": [
+        "921f6b9ef4c7de88bd9ff01190b51b2aaf99edb54c3fba6d2f5b0c1652b4eab8"
+      ]
+    },
+    "boost-type-index": {
+      "port": [
+        "498822fcc4e8652ac0f0fccb5e0894dda3d286971ebaa1168a46de7c8f780c86"
+      ]
+    },
+    "boost-type-traits": {
+      "port": [
+        "a6010cb1d579e0954c066c0b54f13265c6e44cba1b65da2d8595590b79ed30f5"
+      ]
+    },
+    "boost-typeof": {
+      "port": [
+        "f93a2adda7420283bdb46b769e074547d625291bc61b6d56a42721ce77ced5a7"
+      ]
+    },
+    "boost-units": {
+      "port": [
+        "97283df39141a77b2798420eebd1797783168959366b006c1653edd38e9aed47"
+      ]
+    },
+    "boost-unordered": {
+      "port": [
+        "40c5a107c5ec343986c572930f48bc02937b34eb438b8d8cb1700b729b59f1cf"
+      ]
+    },
+    "boost-url": {
+      "port": [
+        "3758c70854065ec54f8034650b217dbaa0c66ecd907b3a70cd11a86ad6053f02"
+      ]
+    },
+    "boost-utility": {
+      "port": [
+        "7372612801b14af1333fa2e92ff6ffa94be710da4d27b92b656d569d502c9801"
+      ]
+    },
+    "boost-uuid": {
+      "port": [
+        "19229b1ee03bf5c1ce6f61c0318a4d998a6527a2e3200c1649bfd9e0f2cf02be"
+      ]
+    },
+    "boost-variant": {
+      "port": [
+        "501bbdc1158384b483c7f583a2ea859aa33284f6bffb2fae9b54995c242654ce"
+      ]
+    },
+    "boost-variant2": {
+      "port": [
+        "23c504fb98e5db2bfba9e5bcb4a63e4fc257e2862e1f6ceed5abfd6da721778c"
+      ]
+    },
+    "boost-vmd": {
+      "port": [
+        "bfafe5cc9e9124f36ab202c7a440701557c6e753102345dac3962c22067c2e64"
+      ]
+    },
+    "boost-wave": {
+      "port": [
+        "304fdbc91683edc33d3fcb1f386426a8df640923e746cb6d0f2ef628402c4e7b"
+      ]
+    },
+    "boost-winapi": {
+      "port": [
+        "b9f1c682ee1d2a6c14be16b02e326f75ea70d5ed2ff44ba198b659e73012f010"
+      ]
+    },
+    "boost-xpressive": {
+      "port": [
+        "2ee286a5bb085143218f52d669b998163d2aa8990a35dc6fe0e2aac02b3cfd8b"
+      ]
+    },
+    "boost-yap": {
+      "port": [
+        "578935c51b47cab12fd9b384d0a35eb51666838c5052ba7d3a82b99ce854b22b"
+      ]
+    },
+    "cme-greeting": {
+      "port": [
+        "48a3a1a6aed32391056534b6ff27502c65a824bfdb93767837a4f4856c918747"
+      ]
+    },
+    "expat": {
+      "port": [
+        "b7559a5c2aa116bbb4cb28a540b253d2abff505e70f7130197a51c3138ed6551"
+      ]
+    },
+    "ffmpeg": {
+      "port": [
+        "d888f001e461774c40ad2ecd1d94f1573dc253b45a6811d5120f6deb062fcc4a"
+      ]
+    },
+    "flac": {
+      "port": [
+        "d38e2da15f38d901ffaefff7892b421fcf3ee4675be47d918a2f0b01230aa292"
+      ]
+    },
+    "fmt": {
+      "port": [
+        "89d5420a54e346853e3de63c25194770ed5147f514005f0292d89857aa7393de"
+      ]
+    },
+    "freetype": {
+      "port": [
+        "6ff60cb1de271e62887c9f79e6a1f8a73798e3d9eb7c9841d1a1144ba26efe3b"
+      ]
+    },
+    "glfw": {
+      "port": [
+        "f3a4dab9aad6e581a86ca12b3d3d5503e3042d83137b45509421f459d284dfb8"
+      ]
+    },
+    "harfbuzz": {
+      "port": [
+        "c07728cfa0bd859e5be6a3521d311d047153faaf04ff0d91578fbbda8b8c77f4"
+      ]
+    },
+    "icu-sources": {
+      "port": [
+        "84b769e0c096799ad1afc3fea235f1ff49c60bbf9a820822ce5c8373677cd8df"
+      ]
+    },
+    "kernel-headers": {
+      "archive": "SHA256=16161844e56944d39794ad74c2dfd6faad12bda79b5dc00595f4178d28a92e2d",
+      "port": [
+        "9672e9ba4958f43cd9fff7bfcab445416dc32aa97487ec6b8d02d3e3601bf29f"
+      ],
+      "url": "https://github.com/sabotage-linux/kernel-headers/archive/refs/tags/v4.19.88-2.tar.gz",
+      "version": "4.19.88-2"
+    },
+    "libdrm": {
+      "port": [
+        "bfcda167374f56535c4cd4a93afca571159ce5399b777f368c7b17a6c2253d1f"
+      ]
+    },
+    "libffi": {
+      "port": [
+        "279ab56c3dafc224c1572fd1d5e246f8e7d56970ae6f4f902c10d5a04004ac6b"
+      ]
+    },
+    "libgrapheme": {
+      "port": [
+        "ff0f7b1950569354002bb111f93d11ea2de675ab9ea17ca6f9338cf8e0eea881"
+      ]
+    },
+    "libjpeg-turbo": {
+      "port": [
+        "394426dffd26ab033e7e9f01de385e848830a6a9f4799317c34dd5aad82cf7b4"
+      ]
+    },
+    "libpng": {
+      "port": [
+        "eb6d5e2013fb1f149ebfc5ff41a198c4603c6b9e0f03537cb89048e976e12969"
+      ]
+    },
+    "libsndfile": {
+      "port": [
+        "f8ba8f2108d4ddb1f31561a796f000e7cd982b99e456b243ab5ec0559755887d"
+      ]
+    },
+    "libwebp": {
+      "port": [
+        "b759b124d70a42d1aedb31c163c30a94721a665f2418354e1c2bdf8dd842d9b7"
+      ]
+    },
+    "libx11": {
+      "port": [
+        "f16362eabdcfea083e8eae8cde4863d130f2b1da82b6b6d4d9a89d399cd6a455"
+      ]
+    },
+    "libxau": {
+      "port": [
+        "841ff87cb3ec167ae1763214f6fe2bf75fe882e01f6a72faa7660b93dc796b7a"
+      ]
+    },
+    "libxcb": {
+      "port": [
+        "9d4d794ced1430b04d90eff8e291af20c37a4a072c6c0d1cd36a23ebd6a33b50"
+      ]
+    },
+    "libxcursor": {
+      "port": [
+        "9799c3192bf231e9591132e64c405a5e4e060cef1ef5a194f0556668f81ef699"
+      ]
+    },
+    "libxdmcp": {
+      "port": [
+        "39bd0d1bc9f66a141e51d3a1e9be70ded52adf1390cd33a41dd9e69c7bc38e6a"
+      ]
+    },
+    "libxext": {
+      "port": [
+        "a22ab400d784d6b32da98c8a882a41959339f663a8ff56e772e4250f444ea239"
+      ]
+    },
+    "libxfixes": {
+      "port": [
+        "815482f2ebdf0eb4a5fd6fe89cb281d32347f5e566f2712739151f885dc67661"
+      ]
+    },
+    "libxi": {
+      "port": [
+        "70e3f435e8b3a7248739253eb29ee10484019bcee565e21c198f6e28fd3695fd"
+      ]
+    },
+    "libxinerama": {
+      "port": [
+        "f7b2b0246fd0db2ba54d95460cdc52fb1072d27c01fd19db920697326ca248b0"
+      ]
+    },
+    "libxkbcommon": {
+      "port": [
+        "f9109e4e2a045754c2b5081d39dd1f14d19ad29872c8811cfcff79552a412a58"
+      ]
+    },
+    "libxrandr": {
+      "port": [
+        "e831b6cf286541e7aafa879bdd0fa302d6e951ec105886b1c89e28ba7d779ef1"
+      ]
+    },
+    "libxrender": {
+      "port": [
+        "ce2249bcb33afb2d248a12cc43019f62dda5c3ce2fbe3d0d5d9dffec929e9f41"
+      ]
+    },
+    "libzip": {
+      "port": [
+        "9a45e539e15f148620237c97f8beb56d1b7a37b1b09c30554e1be1920acab70a"
+      ]
+    },
+    "llvm": {
+      "port": [
+        "2fdef3705ad264acbab94397877dfa201c55f933d51b3d86beb9fa97ca0b7b8f"
+      ]
+    },
+    "llvm-archive": {
+      "archive": "SHA256=922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888",
+      "port": [
+        "7e3e786bc434665d808a3617f0f71cc7547a9a36fa9e2f3096fb066ae8529fff"
+      ],
+      "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/llvm-project-22.1.8.src.tar.xz",
+      "version": "22.1.8"
+    },
+    "mesa": {
+      "port": [
+        "2aa93f2c2190179ffa99e2951041732e6a53efa6e2dd753ce7d5f7503364eb92"
+      ]
+    },
+    "minimp3": {
+      "port": [
+        "54b24243e4c83fd673d107f7ffb070a1be09807d16e9baab8da7486f6a65c775"
+      ]
+    },
+    "mpg123": {
+      "port": [
+        "73fcffb6f3baecf87f2b8ff0a7414de195d091afd50e6d664f091a588d3c1964"
+      ]
+    },
+    "musl": {
+      "commit": "9fa28ece75d8a2191de7c5bb53bed224c5947417",
+      "port": [
+        "e579a023b73b369e9ac3095fbfe95ea8210760d14921e5c95608d53427d8c932"
+      ],
+      "url": "https://git.musl-libc.org/git/musl",
+      "version": "1.2.6"
+    },
+    "oboe": {
+      "port": [
+        "bd2180bd81e6a763cefdc7b892683abe727f613082576a9ebee86a640438731c"
+      ]
+    },
+    "ogg": {
+      "port": [
+        "c221d12abccbcd20f1c5b0d42f41df29013ae679c969f01c30656454c25afa14"
+      ]
+    },
+    "openal-soft": {
+      "port": [
+        "5fbe7256c420ce7daaeca3ac0badf3347fc9418c0ad6535528fb1b9a7e3055e8"
+      ]
+    },
+    "opus": {
+      "port": [
+        "4afa3cbbf8055ac4abaf55e38ff7065e3d1c9af07cf76a2cbad6998d0b5d3416"
+      ]
+    },
+    "skia": {
+      "port": [
+        "d2bab81bc6c0883b68a0838ac4732725ae5148877c7698fd8ac8b910103724e6"
+      ]
+    },
+    "vorbis": {
+      "port": [
+        "9ab91407dd74ad86a7d73c79a887713078cf1d7874ff3e9196c326f2609516e7"
+      ]
+    },
+    "vulkan-headers": {
+      "port": [
+        "7c90a33e531d97aabd4a0b73f985bad6c2db22a65f9ceb10f218017c417a6ffa"
+      ]
+    },
+    "vulkan-memory-allocator-sources": {
+      "port": [
+        "cf3b206c6ce466fb50344a60b0099c017b49c26d2a074d1c05aa981b0ebc75b9"
+      ]
+    },
+    "wayland": {
+      "port": [
+        "3ab6d9f53ceb677d3f2b301bf77265682bae7df52a94e6ecf79d4410199347f5"
+      ]
+    },
+    "wayland-protocols": {
+      "port": [
+        "b9c8147db336f9474ca6ebdeca7f78586dd06034b6a318180d53006423d9a0b0"
+      ]
+    },
+    "wuffs-sources": {
+      "port": [
+        "ffa369d93d80cd5fabffd0bf4be82177b0f4d4f6018cd969731e3934076be94b"
+      ]
+    },
+    "x264": {
+      "port": [
+        "72d34d3c9c6b4f98fe21308895efe61360265060ac075a96b2e32f27fd9ff3f6"
+      ]
+    },
+    "xcb-proto": {
+      "port": [
+        "53dd56d35f5ab0108d8d0d2b94293255d9154adc9d796539b11665fb8faf79dc"
+      ]
+    },
+    "xorgproto": {
+      "port": [
+        "8d0aa16a742198f735e4ace665e6551acbc7818e92b7334b951e2934657ff558"
+      ]
+    },
+    "xtrans": {
+      "port": [
+        "f7083059bb7401b345ee148b80076f087ab21af7d215959f36f14dcc2bd639cf"
+      ]
+    },
+    "xz": {
+      "port": [
+        "becd2daa39648de82a04ff29901b28b84d2fc165ccab190456ff41999cfb4ac0"
+      ]
+    },
+    "zlib": {
+      "port": [
+        "acc6ddc6811e9ca21be7bd9e2efb6371d582e30449e708c2aa2983241b1adb82"
+      ]
+    }
+  }
+}
