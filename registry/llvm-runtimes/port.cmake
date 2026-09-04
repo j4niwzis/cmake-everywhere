@@ -18,13 +18,14 @@ cme_declare_port(
   NAME llvm-runtimes
   PROVIDES llvm-runtimes libcxx
   VERSION 22.1.8
-  GITHUB_REPOSITORY llvm/llvm-project
-  GIT_TAG llvmorg-22.1.8
-  GIT_TAG_TEMPLATE "llvmorg-@VERSION@"
   LICENSE Apache-2.0-WITH-LLVM-exception
   CONFIGURE cmake
+  # The same archive the compiler libraries come out of: the runtimes are a
+  # directory in it. Nothing of LLVM itself is built for these -- they are
+  # compiled by the compiler on this machine, not by one built here.
+  SOURCE_FROM llvm-archive
   SOURCE_SUBDIR runtimes
-  DEPENDS musl
+  DEPENDS musl llvm-archive
   INSTALLED_TARGETS
     "lib/libc++.a=LLVM::cxx"
     "lib/libc++abi.a=LLVM::cxxabi"

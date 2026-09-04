@@ -18,14 +18,15 @@ cme_declare_port(
   NAME llvm
   PROVIDES LLVM llvm
   VERSION 22.1.8
-  GITHUB_REPOSITORY llvm/llvm-project
-  GIT_TAG llvmorg-22.1.8
-  GIT_TAG_TEMPLATE "llvmorg-@VERSION@"
+  # Out of the archive beside this, which the runtime port is built out of
+  # too: one download of a monorepo, and two directories in it.
+  SOURCE_FROM llvm-archive
   # Apache 2.0 with the LLVM exception, which is what lets a program that
   # links it stay under its own licence.
   LICENSE Apache-2.0-WITH-LLVM-exception
   CONFIGURE cmake
   SOURCE_SUBDIR llvm
+  DEPENDS llvm-archive
   INSTALLED_TARGETS ""
   INSTALLED_INCLUDE include
   PROGRAMS "bin/llvm-config=LLVM::config"
