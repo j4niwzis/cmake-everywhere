@@ -1123,7 +1123,7 @@ endfunction()
 # It is honoured only from a port that was read out of a prefix. In a source
 # tree the same line is a statement about somebody else's machine.
 function(cme_installed_with port)
-  cmake_parse_arguments(COPY "" "VERSION" "FEATURES;NEEDED" ${ARGN})
+  cmake_parse_arguments(COPY "" "VERSION;REVISION" "FEATURES;NEEDED" ${ARGN})
   get_property(origin GLOBAL PROPERTY CME_PORT_ORIGIN)
   if(NOT origin MATCHES "^the system")
     return()
@@ -1133,6 +1133,8 @@ function(cme_installed_with port)
   set_property(GLOBAL PROPERTY CME_INSTALLED_SAID_${port} TRUE)
   set_property(GLOBAL PROPERTY CME_INSTALLED_VERSION_${port} "${COPY_VERSION}")
   set_property(GLOBAL PROPERTY CME_INSTALLED_NEEDED_${port} "${COPY_NEEDED}")
+  set_property(GLOBAL PROPERTY CME_INSTALLED_REVISION_${port}
+               "${COPY_REVISION}")
 endfunction()
 
 function(cme_lock_read)
@@ -1898,7 +1900,34 @@ function(cme_declare_port)
         "${PORT_OVERLAY} is a directory beside a port file, and a port "
         "declared in a CMakeLists has no directory")
     else()
-      set(exported "${CMAKE_BINARY_DIR}/cme-ports/${PORT_NAME}/port.cmake")
+      # Whose file this is.
+      #
+      # A port directory in a prefix holds one file that is a statement about
+      # the copy installed there -- what version it is, which revision, what
+      # it was built with -- and that file is port.cmake, written by the
+      # build that installed the library.
+      #
+      # A project also declares ports for libraries it merely needs, because
+      # whoever installs this project has to be able to resolve them without
+      # fetching this project first. Those are declarations and not records:
+      # nothing of those libraries is installed here, they are added to this
+      # build with EXCLUDE_FROM_ALL. Writing them to the same port.cmake
+      # overwrote the record the library's own install had left, and a record
+      # that says nothing about its revision is a copy that is taken for any
+      # pin -- which is how a client pinning one skiff was compiled against
+      # another. So they go beside it, under the name of who needs them.
+      set(mine FALSE)
+      if(PORT_NAME STREQUAL PROJECT_NAME OR
+         (PORT_SOURCE_DIR AND PORT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR))
+        set(mine TRUE)
+      endif()
+      if(mine)
+        set(exported "${CMAKE_BINARY_DIR}/cme-ports/${PORT_NAME}/port.cmake")
+      else()
+        set(exported
+            "${CMAKE_BINARY_DIR}/cme-ports/${PORT_NAME}/needed-by-${PROJECT_NAME}.cmake")
+      endif()
+      set_property(GLOBAL PROPERTY CME_EXPORT_IS_RECORD_${PORT_NAME} ${mine})
       set(text "# Written by cmake-everywhere from the declaration in\n")
       string(APPEND text "# ${CMAKE_CURRENT_SOURCE_DIR}.\n#\n")
       string(APPEND text
@@ -3195,7 +3224,15 @@ function(cme_alias alias target)
 endfunction()
 
 function(cme_include_ports where origin)
+  # port.cmake first, and then what projects that need this library left
+  # beside it: the record of the copy installed here is the first word about
+  # it, and a declaration by somebody who needs it only fills in what the
+  # record did not say -- where the library comes from, most of all, which is
+  # what a consumer resolving its dependencies needs and what an installed
+  # library has no reason to state about itself.
   file(GLOB ports "${where}/*/port.cmake")
+  file(GLOB needed "${where}/*/needed-by-*.cmake")
+  list(APPEND ports ${needed})
   foreach(port IN LISTS ports)
     get_filename_component(directory "${port}" DIRECTORY)
     set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "${origin}")
@@ -3270,17 +3307,70 @@ function(cme_finish_exports)
       endforeach()
     endif()
 
-    # Every exported port says what the copy beside it is: the version that
-    # was built, the features it was built with, and what it needed to be
-    # built that way. A machine that has the library then knows whether it
-    # has the library this build needs, instead of a build looking for a
-    # symbol and hoping the feature adds one.
+    # The record of a copy is written only where a copy was installed.
+    #
+    # This build installs its own library and nothing else: a dependency is
+    # added with EXCLUDE_FROM_ALL and its install rules never run. Saying
+    # what such a library "was installed with" describes a copy that is not
+    # in this prefix, and the next build takes that description for an
+    # installed library and compiles against whatever else is there.
+    get_property(record GLOBAL PROPERTY CME_EXPORT_IS_RECORD_${name})
     cme_enabled_features(${name} built_with)
+    if(NOT record)
+      # What this library needed here is still worth saying -- it is a fact
+      # about the library, and the next project reading this would otherwise
+      # have to find it out by building. What is not said is what a copy in
+      # this prefix is, because there is no copy of it in this prefix.
+      cme_export_line(${name}
+        "# Declared by ${PROJECT_NAME}, which needs this library. What is")
+      cme_export_line(${name}
+        "# installed here, if anything is, says so in port.cmake beside this.")
+      if(needs)
+        set(said "cme_port_needs(${name}")
+        foreach(item IN LISTS needs)
+          cme_quote(value "${item}")
+          string(APPEND said " \"${value}\"")
+        endforeach()
+        cme_export_line(${name} "${said})")
+      endif()
+      continue()
+    endif()
     cme_port_field(built_version ${name} VERSION)
     set(copy "cme_installed_with(${name}")
     if(built_version)
       cme_quote(value "${built_version}")
       string(APPEND copy " VERSION \"${value}\"")
+    endif()
+    # Which revision this copy is, where that is knowable. A version says
+    # which release a library is and says nothing about which build of a
+    # branch: two copies of skiff at 0.1 can be a month apart. A project that
+    # pins a commit is asking for one of them, and this is what lets the
+    # answer be checked instead of assumed.
+    get_property(built_revision GLOBAL PROPERTY CME_BUILT_REVISION_${name})
+    # A library fetched by a build knows its revision because the build
+    # fetched it. A library built from its own tree has to look: this is a
+    # project installing itself, and the tree it is being built from is a
+    # checkout of some commit. Without this an installed skiff said which
+    # version it was and never which build of it, so a project pinning a
+    # commit had nothing to compare against and took whatever was there.
+    if(NOT built_revision AND IS_DIRECTORY "${CMAKE_SOURCE_DIR}/.git")
+      if(NOT GIT_EXECUTABLE)
+        find_package(Git QUIET)
+      endif()
+    endif()
+    if(NOT built_revision AND GIT_EXECUTABLE AND
+       IS_DIRECTORY "${CMAKE_SOURCE_DIR}/.git")
+      execute_process(
+        COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_SOURCE_DIR}" rev-parse HEAD
+        OUTPUT_VARIABLE built_revision OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET RESULT_VARIABLE told)
+      if(NOT told EQUAL 0)
+        set(built_revision "")
+      endif()
+    endif()
+    if(built_revision)
+      cme_quote(value "${built_revision}")
+      string(APPEND copy " REVISION \"${value}\"")
     endif()
     foreach(kind FEATURES NEEDED)
       if(kind STREQUAL "FEATURES")
@@ -3577,6 +3667,53 @@ function(cme_system_allowed out package)
     set(${out} "${CME_SYSTEM_${upper}}" PARENT_SCOPE)
     return()
   endif()
+
+  # A pinned revision is not a version, and only one copy is it.
+  #
+  # A project that names a commit has said which build of the library it
+  # means, and two copies of the same version can be a month apart -- which
+  # is exactly how a library of one's own is developed. So where the project
+  # pins a commit and a copy installed here says it is a different one, the
+  # machine is not asked at all.
+  #
+  # Asked and refused later would be too late: looking for an installed copy
+  # means reading its CMake configuration, and that defines the targets it
+  # exports, in this build, for good. The port then builds beside them and
+  # cannot take the names, so the consumer compiles against the copy that was
+  # rejected. Deciding here is what keeps a rejected copy out of the build.
+  #
+  # A copy that says nothing about its revision is left alone: it was
+  # installed by something that does not record one, and refusing every such
+  # copy would refuse every distribution's package.
+  if(port)
+    cme_port_field(pinned ${port} GIT_TAG)
+    get_property(installed_revision GLOBAL PROPERTY
+                 CME_INSTALLED_REVISION_${port})
+    get_property(installed_said GLOBAL PROPERTY CME_INSTALLED_SAID_${port})
+    string(LENGTH "${pinned}" pinned_length)
+    if(pinned_length EQUAL 40 AND pinned MATCHES "^[0-9a-f]+$" AND
+       installed_said AND NOT installed_revision STREQUAL pinned)
+      string(SUBSTRING "${pinned}" 0 8 pinned_short)
+      if(installed_revision)
+        string(SUBSTRING "${installed_revision}" 0 8 installed_short)
+      else()
+        # A copy installed by this, that does not say which revision it is.
+        #
+        # Left alone, it is a copy taken for every pin: the check above has
+        # nothing to compare and lets it through, and a project pinning a
+        # commit is compiled against a library that may be months from it.
+        # A copy that was installed by anything else says nothing here at
+        # all -- that is the distribution's package, and it is not refused.
+        set(installed_short "of no stated revision")
+      endif()
+      message(STATUS
+        "cmake-everywhere: the ${package} installed here is ${installed_short} "
+        "and this build pins ${pinned_short}, so it is built here instead")
+      set(${out} OFF PARENT_SCOPE)
+      return()
+    endif()
+  endif()
+
   if(CME_SYSTEM STREQUAL "NEVER")
     set(${out} OFF PARENT_SCOPE)
   else()
@@ -4278,6 +4415,7 @@ function(cme_system_has_features out package port features)
   # a feature happens to add to the interface, and a feature that changes
   # behaviour without adding a symbol is invisible to it.
   cme_requested_features(${port} asked)
+
   get_property(said GLOBAL PROPERTY CME_INSTALLED_SAID_${port})
   if(said)
     get_property(has GLOBAL PROPERTY CME_INSTALLED_FEATURES_${port})
@@ -5172,6 +5310,11 @@ function(cme_build_port port package version exact)
         ERROR_QUIET RESULT_VARIABLE told)
       if(told EQUAL 0)
         cme_lock_fact("${port}" "commit" "${fetched}")
+        # And kept, because a copy of this library installed somewhere has
+        # to be able to say which revision it is: a version number does not
+        # distinguish two builds of the same branch, and a project that pins
+        # a commit is asking for exactly one of them.
+        set_property(GLOBAL PROPERTY CME_BUILT_REVISION_${port} "${fetched}")
       endif()
     endif()
   endif()

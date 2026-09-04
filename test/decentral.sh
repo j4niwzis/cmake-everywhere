@@ -139,12 +139,16 @@ cme_declare_port(
 )
 EOF
 
-# A project whose whole purpose is to have declared something, so that
-# installing it installs what it declared.
+# A project that declares something and installs itself, so that installing
+# it installs both: the record of what is here, and the declaration of what
+# it needed.
 mkdir -p "$work/exporter"
+cat >"$work/exporter/exporter.cc" <<'EOF'
+int exporter_answer() { return 42; }
+EOF
 cat >"$work/exporter/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.24)
-project(exporter LANGUAGES CXX)
+project(exporter VERSION 1.0.0 LANGUAGES CXX)
 cme_declare_port(
   NAME hello
   PROVIDES Hello
@@ -154,6 +158,25 @@ cme_declare_port(
 )
 cme_port_feature(hello loud SUMMARY "says it twice")
 cme_features(hello loud)
+cme_declare_port(NAME exporter PROVIDES Exporter VERSION 1.0.0)
+add_library(exporter STATIC exporter.cc)
+install(TARGETS exporter DESTINATION lib)
+EOF
+(
+  cd "$work/exporter"
+  git init -q .
+  git add -A
+  git -c user.email=nobody@example -c user.name=nobody commit -qm "exporter"
+)
+exporter_revision=$(git -C "$work/exporter" rev-parse HEAD)
+
+# A record somebody else's install left in that prefix, which nothing this
+# project installs may write over: it is the statement of what is installed
+# there, and only the build that installed it can make it.
+mkdir -p "$work/prefix/share/cmake-everywhere/ports/hello"
+cat >"$work/prefix/share/cmake-everywhere/ports/hello/port.cmake" <<'EOF'
+cme_declare_port(NAME hello PROVIDES Hello VERSION 1.0.0)
+cme_installed_with(hello VERSION "1.0.0" REVISION "0123456789abcdef0123456789abcdef01234567")
 EOF
 
 check() {
@@ -213,9 +236,10 @@ fi
 if cmake -S "$work/exporter" -B "$work/export" -G Ninja \
      -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$provider" \
      -DCME_REGISTRY="$here/registry" >"$work/export.log" 2>&1 &&
+   cmake --build "$work/export" >>"$work/export.log" 2>&1 &&
    cmake --install "$work/export" --prefix "$work/prefix" \
      >>"$work/export.log" 2>&1 &&
-   [ -f "$work/prefix/share/cmake-everywhere/ports/hello/port.cmake" ]; then
+   [ -f "$work/prefix/share/cmake-everywhere/ports/hello/needed-by-exporter.cmake" ]; then
   printf '  ok    %s\n' "a project installs the ports it declared"
 else
   printf '  FAIL  %s  (see %s)\n' "a project installs the ports it declared" \
@@ -223,15 +247,45 @@ else
   failed=$((failed + 1))
 fi
 
-if grep -qF 'cme_port_feature(hello loud' \
-     "$work/prefix/share/cmake-everywhere/ports/hello/port.cmake" &&
-   grep -qF 'cme_installed_with(hello VERSION "1.0.0" FEATURES "loud")' \
-     "$work/prefix/share/cmake-everywhere/ports/hello/port.cmake"; then
-  printf '  ok    %s\n' "an installed port says what it can be and what it is"
+# What a project needed is a statement about a library: where it comes from,
+# what it can be, and what it asked for while it was built. It says nothing
+# about a copy being here, because a dependency is added to a build with
+# EXCLUDE_FROM_ALL and none of it is installed by whoever needed it.
+needed="$work/prefix/share/cmake-everywhere/ports/hello/needed-by-exporter.cmake"
+if grep -qF 'cme_port_feature(hello loud' "$needed" &&
+   ! grep -qF 'cme_installed_with' "$needed"; then
+  printf '  ok    %s\n' "a port a project needed says what it can be, not what is here"
 else
   printf '  FAIL  %s  (see %s)\n' \
-    "an installed port says what it can be and what it is" \
-    "$work/prefix/share/cmake-everywhere/ports/hello/port.cmake"
+    "a port a project needed says what it can be, not what is here" "$needed"
+  failed=$((failed + 1))
+fi
+
+# And the record that was already there is the one that is still there. This
+# is the failure it is here for: a consumer's install used to write its
+# declaration to that same path, and what it wrote described a copy nobody
+# had installed -- so the next build took the library that happened to be in
+# the prefix for the one it had pinned.
+record="$work/prefix/share/cmake-everywhere/ports/hello/port.cmake"
+if grep -qF '0123456789abcdef0123456789abcdef01234567' "$record"; then
+  printf '  ok    %s\n' "and it leaves the record of the copy that is installed alone"
+else
+  printf '  FAIL  %s  (see %s)\n' \
+    "and it leaves the record of the copy that is installed alone" "$record"
+  failed=$((failed + 1))
+fi
+
+# The project's own library is the one it installed, so that is the one it
+# writes a record for -- with the revision of the tree it was built from,
+# which is what tells two builds of a branch apart.
+mine="$work/prefix/share/cmake-everywhere/ports/exporter/port.cmake"
+if [ -f "$mine" ] &&
+   grep -qF "cme_installed_with(exporter VERSION \"1.0.0\" REVISION \"$exporter_revision\"" \
+     "$mine"; then
+  printf '  ok    %s\n' "a project installing itself records which revision it is"
+else
+  printf '  FAIL  %s  (see %s)\n' \
+    "a project installing itself records which revision it is" "$mine"
   failed=$((failed + 1))
 fi
 
@@ -241,7 +295,7 @@ check "a port read from a prefix, by a project that declares nothing" \
 
 # What the world port learned while it was built. Nobody wrote down that
 # world needs hello: world asked for it, and the exported port says so.
-learned="$work/carried/cme-ports/world/port.cmake"
+learned="$work/carried/cme-ports/world/needed-by-cme-port.cmake"
 if [ -f "$learned" ] && grep -qF 'cme_port_needs(world "hello")' "$learned"; then
   printf '  ok    %s\n' "an exported port learns what was asked for"
 else

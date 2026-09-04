@@ -131,11 +131,12 @@ projects say; the option is what the library reads. `cme_features(hello
 vorbis)` in the library's own CMakeLists turns one on for the library's own
 build.
 
-**What it was built with is baked into the install.** Every exported port
-carries a line about the copy it was installed beside:
+**What it was built with is baked into the install.** The port installed
+beside a library carries a line about the copy it was installed beside:
 
 ```cmake
-cme_installed_with(hello VERSION "1.4.0" FEATURES "vorbis" NEEDED "vorbis")
+cme_installed_with(hello VERSION "1.4.0" REVISION "3f2a1c..."
+                   FEATURES "vorbis" NEEDED "vorbis")
 ```
 
 So the one question that used to be guesswork -- does the copy on this
@@ -146,8 +147,17 @@ interface and is blind to one that changes behaviour. With it, a copy built
 without `vorbis` is passed over and the port is built, and the build says
 which feature was missing.
 
+The revision is what tells two builds of a branch apart, since a version does
+not: a project that pins a commit does not ask the machine at all when what
+is installed says it is a different one, and does not take a copy that this
+installed and that cannot say which revision it is. A copy installed by
+anything else says nothing here, and is not refused for it -- that is every
+distribution's package.
+
 That line is honoured only from a port read out of a prefix. In a source tree
-it is a statement about somebody else's machine.
+it is a statement about somebody else's machine. And it is written only by
+the build that installed the library: what a project declares for a library
+it merely needs is a declaration, not a record, and goes beside it.
 
 ### A port that never gets as far as the repository
 
@@ -232,7 +242,18 @@ is installed beside the project:
 
 ```
 ${prefix}/share/cmake-everywhere/ports/<name>/port.cmake
+${prefix}/share/cmake-everywhere/ports/<name>/needed-by-<project>.cmake
 ```
+
+Two files, because they are two statements. The first is the record of the
+copy installed there, written by the build that installed it. The second is
+a declaration by a project that needs that library -- where it comes from,
+what it can be, what it asked for -- so that whoever installs that project
+can resolve what it needed without fetching it first. Nothing of a needed
+library is installed by whoever needed it: a dependency is added to a build
+with `EXCLUDE_FROM_ALL` and its install rules never run, so a consumer
+writing its declaration over the record would describe a copy that is not
+there.
 
 A library that uses this writes nothing to make that happen -- it declared
 the ports already, and installing the library installs them. Any prefix in
