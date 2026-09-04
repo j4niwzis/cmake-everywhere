@@ -29,10 +29,16 @@ function(cme_cmake_configure port source where prefix out_build)
   file(TOUCH "${build}/.cmake/api/v1/query/codemodel-v2")
 
   set(arguments "-S" "${source}" "-B" "${build}" "-G" "${CMAKE_GENERATOR}")
+  # The link as well as the compile. A project configured with this build's
+  # compiler and none of its link flags links against whatever the compiler
+  # defaults to -- which, for a build that carries its own runtime, is a
+  # library that is not there.
   foreach(name CMAKE_TOOLCHAIN_FILE CMAKE_BUILD_TYPE CMAKE_C_COMPILER
                CMAKE_CXX_COMPILER CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_SYSROOT
                CMAKE_MAKE_PROGRAM CMAKE_PREFIX_PATH CMAKE_CXX_STANDARD
-               CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+               CMAKE_INTERPROCEDURAL_OPTIMIZATION
+               CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS
+               CMAKE_MODULE_LINKER_FLAGS)
     if(${name})
       list(APPEND arguments "-D${name}=${${name}}")
     endif()
