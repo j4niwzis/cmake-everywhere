@@ -13,9 +13,9 @@
 cme_declare_port(
   NAME musl
   PROVIDES musl
-  VERSION 1.2.5
+  VERSION 1.2.6
   GIT_REPOSITORY https://git.musl-libc.org/git/musl
-  GIT_TAG v1.2.5
+  GIT_TAG v1.2.6
   GIT_TAG_TEMPLATE "v@VERSION@"
   LICENSE MIT
   CONFIGURE YES

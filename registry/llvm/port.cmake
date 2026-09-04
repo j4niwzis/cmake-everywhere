@@ -17,9 +17,9 @@
 cme_declare_port(
   NAME llvm
   PROVIDES LLVM llvm
-  VERSION 20.1.8
+  VERSION 22.1.8
   GITHUB_REPOSITORY llvm/llvm-project
-  GIT_TAG llvmorg-20.1.8
+  GIT_TAG llvmorg-22.1.8
   GIT_TAG_TEMPLATE "llvmorg-@VERSION@"
   # Apache 2.0 with the LLVM exception, which is what lets a program that
   # links it stay under its own licence.
