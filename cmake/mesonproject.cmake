@@ -84,11 +84,31 @@ function(cme_meson_machine_file port out_file out_kind)
   set(c_args "")
   set(cpp_args "")
   set(link_args "")
-  if(CMAKE_C_FLAGS)
-    separate_arguments(c_args UNIX_COMMAND "${CMAKE_C_FLAGS}")
+  # What this build type adds, which is where the tuning lives: -O3 and
+  # link-time optimisation are per-configuration flags, and a port compiled
+  # without them is compiled differently from the program that links it.
+  string(TOUPPER "${CMAKE_BUILD_TYPE}" cme_configuration)
+  set(cme_c_tuning "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${cme_configuration}}")
+  set(cme_cxx_tuning "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${cme_configuration}}")
+  set(cme_link_tuning
+      "${CMAKE_EXE_LINKER_FLAGS} ${CMAKE_EXE_LINKER_FLAGS_${cme_configuration}}")
+  if(cme_c_tuning)
+    separate_arguments(c_args UNIX_COMMAND "${cme_c_tuning}")
   endif()
   if(CMAKE_CXX_FLAGS)
-    separate_arguments(cpp_args UNIX_COMMAND "${CMAKE_CXX_FLAGS}")
+    separate_arguments(cpp_args UNIX_COMMAND "${cme_cxx_tuning}")
+  endif()
+  # What linking here takes, which is not the same as what compiling takes.
+  #
+  # Meson decides whether a compiler supports a flag by compiling a program
+  # and linking it, so a build whose link needs saying -- another linker,
+  # another runtime library -- answers "no" to every question when it is not
+  # told. What that looks like is a compiler that does not support
+  # -Wno-unused-parameter, and then a header that does not define a constant
+  # it plainly defines.
+  if(cme_link_tuning)
+    separate_arguments(cme_linker UNIX_COMMAND "${cme_link_tuning}")
+    list(APPEND link_args ${cme_linker})
   endif()
   if(CMAKE_SYSROOT)
     list(APPEND c_args "--sysroot=${CMAKE_SYSROOT}")

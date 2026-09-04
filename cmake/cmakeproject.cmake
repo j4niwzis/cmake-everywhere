@@ -20,10 +20,28 @@ function(cme_cmake_probe port source out_build)
   file(TOUCH "${build}/.cmake/api/v1/query/codemodel-v2")
 
   set(arguments "-S" "${source}" "-B" "${build}" "-G" "${CMAKE_GENERATOR}")
+  # The link as well as the compile, and what the build type adds as well as
+  # what is always there.
+  #
+  # A project configured with this build's compiler and none of its link
+  # flags links the way the compiler defaults to, which is not necessarily
+  # the way everything else here links. And the tuning a build states --
+  # -O3, link-time optimisation, whatever a release means -- is written into
+  # the per-configuration flags: a port handed only the plain ones is a
+  # library compiled differently from the program that links it, and under
+  # link-time optimisation it is an archive of machine code where the final
+  # link expected bitcode.
   foreach(name CMAKE_TOOLCHAIN_FILE CMAKE_BUILD_TYPE CMAKE_C_COMPILER
                CMAKE_CXX_COMPILER CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_SYSROOT
                CMAKE_MAKE_PROGRAM CMAKE_PREFIX_PATH CMAKE_CXX_STANDARD
-               CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+               CMAKE_INTERPROCEDURAL_OPTIMIZATION
+               CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS
+               CMAKE_MODULE_LINKER_FLAGS
+               CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE
+               CMAKE_EXE_LINKER_FLAGS_RELEASE
+               CMAKE_SHARED_LINKER_FLAGS_RELEASE
+               CMAKE_MODULE_LINKER_FLAGS_RELEASE
+               CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO)
     if(${name})
       list(APPEND arguments "-D${name}=${${name}}")
     endif()

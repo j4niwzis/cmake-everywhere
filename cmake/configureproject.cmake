@@ -23,15 +23,20 @@ function(cme_configure_environment out)
   if(CMAKE_CXX_COMPILER)
     list(APPEND pairs "CXX=${CMAKE_CXX_COMPILER}")
   endif()
-  set(c_flags "${CMAKE_C_FLAGS}")
-  set(cxx_flags "${CMAKE_CXX_FLAGS}")
+  # Including what the build type adds: the tuning a project asked for is in
+  # the per-configuration flags, and a library built without them is built
+  # differently from everything that links it.
+  string(TOUPPER "${CMAKE_BUILD_TYPE}" cme_configuration)
+  set(c_flags "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${cme_configuration}}")
+  set(cxx_flags "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${cme_configuration}}")
   # What linking here takes, which is the compile flags as well as the link
   # ones: a toolchain says where its runtime is with -resource-dir and hands
   # the linker its builtins by path, and both of those are compiler driver
   # flags that a link needs as much as a compile. Without them the first
   # program a configure script builds does not link, and what it reports is
   # a compiler that cannot create an executable.
-  set(link_flags "${CMAKE_C_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
+  set(link_flags
+      "${c_flags} ${CMAKE_EXE_LINKER_FLAGS} ${CMAKE_EXE_LINKER_FLAGS_${cme_configuration}}")
   # Which machine this compiler is aimed at.
   #
   # CMake keeps that in CMAKE_C_COMPILER_TARGET and puts --target= on every
