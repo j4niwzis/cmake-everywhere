@@ -8,9 +8,10 @@ cme_declare_port(
   NAME libffi
   PROVIDES libffi ffi FFI
   VERSION 3.4.6
-  GITHUB_REPOSITORY libffi/libffi
-  GIT_TAG v3.4.6
-  GIT_TAG_TEMPLATE "v@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz"
+  URL_HASH "SHA256=b0dea9df23c863a7a50e825440f3ebffabd65df1497108e5d437747843895a4e"
   LICENSE MIT
   CONFIGURE YES
   INSTALLED_TARGETS "lib/libffi.a=FFI::ffi"
