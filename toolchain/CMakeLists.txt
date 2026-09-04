@@ -55,12 +55,15 @@ set(CMAKE_SYSROOT \"${musl_prefix}\")
 set(CME_TOOLCHAIN_MUSL \"${musl_prefix}\")
 set(CME_TOOLCHAIN_RUNTIME \"${runtime_prefix}\")
 
+# The compiler's own runtime is LLVM's, not GCC's: this build has no libgcc
+# in it and wants none -- the unwinder, the builtins and the C++ ABI all come
+# from the same place the compiler does.
 set(CMAKE_C_FLAGS_INIT
-    \"--sysroot=${musl_prefix} -nostdinc -isystem ${musl_prefix}/include\")
+    \"--sysroot=${musl_prefix} -nostdinc -isystem ${musl_prefix}/include -rtlib=compiler-rt\")
 set(CMAKE_CXX_FLAGS_INIT
-    \"--sysroot=${musl_prefix} -nostdinc -isystem ${runtime_prefix}/include/c++/v1 -isystem ${musl_prefix}/include -stdlib=libc++\")
+    \"--sysroot=${musl_prefix} -nostdinc -isystem ${runtime_prefix}/include/c++/v1 -isystem ${musl_prefix}/include -stdlib=libc++ -rtlib=compiler-rt\")
 set(CMAKE_EXE_LINKER_FLAGS_INIT
-    \"--sysroot=${musl_prefix} -static -nostdlib++ -L${runtime_prefix}/lib -L${musl_prefix}/lib\")
+    \"--sysroot=${musl_prefix} -static -fuse-ld=lld -rtlib=compiler-rt --unwindlib=libunwind -nostdlib++ -L${runtime_prefix}/lib -L${musl_prefix}/lib\")
 set(CMAKE_CXX_STANDARD_LIBRARIES \"-lc++ -lc++abi -lunwind\")
 ")
 message(STATUS
