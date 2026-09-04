@@ -44,6 +44,11 @@ cme_declare_port(
     "LIBUNWIND_ENABLE_SHARED OFF"
     "LIBUNWIND_ENABLE_STATIC ON"
     "LIBCXX_ENABLE_STATIC_ABI_LIBRARY ON"
+    # Which ABI library, said outright. libc++ includes cxxabi.h from the
+    # library that implements exceptions and type information, and when it
+    # is not told which one that is it looks for the header on the machine
+    # -- where, in a build that carries its own, there is none.
+    "LIBCXX_CXX_ABI libcxxabi"
     # Which C library is underneath, because libc++ cannot tell.
     #
     # Its locale support is written per C library -- what a character class
