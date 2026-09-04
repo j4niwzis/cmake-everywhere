@@ -1,0 +1,158 @@
+Let the targets that must be archives be archives
+
+Mesa says shared_library for everything a program links to draw through it:
+the gallium target, which is where every gallium driver ends up, EGL, which
+links that target, and each Vulkan driver, which is the driver itself. Those
+are written as shared_library rather than library, so -Ddefault_library
+does not reach them and the build makes shared objects whatever it was
+asked for.
+
+A program that cannot open a shared object needs all of them as archives.
+library() is Meson's spelling of "whatever this build was asked for", which
+is what the rest of Mesa already uses -- and the comment at the top of the
+gallium target says the static target is the one this build system was
+converted from.
+
+diff -ruN a/src/amd/vulkan/meson.build b/src/amd/vulkan/meson.build
+--- a/src/amd/vulkan/meson.build
++++ b/src/amd/vulkan/meson.build
+@@ -275,7 +275,7 @@
+   radv_flags += '-DRADV_U_TRACE=1'
+ endif
+ 
+-libvulkan_radeon = shared_library(
++libvulkan_radeon = library(
+   'vulkan_radeon',
+   [libradv_files, radv_entrypoints, radv_drirc, sha1_h, radix_sort_spv, bvh_spv, radv_annotate_layer],
+   vs_module_defs : vulkan_api_def,
+diff -ruN a/src/asahi/vulkan/meson.build b/src/asahi/vulkan/meson.build
+--- a/src/asahi/vulkan/meson.build
++++ b/src/asahi/vulkan/meson.build
+@@ -107,7 +107,7 @@
+   gnu_symbol_visibility : 'hidden',
+ )
+ 
+-libvulkan_asahi = shared_library(
++libvulkan_asahi = library(
+   'vulkan_asahi',
+   link_whole : [libhk],
+   link_args: [ld_args_build_id],
+diff -ruN a/src/broadcom/vulkan/meson.build b/src/broadcom/vulkan/meson.build
+--- a/src/broadcom/vulkan/meson.build
++++ b/src/broadcom/vulkan/meson.build
+@@ -115,7 +115,7 @@
+ )
+ endforeach
+ 
+-libvulkan_broadcom = shared_library(
++libvulkan_broadcom = library(
+   'vulkan_broadcom',
+   [libv3dv_files, v3dv_entrypoints, v3dv_drirc, sha1_h],
+   include_directories : [
+diff -ruN a/src/egl/meson.build b/src/egl/meson.build
+--- a/src/egl/meson.build
++++ b/src/egl/meson.build
+@@ -204,7 +204,7 @@
+   c_args_for_egl += '-D_EGL_NATIVE_PLATFORM=_EGL_PLATFORM_@0@'.format(egl_native_platform.to_upper())
+ endif
+ 
+-libegl = shared_library(
++libegl = library(
+   egl_lib_name,
+   files_egl,
+   c_args : [
+diff -ruN a/src/freedreno/vulkan/meson.build b/src/freedreno/vulkan/meson.build
+--- a/src/freedreno/vulkan/meson.build
++++ b/src/freedreno/vulkan/meson.build
+@@ -199,7 +199,7 @@
+   tu_cpp_args += cpp.get_supported_arguments(['-Wno-misleading-indentation'])
+ endif
+ 
+-libvulkan_freedreno = shared_library(
++libvulkan_freedreno = library(
+   'vulkan_freedreno',
+   [libtu_files, tu_drirc, tu_entrypoints, tu_tracepoints, freedreno_xml_header_files, sha1_h, u_format_pack_h, bvh_spv],
+   include_directories : libtu_includes,
+diff -ruN a/src/gallium/targets/dri/meson.build b/src/gallium/targets/dri/meson.build
+--- a/src/gallium/targets/dri/meson.build
++++ b/src/gallium/targets/dri/meson.build
+@@ -39,7 +39,7 @@
+   libgallium_name = 'gallium-@0@'.format(meson.project_version())
+ endif
+ 
+-libgallium_dri = shared_library(
++libgallium_dri = library(
+   libgallium_name,
+   files('dri_target.c'),
+   include_directories : [
+diff -ruN a/src/gallium/targets/lavapipe/meson.build b/src/gallium/targets/lavapipe/meson.build
+--- a/src/gallium/targets/lavapipe/meson.build
++++ b/src/gallium/targets/lavapipe/meson.build
+@@ -1,6 +1,6 @@
+ 
+ 
+-libvulkan_lvp = shared_library(
++libvulkan_lvp = library(
+   'vulkan_lvp',
+   [ 'lavapipe_target.c' ],
+   vs_module_defs : vulkan_api_def,
+diff -ruN a/src/intel/vulkan/meson.build b/src/intel/vulkan/meson.build
+--- a/src/intel/vulkan/meson.build
++++ b/src/intel/vulkan/meson.build
+@@ -302,7 +302,7 @@
+   dependencies : anv_deps
+ )
+ 
+-libvulkan_intel = shared_library(
++libvulkan_intel = library(
+   'vulkan_intel',
+   [files('anv_gem.c'), anv_entrypoints[0], bvh_spv],
+   include_directories : [
+diff -ruN a/src/intel/vulkan_hasvk/meson.build b/src/intel/vulkan_hasvk/meson.build
+--- a/src/intel/vulkan_hasvk/meson.build
++++ b/src/intel/vulkan_hasvk/meson.build
+@@ -199,7 +199,7 @@
+   dependencies : anv_deps,
+ )
+ 
+-libvulkan_intel_hasvk = shared_library(
++libvulkan_intel_hasvk = library(
+   'vulkan_intel_hasvk',
+   [files('anv_gem.c'), anv_hasvk_entrypoints[0]],
+   include_directories : [
+diff -ruN a/src/nouveau/vulkan/meson.build b/src/nouveau/vulkan/meson.build
+--- a/src/nouveau/vulkan/meson.build
++++ b/src/nouveau/vulkan/meson.build
+@@ -181,7 +181,7 @@
+   gnu_symbol_visibility : 'hidden',
+ )
+ 
+-libvulkan_nouveau = shared_library(
++libvulkan_nouveau = library(
+   'vulkan_nouveau',
+   link_whole : [libnvk],
+   link_args: [ld_args_build_id, ld_args_bsymbolic, ld_args_gc_sections],
+diff -ruN a/src/panfrost/vulkan/meson.build b/src/panfrost/vulkan/meson.build
+--- a/src/panfrost/vulkan/meson.build
++++ b/src/panfrost/vulkan/meson.build
+@@ -202,7 +202,7 @@
+   libpanvk_files += files('panvk_android.c')
+ endif
+ 
+-libvulkan_panfrost = shared_library(
++libvulkan_panfrost = library(
+   'vulkan_panfrost',
+   [libpanvk_files, panvk_entrypoints, panvk_tracepoints, panvk_drirc],
+   include_directories : [
+diff -ruN a/src/virtio/vulkan/meson.build b/src/virtio/vulkan/meson.build
+--- a/src/virtio/vulkan/meson.build
++++ b/src/virtio/vulkan/meson.build
+@@ -154,7 +154,7 @@
+   vn_deps += [dep_android, idep_u_gralloc]
+ endif
+ 
+-libvulkan_virtio = shared_library(
++libvulkan_virtio = library(
+   'vulkan_virtio',
+   [libvn_files, vn_entrypoints, vn_drirc, sha1_h],
+   include_directories : vn_incs,

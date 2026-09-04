@@ -256,9 +256,44 @@ function(cme_meson_probe port source out_build)
     list(APPEND options ${extra})
   endforeach()
   list(APPEND options ${CME_OPTIONS_${port}})
+  # An option a feature adds to rather than sets.
+  #
+  # Meson has options that are lists, and the ones that matter here are the
+  # lists of drivers: every driver is a feature, and each of them has to end
+  # up in the same option. Setting it once per feature would leave whichever
+  # feature came last, so a value written "+name" is appended to what is
+  # already there rather than replacing it -- which is what a list option
+  # means, said in the only place that knows all the features that are on.
+  set(names "")
+  set(values "")
   foreach(option IN LISTS options)
     string(REGEX REPLACE "^([^ ]+) +(.*)$" "\\1" name "${option}")
     string(REGEX REPLACE "^([^ ]+) +(.*)$" "\\2" value "${option}")
+    list(FIND names "${name}" at)
+    if(value MATCHES "^\\+(.*)$" AND at GREATER_EQUAL 0)
+      list(GET values ${at} before)
+      if(before STREQUAL "" OR before STREQUAL "''")
+        list(REMOVE_AT values ${at})
+        list(INSERT values ${at} "${CMAKE_MATCH_1}")
+      else()
+        list(REMOVE_AT values ${at})
+        list(INSERT values ${at} "${before},${CMAKE_MATCH_1}")
+      endif()
+    elseif(value MATCHES "^\\+(.*)$")
+      list(APPEND names "${name}")
+      list(APPEND values "${CMAKE_MATCH_1}")
+    elseif(at GREATER_EQUAL 0)
+      list(REMOVE_AT values ${at})
+      list(INSERT values ${at} "${value}")
+    else()
+      list(APPEND names "${name}")
+      list(APPEND values "${value}")
+    endif()
+  endforeach()
+  set(index 0)
+  foreach(name IN LISTS names)
+    list(GET values ${index} value)
+    math(EXPR index "${index} + 1")
     list(APPEND arguments "-D${name}=${value}")
   endforeach()
 
