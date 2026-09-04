@@ -152,7 +152,11 @@ ExternalProject_Add(cme_runtimes
     "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
     "-DCMAKE_C_FLAGS=${cme_runtime_flags}"
     "-DCMAKE_CXX_FLAGS=${cme_runtime_flags}"
-    "-DCMAKE_EXE_LINKER_FLAGS=--sysroot=${CME_TOOLCHAIN_PREFIX} -fuse-ld=lld -rtlib=compiler-rt -static"
+    # Without a C++ standard library, because this is the build that makes
+    # one: clang++ asks for libstdc++ by default, and there is none here --
+    # nor should there be, since what comes out of this is the library
+    # everything after it links.
+    "-DCMAKE_EXE_LINKER_FLAGS=--sysroot=${CME_TOOLCHAIN_PREFIX} -fuse-ld=lld -rtlib=compiler-rt -nostdlib++ -static"
     "-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi;libunwind"
     "-DLIBCXX_ENABLE_SHARED=OFF"
     "-DLIBCXX_ENABLE_STATIC=ON"
