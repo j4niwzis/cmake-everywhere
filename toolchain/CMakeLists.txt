@@ -141,7 +141,7 @@ add_custom_target(cme_libc ALL
 # by whichever compiler built it. It also ships the manifest that says where
 # the source of its std module is, which is what `import std` compiles from.
 set(cme_runtime_flags
-    "--sysroot=${CME_TOOLCHAIN_PREFIX} -nostdinc -isystem ${CME_TOOLCHAIN_PREFIX}/include")
+    "--sysroot=${CME_TOOLCHAIN_PREFIX} -nostdlibinc -isystem ${CME_TOOLCHAIN_PREFIX}/include")
 ExternalProject_Add(cme_runtimes
   SOURCE_DIR "${cme_llvm-archive_tree}/runtimes"
   DEPENDS cme_libc
@@ -188,9 +188,15 @@ ExternalProject_Add(cme_runtimes
 # And the file that says where all of it is.
 #
 # Everything after this is compiled with these headers and linked against
-# these archives, and against nothing on the machine: -nostdinc and -static
-# say so outright, so that a header or a library that was not named here is
-# a build that stops rather than a program with two C libraries in it.
+# these archives, and against nothing on the machine: -nostdlibinc and
+# -static say so outright, so that a header or a library that was not named
+# here is a build that stops rather than a program with two C libraries in
+# it.
+#
+# -nostdlibinc and not -nostdinc, which is the same statement about the
+# machine's headers and one more about the compiler's own: intrinsics live
+# in the compiler, not in the C library, and a build without them stops on
+# immintrin.h -- which is nobody's system header.
 #
 # -rtlib is said where linking happens and not where compiling does: a
 # compiler handed it while only compiling warns that nothing used it, which
@@ -203,9 +209,9 @@ set(CMAKE_SYSROOT \"${CME_TOOLCHAIN_PREFIX}\")
 set(CME_TOOLCHAIN_PREFIX \"${CME_TOOLCHAIN_PREFIX}\")
 
 set(CMAKE_C_FLAGS_INIT
-    \"--sysroot=${CME_TOOLCHAIN_PREFIX} -nostdinc -isystem ${CME_TOOLCHAIN_PREFIX}/include\")
+    \"--sysroot=${CME_TOOLCHAIN_PREFIX} -nostdlibinc -isystem ${CME_TOOLCHAIN_PREFIX}/include\")
 set(CMAKE_CXX_FLAGS_INIT
-    \"--sysroot=${CME_TOOLCHAIN_PREFIX} -nostdinc -isystem ${CME_TOOLCHAIN_PREFIX}/include/c++/v1 -isystem ${CME_TOOLCHAIN_PREFIX}/include -stdlib=libc++\")
+    \"--sysroot=${CME_TOOLCHAIN_PREFIX} -nostdlibinc -isystem ${CME_TOOLCHAIN_PREFIX}/include/c++/v1 -isystem ${CME_TOOLCHAIN_PREFIX}/include -stdlib=libc++\")
 set(CMAKE_EXE_LINKER_FLAGS_INIT
     \"--sysroot=${CME_TOOLCHAIN_PREFIX} -static -fuse-ld=lld -rtlib=compiler-rt --unwindlib=libunwind -nostdlib++ -L${CME_TOOLCHAIN_PREFIX}/lib\")
 set(CMAKE_CXX_STANDARD_LIBRARIES \"-lc++ -lc++abi -lunwind\")
