@@ -59,12 +59,18 @@ endif()
 if(cme_arch STREQUAL "arm64")
   set(cme_arch "aarch64")
 endif()
+# Copied as directories rather than as files, because some of what is in
+# there is a symbolic link to somewhere else in it -- one architecture's
+# headers pointing at another's -- and copying a link as a file is not a
+# thing CMake will do.
 if(NOT EXISTS "${musl_prefix}/include/linux/limits.h")
-  file(COPY "${KERNEL_HEADERS_DIR}/generic/include/"
-       DESTINATION "${musl_prefix}/include")
+  execute_process(COMMAND ${CMAKE_COMMAND} -E copy_directory
+                          "${KERNEL_HEADERS_DIR}/generic/include"
+                          "${musl_prefix}/include")
   if(IS_DIRECTORY "${KERNEL_HEADERS_DIR}/${cme_arch}/include")
-    file(COPY "${KERNEL_HEADERS_DIR}/${cme_arch}/include/"
-         DESTINATION "${musl_prefix}/include")
+    execute_process(COMMAND ${CMAKE_COMMAND} -E copy_directory
+                            "${KERNEL_HEADERS_DIR}/${cme_arch}/include"
+                            "${musl_prefix}/include")
   else()
     message(FATAL_ERROR
       "cmake-everywhere: the kernel headers carry nothing for ${cme_arch}, "
