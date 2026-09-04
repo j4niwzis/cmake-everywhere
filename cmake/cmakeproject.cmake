@@ -457,8 +457,19 @@ function(cme_cmake_import port description)
 endfunction()
 
 # What the port promises its consumers: "jpeg-static=JPEG::JPEG".
+#
+# A feature may add one, the way it may add a GN target. A library with a
+# part that is built only when it is asked for produces that part only then:
+# libdrm is one library per kernel driver, and a build that asked for the
+# AMD one has no Intel one to name. Promising it in the port would be
+# promising a target that is not always there.
 function(cme_cmake_export port)
   cme_port_field(exports ${port} IMPORT_TARGETS)
+  cme_enabled_features(${port} features)
+  foreach(feature IN LISTS features)
+    cme_feature_field(extra ${port} ${feature} IMPORT_TARGETS)
+    list(APPEND exports ${extra})
+  endforeach()
   foreach(pair IN LISTS exports)
     if(NOT pair MATCHES "^([^=]+)=(.+)$")
       message(FATAL_ERROR
