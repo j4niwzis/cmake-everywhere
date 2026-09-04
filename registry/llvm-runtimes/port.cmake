@@ -44,6 +44,14 @@ cme_declare_port(
     "LIBUNWIND_ENABLE_SHARED OFF"
     "LIBUNWIND_ENABLE_STATIC ON"
     "LIBCXX_ENABLE_STATIC_ABI_LIBRARY ON"
+    # Which C library is underneath, because libc++ cannot tell.
+    #
+    # Its locale support is written per C library -- what a character class
+    # is called, where the tables live -- and musl is not the one it assumes.
+    # Without this it stops on "unknown rune table for this platform", which
+    # is a sentence about a table nobody here wants and a C library nobody
+    # told it about.
+    "LIBCXX_HAS_MUSL_LIBC ON"
     "LIBCXX_USE_COMPILER_RT ON"
     "LIBCXXABI_USE_COMPILER_RT ON"
     "LIBCXXABI_USE_LLVM_UNWINDER ON"
