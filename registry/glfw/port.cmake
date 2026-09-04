@@ -52,3 +52,20 @@ function(cme_adapt_glfw source binary)
   cme_export_variable(glfw3 GLFW3_INCLUDE_DIR "${source}/include")
   cme_export_variable(glfw3 GLFW3_INCLUDE_DIRS "${source}/include")
 endfunction()
+
+# The window system linked in rather than opened at run time.
+#
+# GLFW's way is to open libwayland-client or libX11 when it starts and ask
+# for symbols by name, which is right for a library that must run wherever
+# it is put -- and impossible in a program that has no loader in it. The
+# patch names the symbols directly, and everything they come from becomes a
+# dependency of this port rather than a file found later.
+#
+# EGL among them: a context here comes from the EGL this build links, which
+# is Mesa's, and GLX is not built at all because it would want a libGL to
+# open.
+cme_port_feature(glfw linked-window-system
+  SUMMARY "link the window system instead of opening it at run time"
+  DEPENDS wayland "libxkbcommon[x11]" libx11 libxext libxrandr libxinerama
+          libxi libxcursor libxcb mesa
+  PATCHES patches/0001-link-the-window-system-rather-than-open-it.patch)
