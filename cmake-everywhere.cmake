@@ -2168,6 +2168,16 @@ function(cme_profile name)
   include("${file}")
 endfunction()
 
+# And a profile may be named from outside, which is how a build says it
+# wants one without editing the project that is being built: a container
+# building this one way and a person building it another are the same
+# project with a different answer.
+set(CME_PROFILE "" CACHE STRING
+    "A named set of decisions, read from profiles/<name>.cmake")
+if(CME_PROFILE)
+  cme_profile("${CME_PROFILE}")
+endif()
+
 # Platforms, as features every port has whether it declares them or not.
 #
 # Nothing asks for android: a build either is for Android or it is not, and
