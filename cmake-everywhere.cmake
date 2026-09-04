@@ -827,14 +827,25 @@ endfunction()
 # reaches for it there does not fail, it hangs and then fails obscurely.
 option(CME_OFFLINE "Refuse to fetch anything; use what is in the cache" OFF)
 if(CME_OFFLINE)
-  if(NOT CPM_SOURCE_CACHE)
-    message(FATAL_ERROR
-      "cmake-everywhere: CME_OFFLINE and nowhere to read from. Offline means "
-      "reading sources somebody fetched, so say where they are with "
-      "-DCME_SOURCES=/path (or CPM_SOURCE_CACHE, which is what CPM reads).")
-  endif()
+  # A cache is one way to have the sources already, and not the only one.
+  #
+  # This used to stop here when no cache was named, which was true while a
+  # cache was always named: the provider made one by default. It no longer
+  # does, and the builds that have no network are exactly the ones that hand
+  # every library over as a directory -- flatpak-builder, Nix and Guix each
+  # fetch what a build needs and say where each of them is. Such a build has
+  # nowhere to read a cache from and needs none.
+  #
+  # So having nowhere to read from is not the error. Having to fetch is, and
+  # that is said where a port is about to be fetched, naming the port.
   set(FETCHCONTENT_FULLY_DISCONNECTED ON CACHE BOOL "" FORCE)
-  message(STATUS "cmake-everywhere: offline, reading ${CPM_SOURCE_CACHE}")
+  if(CPM_SOURCE_CACHE)
+    message(STATUS "cmake-everywhere: offline, reading ${CPM_SOURCE_CACHE}")
+  else()
+    message(STATUS
+      "cmake-everywhere: offline; every library has to be a directory this "
+      "build was given")
+  endif()
 endif()
 
 # Fetch and stop. Used by tools/prefetch to fill a cache for a build that
@@ -5261,6 +5272,20 @@ function(cme_build_port port package version exact)
     set(${port}_BINARY_DIR "${CMAKE_BINARY_DIR}/_cme/${port}")
     cme_lock_fact("${port}" "source" "inside ${port_version}")
   else()
+    # Offline, and this one would have to be fetched. Said here rather than
+    # at the top of this file, because a build with no network is not
+    # necessarily a build with a cache: one that hands every library over as
+    # a directory has nothing to fetch and nothing to read a cache from.
+    # What FetchContent says when it is disconnected and has nothing is
+    # about a directory it wanted, and names neither the library nor the
+    # reason.
+    if(CME_OFFLINE AND NOT source_dir AND NOT CPM_SOURCE_CACHE)
+      message(FATAL_ERROR
+        "cmake-everywhere: ${port} would have to be fetched and this build "
+        "is offline. Either say where its sources are -- a port with "
+        "SOURCE_DIR, or an overlay that declares one -- or say where a "
+        "cache of fetched sources is, with -DCME_SOURCES=/path.")
+    endif()
     CPMAddPackage(${arguments})
   endif()
   set_property(GLOBAL PROPERTY CME_TREE_${port} "${${port}_SOURCE_DIR}")
