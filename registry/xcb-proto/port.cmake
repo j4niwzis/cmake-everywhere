@@ -12,9 +12,10 @@ cme_declare_port(
   NAME xcb-proto
   PROVIDES xcb-proto
   VERSION 1.17.0
-  GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/proto/xcbproto.git
-  GIT_TAG xcb-proto-1.17.0
-  GIT_TAG_TEMPLATE "xcb-proto-@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://xcb.freedesktop.org/dist/xcb-proto-1.17.0.tar.xz"
+  URL_HASH "SHA256=2c1bacd2110f4799f74de6ebb714b94cf6f80fb112316b1219480fd22562148c"
   LICENSE MIT
   CONFIGURE YES
   # Nothing is compiled here, so there is nothing to import: the port exists

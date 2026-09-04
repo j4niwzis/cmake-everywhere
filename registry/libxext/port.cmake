@@ -4,9 +4,10 @@ cme_declare_port(
   NAME libxext
   PROVIDES libXext libxext
   VERSION 1.3.6
-  GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxext.git
-  GIT_TAG libXext-1.3.6
-  GIT_TAG_TEMPLATE "libXext-@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://www.x.org/releases/individual/lib/libXext-1.3.6.tar.xz"
+  URL_HASH "SHA256=edb59fa23994e405fdc5b400afdf5820ae6160b94f35e3dc3da4457a16e89753"
   LICENSE MIT
   CONFIGURE YES
   DEPENDS libx11 xorgproto

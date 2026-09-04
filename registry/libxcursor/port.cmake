@@ -3,9 +3,10 @@ cme_declare_port(
   NAME libxcursor
   PROVIDES libXcursor libxcursor
   VERSION 1.2.3
-  GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxcursor.git
-  GIT_TAG libXcursor-1.2.3
-  GIT_TAG_TEMPLATE "libXcursor-@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://www.x.org/releases/individual/lib/libXcursor-1.2.3.tar.xz"
+  URL_HASH "SHA256=fde9402dd4cfe79da71e2d96bb980afc5e6ff4f8a7d74c159e1966afb2b2c2c0"
   LICENSE MIT
   CONFIGURE YES
   DEPENDS libx11 libxrender libxfixes xorgproto

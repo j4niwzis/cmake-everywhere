@@ -6,9 +6,10 @@ cme_declare_port(
   NAME libxau
   PROVIDES Xau libXau
   VERSION 1.0.12
-  GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxau.git
-  GIT_TAG libXau-1.0.12
-  GIT_TAG_TEMPLATE "libXau-@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://www.x.org/releases/individual/lib/libXau-1.0.12.tar.xz"
+  URL_HASH "SHA256=74d0e4dfa3d39ad8939e99bda37f5967aba528211076828464d2777d477fc0fb"
   LICENSE MIT
   CONFIGURE YES
   INSTALLED_TARGETS "lib/libXau.a=Xau::Xau"

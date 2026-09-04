@@ -3,9 +3,10 @@ cme_declare_port(
   NAME libxfixes
   PROVIDES libXfixes libxfixes
   VERSION 6.0.1
-  GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxfixes.git
-  GIT_TAG libXfixes-6.0.1
-  GIT_TAG_TEMPLATE "libXfixes-@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://www.x.org/releases/individual/lib/libXfixes-6.0.1.tar.xz"
+  URL_HASH "SHA256=b695f93cd2499421ab02d22744458e650ccc88c1d4c8130d60200213abc02d58"
   LICENSE MIT
   CONFIGURE YES
   DEPENDS libx11 xorgproto

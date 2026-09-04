@@ -4,9 +4,10 @@ cme_declare_port(
   NAME libxi
   PROVIDES libXi libxi
   VERSION 1.8.2
-  GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxi.git
-  GIT_TAG libXi-1.8.2
-  GIT_TAG_TEMPLATE "libXi-@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://www.x.org/releases/individual/lib/libXi-1.8.2.tar.xz"
+  URL_HASH "SHA256=d0e0555e53d6e2114eabfa44226ba162d2708501a25e18d99cfb35c094c6c104"
   LICENSE MIT
   CONFIGURE YES
   DEPENDS libx11 libxext libxfixes xorgproto

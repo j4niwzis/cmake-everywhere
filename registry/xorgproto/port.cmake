@@ -9,9 +9,10 @@ cme_declare_port(
   NAME xorgproto
   PROVIDES xorgproto XorgProto
   VERSION 2024.1
-  GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/proto/xorgproto.git
-  GIT_TAG xorgproto-2024.1
-  GIT_TAG_TEMPLATE "xorgproto-@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://www.x.org/releases/individual/proto/xorgproto-2024.1.tar.xz"
+  URL_HASH "SHA256=372225fd40815b8423547f5d890c5debc72e88b91088fbfb13158c20495ccb59"
   LICENSE MIT
   CONFIGURE YES
   # Headers, so nothing comes out as a target: what the ports after this one

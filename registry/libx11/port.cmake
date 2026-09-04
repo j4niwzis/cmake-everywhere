@@ -5,9 +5,10 @@ cme_declare_port(
   NAME libx11
   PROVIDES libX11 libx11
   VERSION 1.8.12
-  GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libx11.git
-  GIT_TAG libX11-1.8.12
-  GIT_TAG_TEMPLATE "libX11-@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://www.x.org/releases/individual/lib/libX11-1.8.12.tar.xz"
+  URL_HASH "SHA256=fa026f9bb0124f4d6c808f9aef4057aad65e7b35d8ff43951cef0abe06bb9a9a"
   LICENSE MIT
   CONFIGURE YES
   DEPENDS libxcb xorgproto xtrans

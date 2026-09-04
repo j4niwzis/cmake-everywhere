@@ -4,9 +4,10 @@ cme_declare_port(
   NAME xtrans
   PROVIDES xtrans
   VERSION 1.5.2
-  GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxtrans.git
-  GIT_TAG xtrans-1.5.2
-  GIT_TAG_TEMPLATE "xtrans-@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://www.x.org/releases/individual/lib/xtrans-1.5.2.tar.xz"
+  URL_HASH "SHA256=5c5cbfe34764a9131d048f03c31c19e57fb4c682d67713eab6a65541b4dff86c"
   LICENSE MIT
   CONFIGURE YES
   INSTALLED_TARGETS ""

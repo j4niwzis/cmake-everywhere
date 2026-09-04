@@ -12,9 +12,10 @@ cme_declare_port(
   NAME libxcb
   PROVIDES XCB libxcb xcb
   VERSION 1.17.0
-  GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxcb.git
-  GIT_TAG libxcb-1.17.0
-  GIT_TAG_TEMPLATE "libxcb-@VERSION@"
+  # The release archive, which carries the configure script: this is
+  # autotools, and a checkout has only what generates one.
+  URL "https://xcb.freedesktop.org/dist/libxcb-1.17.0.tar.xz"
+  URL_HASH "SHA256=599ebf9996710fea71622e6e184f3a8ad5b43d0e5fa8c4e407123c88a59a6d55"
   LICENSE MIT
   CONFIGURE YES
   DEPENDS xcb-proto libxau libxdmcp xorgproto
