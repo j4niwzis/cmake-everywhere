@@ -5602,7 +5602,15 @@ function(cme_build_port port package version exact)
   cme_export_variable(${package} ${package}_VERSION "${port_version}")
   cme_export_variable(${package} ${upper}_VERSION "${port_version}")
   set_property(GLOBAL PROPERTY CME_BUILT_FEATURES_${port} "${features}")
-  if(entry AND NOT external)
+  # Kept, unless it is already where it would be kept.
+  #
+  # A port built into a prefix installed itself into the store entry: that
+  # is what the prefix is. Describing it again means copying the archives
+  # that are already there into a directory beside them and moving that over
+  # the entry -- which is a rename onto something that exists, and stops.
+  # Such a port publishes itself by writing down that it finished, and is
+  # found again by the same mark.
+  if(entry AND NOT external AND NOT configure)
     cme_store_write(${port} "${package}" "${entry}")
   endif()
   list(JOIN features "," listed)
