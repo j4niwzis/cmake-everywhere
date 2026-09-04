@@ -88,9 +88,13 @@ cme_port_feature(mesa gl-amd
   DEPENDS "libdrm[amdgpu]" llvm
   OPTIONS "gallium-drivers +radeonsi" "llvm enabled")
 
+# iris and ANV speak to the kernel through libdrm itself. libdrm_intel is
+# the wrapper the driver before them used, and asking for it drags in
+# pciaccess -- which libdrm looks for by calling CMake from inside Meson,
+# with no generator, on a machine where that lookup cannot work at all.
 cme_port_feature(mesa gl-intel
   SUMMARY "OpenGL on Intel, through iris"
-  DEPENDS "libdrm[intel]"
+  DEPENDS libdrm
   OPTIONS "gallium-drivers +iris")
 
 cme_port_feature(mesa gl-nouveau
@@ -124,7 +128,7 @@ cme_port_feature(mesa vulkan-amd
 
 cme_port_feature(mesa vulkan-intel
   SUMMARY "Vulkan on Intel, through ANV"
-  DEPENDS "libdrm[intel]"
+  DEPENDS libdrm
   OPTIONS "vulkan-drivers +intel"
   IMPORT_TARGETS "vulkan_intel=Mesa::vulkan-intel")
 
