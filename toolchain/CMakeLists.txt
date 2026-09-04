@@ -29,6 +29,26 @@ set(CME_TOOLCHAIN_PREFIX "${CMAKE_BINARY_DIR}/prefix" CACHE PATH
 find_package(musl REQUIRED)
 find_package(llvm-runtimes REQUIRED)
 
+# The archive a distribution's compiler links by name.
+#
+# Alpine builds its clang to pass -lssp_nonshared on every link: that is
+# where its C library keeps the one function the stack protector calls, and
+# a compiler configured for that library asks for it whether or not the
+# library in use has it. musl defines that function in libc itself, so what
+# is missing is not the code but the name -- an archive with nothing in it
+# is the whole of what is needed, and a link that asks for it finds it.
+find_program(CME_TOOLCHAIN_AR NAMES llvm-ar ar REQUIRED)
+if(NOT EXISTS "${musl_prefix}/lib/libssp_nonshared.a")
+  execute_process(COMMAND "${CME_TOOLCHAIN_AR}" rcs
+                          "${musl_prefix}/lib/libssp_nonshared.a"
+                  RESULT_VARIABLE made)
+  if(NOT made EQUAL 0)
+    message(WARNING
+      "cmake-everywhere: could not write libssp_nonshared.a, and a compiler "
+      "that links it by name will not find it")
+  endif()
+endif()
+
 # And the file that says where all of it is.
 #
 # Everything after this is compiled with these headers and linked against

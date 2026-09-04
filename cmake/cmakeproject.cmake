@@ -122,6 +122,13 @@ function(cme_cmake_prefix_build port source prefix)
   file(WRITE "${prefix}/.cme-installed" "${port}\n")
 endfunction()
 
+# And what came out, as targets pointing into the prefix. The same statement
+# a project with a configure script makes, made the same way: a port says
+# what it installs, and those are the names a consumer links.
+function(cme_cmake_prefix_export port prefix)
+  cme_configure_export(${port} "${prefix}")
+endfunction()
+
 # The answer, as CMake data.
 function(cme_cmake_describe port build out_description)
   find_package(Python3 QUIET COMPONENTS Interpreter)
