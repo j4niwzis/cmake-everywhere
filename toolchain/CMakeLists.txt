@@ -145,6 +145,12 @@ set(cme_runtime_flags
 ExternalProject_Add(cme_runtimes
   SOURCE_DIR "${cme_llvm-archive_tree}/runtimes"
   DEPENDS cme_libc
+  # A list inside one of these arguments needs a separator that is not the
+  # one CMake splits arguments on: written with semicolons, the three
+  # runtimes below are three arguments and one runtime gets built -- which
+  # is a libc++ without the library that implements its exceptions, looking
+  # for that library's header on a machine that has none.
+  LIST_SEPARATOR "|"
   CMAKE_ARGS
     "-DCMAKE_INSTALL_PREFIX=${CME_TOOLCHAIN_PREFIX}"
     "-DCMAKE_BUILD_TYPE=Release"
@@ -157,7 +163,7 @@ ExternalProject_Add(cme_runtimes
     # nor should there be, since what comes out of this is the library
     # everything after it links.
     "-DCMAKE_EXE_LINKER_FLAGS=--sysroot=${CME_TOOLCHAIN_PREFIX} -fuse-ld=lld -rtlib=compiler-rt -nostdlib++ -static"
-    "-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi;libunwind"
+    "-DLLVM_ENABLE_RUNTIMES=libcxx|libcxxabi|libunwind"
     "-DLIBCXX_ENABLE_SHARED=OFF"
     "-DLIBCXX_ENABLE_STATIC=ON"
     "-DLIBCXXABI_ENABLE_SHARED=OFF"
