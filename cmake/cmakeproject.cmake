@@ -449,7 +449,19 @@ function(cme_cmake_import port description)
       add_dependencies(${target} ${port}_generated)
     endif()
 
-    foreach(dependency IN LISTS ${prefix}_DEPENDS)
+    # In the order the name sorts, not the order the description happened to
+    # list it in. For an object library the dependency order is the order its
+    # objects are archived, and the description does not promise one: two
+    # builds of libjpeg-turbo reported jpeg16-static and jpeg12-static the
+    # other way about, so the archive held its three blocks of objects the
+    # other way about. Those blocks compile the same sources at different
+    # precisions, so they hold the same static names, and link-time
+    # optimisation has to rename every copy but the first it sees. A
+    # different first copy is a different set of names, a different layout,
+    # and a binary that does not match the one the other pass built.
+    set(dependencies "${${prefix}_DEPENDS}")
+    list(SORT dependencies)
+    foreach(dependency IN LISTS dependencies)
       set(other "${port}_${dependency}")
       if(NOT TARGET ${other})
         continue()
