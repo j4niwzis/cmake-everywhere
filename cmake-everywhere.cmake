@@ -3044,20 +3044,30 @@ function(cme_store_write port package entry)
     # them, against include directories that are openal-soft's own and are
     # not in the entry: "'gsl/gsl' file not found", in a library whose
     # interface is C headers.
+    #
+    # Of every archive in the entry and not only the one that was asked for.
+    # The archives beside it are part of the same library and are named in the
+    # entry by their paths, so a module that belongs to one of them has nothing
+    # left to be offered by: googletest is that -- a test links gtest_main, and
+    # gtest.cppm belongs to gtest, which gtest_main links. The entry then
+    # linked and could not be imported, "module 'gtest' not found", which is
+    # the same loss as the include directories and for the same reason.
     set(module_files "")
-    foreach(property INTERFACE_CXX_MODULE_SETS)
-      get_target_property(module_sets ${target} ${property})
+    set(module_from "")
+    foreach(one IN LISTS archives)
+      get_target_property(module_sets ${one} INTERFACE_CXX_MODULE_SETS)
       if(NOT module_sets)
         continue()
       endif()
       foreach(set_name IN LISTS module_sets)
         if(set_name STREQUAL "")
-          get_target_property(files ${target} CXX_MODULE_SET)
+          get_target_property(files ${one} CXX_MODULE_SET)
         else()
-          get_target_property(files ${target} CXX_MODULE_SET_${set_name})
+          get_target_property(files ${one} CXX_MODULE_SET_${set_name})
         endif()
         if(files)
           list(APPEND module_files ${files})
+          list(APPEND module_from "${one}")
         endif()
       endforeach()
     endforeach()
@@ -3080,7 +3090,16 @@ function(cme_store_write port package entry)
       # what this one says: without it, "has C++ sources that use modules,
       # but does not include cxx_std_20 among its target_compile_features; no
       # C++ standard found".
-      get_target_property(standard ${target} CXX_STANDARD)
+      set(standard "")
+      foreach(one IN LISTS module_from)
+        get_target_property(standard ${one} CXX_STANDARD)
+        if(standard)
+          break()
+        endif()
+      endforeach()
+      if(NOT standard)
+        get_target_property(standard ${target} CXX_STANDARD)
+      endif()
       if(NOT standard)
         set(standard 23)
       endif()
@@ -3090,7 +3109,16 @@ function(cme_store_write port package entry)
       # target of its own, and that target has to be told -- otherwise the
       # first line of the first interface unit is a module it cannot find,
       # in a build that has the standard library module right there.
-      get_target_property(module_std ${target} CXX_MODULE_STD)
+      set(module_std "")
+      foreach(one IN LISTS module_from)
+        get_target_property(module_std ${one} CXX_MODULE_STD)
+        if(module_std)
+          break()
+        endif()
+      endforeach()
+      if(NOT module_std)
+        get_target_property(module_std ${target} CXX_MODULE_STD)
+      endif()
       if(NOT module_std)
         set(module_std "${CMAKE_CXX_MODULE_STD}")
       endif()
