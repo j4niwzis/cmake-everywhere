@@ -816,6 +816,20 @@ function(cme_store_entry out port version)
     set(${out} "" PARENT_SCOPE)
     return()
   endif()
+  # A library that cannot be kept, said by the port rather than found out.
+  #
+  # What is kept is archives, the headers they were compiled against, and the
+  # module interface units a consumer imports. A library whose interface units
+  # are not self-contained -- googletest's fork compiles its own sources as
+  # module units, and they include headers from inside its tree -- is one whose
+  # entry cannot be compiled against, and every build that reads it fails in
+  # the same obscure way: a header not found under a path that is a hash.
+  # `STORE NEVER` is a port saying so once, where the port is.
+  cme_port_field(rule ${port} STORE)
+  if(rule STREQUAL "NEVER")
+    set(${out} "" PARENT_SCOPE)
+    return()
+  endif()
   cme_store_key(key ${port} "${version}")
   set(${out} "${CME_STORE}/${port}/${version}-${key}" PARENT_SCOPE)
 endfunction()
@@ -1817,6 +1831,7 @@ function(cme_declare_port)
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
           PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY SYSTEM
+          STORE
           ARRANGEMENT SYSTEM_HEADER_TARGET CONFIGURE
           INSTALLED_INCLUDE SOURCE_DIR MACHINE
           # What a crate is built as: which package of a workspace, which
