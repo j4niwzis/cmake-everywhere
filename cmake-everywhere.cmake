@@ -2926,6 +2926,55 @@ function(cme_store_write port package entry)
     set(archives "${target}")
     set(links "")
     cme_store_flatten(${port} ${target} archives links)
+
+    # What the archives beside it say about themselves.
+    #
+    # An archive that is part of this library is kept next to the main one and
+    # named in the entry by its path, so nothing of its target survives it.
+    # Where the library's headers hang off one of those rather than off the
+    # target that was asked for, the entry offered something that could be
+    # linked and not compiled against -- googletest is exactly that: the
+    # target a test links is gtest_main, and every header it includes belongs
+    # to gtest, which gtest_main links. What was kept then was an archive with
+    # no include directories at all, and the build that read it failed on a
+    # missing gtest/gtest.h with nothing to say where the copy came from.
+    foreach(other IN LISTS archives)
+      if(other STREQUAL target)
+        continue()
+      endif()
+      get_target_property(other_includes ${other} INTERFACE_INCLUDE_DIRECTORIES)
+      get_target_property(other_defines ${other} INTERFACE_COMPILE_DEFINITIONS)
+      get_target_property(other_options ${other} INTERFACE_COMPILE_OPTIONS)
+      foreach(name other_includes other_defines other_options)
+        if("${${name}}" STREQUAL "${name}-NOTFOUND")
+          set(${name} "")
+        endif()
+      endforeach()
+      cme_store_keep_headers(other_includes kept ${port} "${building}"
+                             "${other_includes}")
+      if(NOT kept)
+        file(REMOVE_RECURSE "${building}")
+        return()
+      endif()
+      foreach(directory IN LISTS other_includes)
+        if(NOT directory IN_LIST includes)
+          list(APPEND includes "${directory}")
+          if(NOT directory MATCHES "^\\\${CMAKE_CURRENT_LIST_DIR}")
+            list(APPEND outside "${directory}")
+          endif()
+        endif()
+      endforeach()
+      foreach(define IN LISTS other_defines)
+        if(NOT define IN_LIST defines)
+          list(APPEND defines "${define}")
+        endif()
+      endforeach()
+      foreach(option IN LISTS other_options)
+        if(NOT option IN_LIST options)
+          list(APPEND options "${option}")
+        endif()
+      endforeach()
+    endforeach()
     set(rest "")
     foreach(archive IN LISTS archives)
       if(NOT archive STREQUAL target)
