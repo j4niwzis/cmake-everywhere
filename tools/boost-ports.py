@@ -377,6 +377,16 @@ endfunction()
   SYSTEM_PACKAGE boost_{key(module)}
   TARGETS Boost::{name}{arrangement}{virtual}{added}{switches}{patches}
 )
+
+# Boost as C++20 modules, which is one switch for the whole of it: a library
+# that has an interface unit builds it and defines BOOST_USE_MODULES, and one
+# that has none is unaffected by being told. Said as a feature so that a
+# consumer asks for it -- find_package(boost_pfr COMPONENTS modules) -- rather
+# than setting an option that only works when it is set before whoever
+# resolves the port first asks for it.
+cme_port_feature({port(module)} modules
+  SUMMARY "built as a C++20 module, and imported rather than included"
+  OPTIONS "BOOST_USE_MODULES ON")
 {adaptation}
 
 # Where the sources come from, which is the one thing about a Boost library
