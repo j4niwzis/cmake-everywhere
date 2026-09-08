@@ -6302,7 +6302,17 @@ macro(cme_provider cme_method cme_package)
         # sets its variables in the scope it is called from, and the third
         # project to ask needs them as much as the first. After the first
         # time the answer is in the cache and this costs nothing.
+        #
+        # And said, while it is asked, that this is the system being asked --
+        # because BYPASS_PROVIDER is about this call and not about what the
+        # call goes on to do. FindGTest asks find_package(GTest) again inside
+        # itself, that one has no bypass, and it arrives back here: the
+        # provider answers "system", asks the module, the module asks the
+        # provider, for as long as the stack lasts. The way out is the flag
+        # the search below this already sets, which this one did not.
+        set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM TRUE)
         find_package(${cme_package} ${cme_wanted} QUIET GLOBAL BYPASS_PROVIDER)
+        set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM FALSE)
         # And when that finds nothing, because the copy on this machine was
         # not recognised by a find_package in the first place.
         #
