@@ -893,7 +893,29 @@ endif()
 # carries, before its own first line. See cmake/source-ports.cmake.
 list(APPEND CMAKE_PROJECT_INCLUDE_BEFORE "${CME_DIR}/cmake/source-ports.cmake")
 
+# CPM, which has to be asked twice where a build directory has seen another
+# copy of it.
+#
+# It writes the directory it was first included from into the cache, and an
+# include from anywhere else warns about versions and returns -- without
+# defining CPMAddPackage, which is the one command this needs. A build
+# directory configured once against a project that carried its own CPM keeps
+# that path for ever, so the second configure, after that project had stopped
+# carrying one, failed on a command that had been there a moment before. What
+# is wanted is the copy beside this file, so where the guard has swallowed it
+# the guard is put aside and the file is read again.
 include("${CME_DIR}/cmake/CPM.cmake")
+if(NOT COMMAND CPMAddPackage)
+  set(CPM_DIRECTORY "" CACHE INTERNAL "" FORCE)
+  set_property(GLOBAL PROPERTY CPM_INITIALIZED)
+  include("${CME_DIR}/cmake/CPM.cmake")
+  if(NOT COMMAND CPMAddPackage)
+    message(FATAL_ERROR
+      "cmake-everywhere: the copy of CPM beside this file defined nothing. "
+      "Delete CMakeCache.txt and configure again; if that does not help, "
+      "this is a bug here and not in your build.")
+  endif()
+endif()
 include("${CME_DIR}/cmake/gn.cmake")
 include("${CME_DIR}/cmake/cmakeproject.cmake")
 include("${CME_DIR}/cmake/mesonproject.cmake")
@@ -1850,9 +1872,13 @@ function(cme_declare_port)
   if("${PORT_NAME}" IN_LIST known)
     set(merging TRUE)
     get_property(first GLOBAL PROPERTY CME_PORT_${PORT_NAME}_ORIGIN)
-    message(STATUS
-      "cmake-everywhere: ${PORT_NAME} comes from ${first}; ${origin} only "
-      "fills in what it did not say")
+    # Kept rather than said. A machine with ports installed in it declares
+    # every one of them at the head of every build, and a build that uses two
+    # of them does not want to read about the other forty -- so this is said
+    # when something asks for the port, and never for a port nothing asks
+    # for.
+    set_property(GLOBAL APPEND PROPERTY CME_PORT_${PORT_NAME}_NOTES
+                 "${PORT_NAME} comes from ${first}; ${origin} only fills in what it did not say")
   endif()
   get_property(directory GLOBAL PROPERTY CME_PORT_DIRECTORY)
   if(NOT merging)
@@ -3267,16 +3293,40 @@ function(cme_system_port_directories out)
     list(APPEND prefixes ${from_environment})
   endif()
   list(APPEND prefixes "${CMAKE_STAGING_PREFIX}" "${CMAKE_INSTALL_PREFIX}")
+  # By where they really are, not by how they were spelled. A system prefix
+  # list holds both `/` and `/usr`, and on a machine where one is a link to
+  # the other those are one directory under two names -- read twice, so every
+  # port in it was declared twice and announced itself as merging with
+  # itself.
   set(found "")
   foreach(prefix IN LISTS prefixes)
-    if(prefix AND IS_DIRECTORY "${prefix}/${CME_EXPORT_DESTINATION}")
-      list(APPEND found "${prefix}/${CME_EXPORT_DESTINATION}")
+    if(NOT prefix)
+      continue()
     endif()
+    set(ports "${prefix}/${CME_EXPORT_DESTINATION}")
+    if(NOT IS_DIRECTORY "${ports}")
+      continue()
+    endif()
+    get_filename_component(ports "${ports}" REALPATH)
+    list(APPEND found "${ports}")
   endforeach()
   if(found)
     list(REMOVE_DUPLICATES found)
   endif()
   set(${out} "${found}" PARENT_SCOPE)
+endfunction()
+
+# What was noticed about a port while it was declared, said now that
+# something wants it.
+function(cme_say_notes port)
+  get_property(notes GLOBAL PROPERTY CME_PORT_${port}_NOTES)
+  if(NOT notes)
+    return()
+  endif()
+  foreach(one IN LISTS notes)
+    message(STATUS "cmake-everywhere: ${one}")
+  endforeach()
+  set_property(GLOBAL PROPERTY CME_PORT_${port}_NOTES "")
 endfunction()
 
 # Every find_package this build answered, and the directory it was asked
@@ -6234,6 +6284,7 @@ macro(cme_provider cme_method cme_package)
         set_property(GLOBAL APPEND PROPERTY CME_WANTED_FEATURES_${cme_port}
                      ${cme_wanted_features})
       endif()
+      cme_say_notes("${cme_port}")
       cme_note_ask("${cme_port}")
       get_property(cme_answered GLOBAL PROPERTY CME_ANSWERED_${cme_package})
       if(NOT cme_answered)
