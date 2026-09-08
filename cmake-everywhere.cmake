@@ -1816,7 +1816,7 @@ function(cme_declare_port)
   set(one NAME VERSION GIT_REPOSITORY GITHUB_REPOSITORY GITLAB_REPOSITORY
           GIT_TAG URL URL_HASH SOURCE_SUBDIR OVERLAY SYSTEM_PACKAGE
           POLICY_MINIMUM GIT_TAG_TEMPLATE GIT_SHALLOW EXTERNAL IMPORT
-          PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY
+          PORTS_FROM UNLOCKED FAMILY VIRTUAL SOURCE_FROM SOURCE_ONLY SYSTEM
           ARRANGEMENT SYSTEM_HEADER_TARGET CONFIGURE
           INSTALLED_INCLUDE SOURCE_DIR MACHINE
           # What a crate is built as: which package of a workspace, which
@@ -3715,10 +3715,20 @@ function(cme_system_allowed out package)
   # a build over a library that no system was ever going to carry.
   #
   # The field was parsed and never read, so it said nothing until now.
+  #
+  # And a library that is built here for a different reason: a fork, or a
+  # copy built with something switched on that no packaged one has. Whatever
+  # a machine carries under that name is not it, and looking is not merely
+  # wasted -- what answers is a Find module for the library this is not,
+  # which finds something, and the build compiles against it. `SYSTEM NEVER`
+  # is a port saying so, once, where the port is; the same thing said by a
+  # build about one library is `CME_SYSTEM_<PACKAGE>=OFF`, and that is a
+  # different statement by a different party.
   get_property(port GLOBAL PROPERTY CME_PROVIDER_${package})
   if(port)
     cme_port_field(only ${port} SOURCE_ONLY)
-    if(only)
+    cme_port_field(rule ${port} SYSTEM)
+    if(only OR rule STREQUAL "NEVER")
       set(${out} OFF PARENT_SCOPE)
       return()
     endif()
@@ -6072,6 +6082,10 @@ is being built at" FORCE)
   # impossible to state, and a rule that cannot be excepted is a rule
   # projects work around instead of using.
   cme_port_field(source_only ${port} SOURCE_ONLY)
+  cme_port_field(system_rule ${port} SYSTEM)
+  if(system_rule STREQUAL "NEVER")
+    set(source_only TRUE)
+  endif()
   string(TOUPPER "${package}" cme_asked_upper)
   set(cme_asked_for_port FALSE)
   if(DEFINED CME_SYSTEM_${cme_asked_upper} AND
