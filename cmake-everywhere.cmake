@@ -3089,15 +3089,40 @@ function(cme_store_write port package entry)
     if(module_files)
       list(REMOVE_DUPLICATES module_files)
       set(listed "")
+      set(module_directories "")
       foreach(file IN LISTS module_files)
         get_filename_component(leaf "${file}" NAME)
         # Under the directory it was in, so that two partitions with the same
         # file name in different directories stay two files.
-        get_filename_component(where "${file}" DIRECTORY)
-        get_filename_component(where "${where}" NAME)
+        get_filename_component(from "${file}" DIRECTORY)
+        get_filename_component(where "${from}" NAME)
         file(COPY "${file}" DESTINATION "${building}/modules/${where}")
         list(APPEND listed
              "\${CMAKE_CURRENT_LIST_DIR}/modules/${where}/${leaf}")
+        # And the headers that lie beside it.
+        #
+        # A module interface unit is not always only an interface: a library
+        # may compile its own sources as units of a module, and those include
+        # the headers of the directory they came from. googletest's fork does
+        # -- src/gtest.cc is a unit and includes src/gtest-internal-inl.h --
+        # and an entry that kept the units without them offered modules that
+        # could not even be scanned: a header not found, under a directory
+        # named by a hash.
+        #
+        # They go beside the units, under the same directory name, so an
+        # include written the way the library writes it -- "src/…" -- resolves
+        # against the entry's own module root. That root is offered to whoever
+        # compiles the units, which is a target CMake makes for the consumer,
+        # and it is the only way to reach it: nothing in the entry names those
+        # headers, and nothing else needs them.
+        if(NOT "${from}" IN_LIST module_directories)
+          list(APPEND module_directories "${from}")
+          file(GLOB beside "${from}/*.h" "${from}/*.hh" "${from}/*.hpp"
+               "${from}/*.inc" "${from}/*.ipp" "${from}/*.tcc")
+          if(beside)
+            file(COPY ${beside} DESTINATION "${building}/modules/${where}")
+          endif()
+        endif()
       endforeach()
       list(JOIN listed "\"\n    \"" spelled)
       # The standard those units are written in. CMake compiles them in a
@@ -3119,7 +3144,9 @@ function(cme_store_write port package entry)
         set(standard 23)
       endif()
       string(APPEND text
-        "target_compile_features(${alias} INTERFACE cxx_std_${standard})\n")
+        "target_compile_features(${alias} INTERFACE cxx_std_${standard})\n"
+        "set_property(TARGET ${alias} APPEND PROPERTY\n"
+        "  INTERFACE_INCLUDE_DIRECTORIES \"\${CMAKE_CURRENT_LIST_DIR}/modules\")\n")
       # And whether those units say `import std`. CMake compiles them in a
       # target of its own, and that target has to be told -- otherwise the
       # first line of the first interface unit is a module it cannot find,
