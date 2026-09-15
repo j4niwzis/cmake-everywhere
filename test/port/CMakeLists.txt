@@ -67,4 +67,18 @@ foreach(target IN LISTS CME_PORT_TARGETS)
   target_link_libraries(cme-port PRIVATE ${target})
 endforeach()
 
+# Which declaration of a port is the one in force, asked of the port rather
+# than read out of the log.
+#
+# A port nothing asks for is never resolved and never spoken about -- what was
+# noticed while it was declared is kept and said when something wants it, and
+# never for a port nothing wants. So a check that two declarations of the same
+# port were read in the right order cannot watch for a message about it: it has
+# to ask the port what it says now.
+if(CME_PORT_SAY)
+  cme_port_field(cme_said_version ${CME_PORT_SAY} VERSION)
+  message(STATUS
+    "cmake-everywhere: ${CME_PORT_SAY} is declared ${cme_said_version}")
+endif()
+
 cme_report()
