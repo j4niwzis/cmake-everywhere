@@ -184,6 +184,11 @@ check() {
     printf '  ok    %s\n' "$1"
   else
     printf '  FAIL  %s  (see %s)\n' "$1" "$3"
+    # And what it says, because the log is on whatever machine ran this and
+    # a check that fails somewhere else has to say why there.
+    if [ -f "$3" ]; then
+      sed 's/^/          /' "$3" | tail -n 40
+    fi
     failed=$((failed + 1))
   fi
 }
@@ -194,11 +199,15 @@ configure inline -DCME_PORT_DECLARE="$work/declare.cmake" && code=0 || code=1
 check "a port the project declares itself" "$code" "$work/inline.log"
 
 # Two: a directory of ports someone else keeps.
-configure overlay-directory -DCME_OVERLAYS="$work/overlay" && code=0 || code=1
+configure overlay-directory -DCME_OVERLAYS="$work/overlay" \
+  -DCME_PORT_SAY=beta && code=0 || code=1
 check "a port from an overlay directory" "$code" "$work/overlay-directory.log"
 
-# The overlay and the registry both have beta. The overlay is read.
-if grep -qF "beta comes from the overlay" "$work/overlay-directory.log"; then
+# The overlay and the registry both have beta, and they say different versions
+# of it. Whichever version the port says now is the declaration that was read
+# first: a second one fills in what the first did not say and changes nothing
+# that it did. The overlay says 9.9.9 and the registry says 1.0.0.
+if grep -qF "beta is declared 9.9.9" "$work/overlay-directory.log"; then
   printf '  ok    %s\n' "an overlay port keeps the registry's out"
 else
   printf '  FAIL  %s  (see %s)\n' "an overlay port keeps the registry's out" \
