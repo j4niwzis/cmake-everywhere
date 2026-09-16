@@ -5723,6 +5723,17 @@ function(cme_build_port port package version exact)
       string(REGEX REPLACE "^([^ ]+) +(.*)$" "\\2" value "${option}")
       set(${name} "${value}")
     endforeach()
+    # What was asked of this port, where the port itself can read it.
+    #
+    # A feature's OPTIONS are applied just above, and that answers everything
+    # a port had already declared. A library that declares its own features in
+    # its own CMakeLists has not been read yet -- it is what is about to be
+    # added -- so none of its options can have been applied, and a feature
+    # that decides what the library builds at all would be learned too late to
+    # decide it. What it can be given is what was asked for, under the name a
+    # build would have used to say the same thing.
+    cme_requested_features(${port} cme_asked_of_port)
+    set(CME_FEATURES_${port} "${cme_asked_of_port}")
     set(tree "${${port}_SOURCE_DIR}")
     if(source_subdir)
       set(tree "${tree}/${source_subdir}")

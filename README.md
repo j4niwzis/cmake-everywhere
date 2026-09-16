@@ -147,6 +147,25 @@ interface and is blind to one that changes behaviour. With it, a copy built
 without `vorbis` is passed over and the port is built, and the build says
 which feature was missing.
 
+**A library that declares its own features is read after it is added**, which
+is too late for a feature that decides what the library builds at all. A
+port's `OPTIONS` are applied before its tree is added, and that answers
+everything the port had already said; a feature the library declares in its
+own CMakeLists has not been read at that point. So what was asked for is
+given to it as `CME_FEATURES_<port>`, which it can read before it declares
+anything:
+
+```cmake
+# scan/CMakeLists.txt, before project()
+if(NOT DEFINED SCAN_MODULES AND "headers" IN_LIST CME_FEATURES_scan)
+  set(SCAN_MODULES OFF)
+endif()
+```
+
+That is the same name a build would have used to say the same thing on the
+command line, and a library reading it is reading its own input rather than
+somebody's internals.
+
 **And a feature that is not about how the copy was built.** Some are: a copy
 compiled without `vorbis` cannot read Ogg Vorbis, and a build that needs it
 has to build its own. Others are about how the copy is *taken*: a library that
