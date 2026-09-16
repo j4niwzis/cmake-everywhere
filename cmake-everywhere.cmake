@@ -4247,6 +4247,12 @@ function(cme_require port version features reason)
   # The same for features, and for the same reason: a feature can bring
   # dependencies of its own, and those have to be walked too.
   cme_port_field(declared ${port} FEATURES)
+  # Whether there is anything to check a name against. A port with a file of
+  # its own declares what it has before anyone can ask for it; one without a
+  # file is a name and where the source comes from, and its features are the
+  # library's own, declared in the library's CMakeLists -- which this call is
+  # deciding whether to read.
+  get_property(cme_port_dirs GLOBAL PROPERTY CME_PORT_${port}_DIRS)
   # cme_features() is called before the registry is loaded, so its names can
   # only be checked here.
   foreach(feature IN LISTS CME_FEATURES_${port} CME_FEATURES_OFF_${port})
@@ -4258,7 +4264,10 @@ function(cme_require port version features reason)
         "that platform and off when it is not, and neither asking for it nor "
         "refusing it changes what this build is for.")
     endif()
-    if(NOT feature IN_LIST declared)
+    # Checked where there is something to check against: refusing a name a
+    # partial port has not declared yet would refuse the only way a project
+    # has of asking a library it took that way for anything at all.
+    if(NOT feature IN_LIST declared AND cme_port_dirs)
       message(FATAL_ERROR
         "cmake-everywhere: this build names a feature ${feature} for ${port}, "
         "and the port has none by that name. It has: ${declared}")
@@ -4274,7 +4283,10 @@ function(cme_require port version features reason)
         "when the build is for that platform. A dependency that only exists "
         "there belongs in cme_port_feature(${port} ${feature} DEPENDS ...).")
     endif()
-    if(NOT feature IN_LIST declared)
+    # And the same where a requirement names it: a port with no file of its
+    # own has not declared anything yet, and what it will declare is read
+    # after this.
+    if(NOT feature IN_LIST declared AND cme_port_dirs)
       message(FATAL_ERROR
         "cmake-everywhere: ${reason} asks ${port} for a feature called "
         "${feature}, and the port has none by that name. It has: ${declared}")
@@ -6183,6 +6195,27 @@ is being built at" FORCE)
     # hundred and fifty-eight installable pieces. Asking without them would
     # take the headers and miss that the compiled parts are there too.
     set(asking "")
+    cme_enabled_features(${port} cme_wanted_of_it)
+    get_property(cme_port_dirs GLOBAL PROPERTY CME_PORT_${port}_DIRS)
+    get_property(cme_components GLOBAL PROPERTY CME_ASKED_COMPONENTS_${port})
+    foreach(cme_feature IN LISTS cme_wanted_of_it)
+      # A feature that is one of the ways a copy may be taken, rather than
+      # something baked into it, is a component to whoever installed it: the
+      # config an installed copy carries reads the components and hands back
+      # that shape. Asked without them it hands back the one it calls its
+      # default, and a copy that carries two shapes then answers "not found"
+      # about the shape it has -- so the port is built from source beside a
+      # perfectly good copy of it.
+      cme_feature_field(cme_at_use ${port} ${cme_feature} AT_USE)
+      # And the same for a name asked of a port with no file of its own.
+      # Nothing here has declared it, so nothing can say it is taken at use;
+      # it is what the project asked for, and the copy being asked is the one
+      # it was asked of.
+      if(cme_at_use OR
+         (NOT cme_port_dirs AND cme_feature IN_LIST cme_components))
+        list(APPEND asking "${cme_feature}")
+      endif()
+    endforeach()
     if(virtual)
       # Only the pieces a machine has as pieces. Boost's header-only
       # libraries are not components to a distribution -- Ubuntu ships no
