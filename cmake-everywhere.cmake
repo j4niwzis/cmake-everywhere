@@ -2128,6 +2128,26 @@ function(cme_port_feature port feature)
     string(APPEND said " \"${value}\"")
   endforeach()
   cme_export_line(${port} "${said})")
+  # A name somebody asked of this port before there was anything by that name
+  # to ask for: the port was partial, and this declaration is what explains
+  # the ask. COMPONENTS is a requirement and OPTIONAL_COMPONENTS is not, and
+  # the two are recorded where each belongs -- late, but before anything that
+  # reads what this port was asked for runs again.
+  get_property(cme_was_asked GLOBAL PROPERTY CME_ASKED_COMPONENTS_${port})
+  get_property(cme_was_wanted GLOBAL PROPERTY CME_WANTED_COMPONENTS_${port})
+  if("${feature}" IN_LIST cme_was_asked)
+    get_property(cme_already GLOBAL PROPERTY CME_REQUIRED_FEATURES_${port})
+    if(NOT "${feature}" IN_LIST cme_already)
+      set_property(GLOBAL APPEND PROPERTY CME_REQUIRED_FEATURES_${port}
+                   "${feature}")
+    endif()
+  elseif("${feature}" IN_LIST cme_was_wanted)
+    get_property(cme_already GLOBAL PROPERTY CME_WANTED_FEATURES_${port})
+    if(NOT "${feature}" IN_LIST cme_already)
+      set_property(GLOBAL APPEND PROPERTY CME_WANTED_FEATURES_${port}
+                   "${feature}")
+    endif()
+  endif()
   foreach(field GN_ARGS GN_CONFIRM GN_TARGETS OPTIONS DEPENDS SUMMARY IMPLIES
                 CONFLICTS
                 EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_CODE SYSTEM_COMPONENT
@@ -4344,6 +4364,25 @@ function(cme_enabled_features port out)
   get_property(wanted GLOBAL PROPERTY CME_WANTED_FEATURES_${port})
   list(APPEND enabled ${wanted})
   list(APPEND enabled ${CME_FEATURES_${port}})
+  # And what a find_package asked of a port that has no file of its own: a
+  # project declared it with a name and where the source comes from, which is
+  # all it takes to use a library the registry does not know. The features of
+  # such a port belong to the library and are declared where the library is
+  # read, which is after the asking. So a name nothing has explained yet is a
+  # feature here -- and is what the library reads, before it declares
+  # anything, to be built the way it was asked for.
+  #
+  # Only for a port like that. A port with a file of its own declares what it
+  # has, and a name it does not declare is somebody's own component:
+  # libsndfile asks Vorbis for Enc and File, and Vorbis is not a different
+  # library for having been asked.
+  get_property(port_dirs GLOBAL PROPERTY CME_PORT_${port}_DIRS)
+  if(NOT port_dirs)
+    get_property(components GLOBAL PROPERTY CME_ASKED_COMPONENTS_${port})
+    list(APPEND enabled ${components})
+    get_property(components GLOBAL PROPERTY CME_WANTED_COMPONENTS_${port})
+    list(APPEND enabled ${components})
+  endif()
   # A feature the library says is on unless somebody says otherwise, and one
   # a project wants wherever it exists.
   cme_port_field(declared ${port} FEATURES)
@@ -5732,7 +5771,7 @@ function(cme_build_port port package version exact)
     # that decides what the library builds at all would be learned too late to
     # decide it. What it can be given is what was asked for, under the name a
     # build would have used to say the same thing.
-    cme_requested_features(${port} cme_asked_of_port)
+    cme_enabled_features(${port} cme_asked_of_port)
     set(CME_FEATURES_${port} "${cme_asked_of_port}")
     set(tree "${${port}_SOURCE_DIR}")
     if(source_subdir)
@@ -6424,7 +6463,34 @@ macro(cme_provider cme_method cme_package)
               list(APPEND cme_asked_features "${cme_argument}")
             endif()
           else()
+            # Not a name this port declares -- which is two different things,
+            # and which of them it is cannot be known here.
+            #
+            # It may be somebody's own component, as above. Or the port may be
+            # a partial one -- a name and where the source comes from, which
+            # is all a project has to write to use a library that is not in
+            # the registry -- and the library declares its features in its own
+            # CMakeLists, which is not read until after this. Then the name is
+            # a feature, and answering it as somebody else's component would
+            # mean a project can never ask a partial port for anything the
+            # library itself declares.
+            #
+            # So it is not decided here. It is written down as asked of this
+            # port and carried into the build, where the library reads it out
+            # of CME_FEATURES_<port> before it declares anything. When the
+            # library does declare a feature by that name, cme_port_feature
+            # makes it a feature that was required, which is what COMPONENTS
+            # means. A name no declaration ever explains stays what it is now:
+            # somebody's own component, answered as present, because a port
+            # that provides the library provides all of it.
             set(${cme_package}_${cme_argument}_FOUND TRUE)
+            if(cme_optional)
+              set_property(GLOBAL APPEND PROPERTY
+                           CME_WANTED_COMPONENTS_${cme_port} "${cme_argument}")
+            else()
+              set_property(GLOBAL APPEND PROPERTY
+                           CME_ASKED_COMPONENTS_${cme_port} "${cme_argument}")
+            endif()
           endif()
         elseif("${cme_argument}" MATCHES "^[0-9]+(\\.[0-9]+)*$" AND NOT cme_wanted)
           set(cme_wanted "${cme_argument}")
