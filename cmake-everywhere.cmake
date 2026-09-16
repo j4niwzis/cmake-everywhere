@@ -2105,8 +2105,18 @@ endfunction()
 # everywhere except a wasm build compiled without -pthread -- and
 # _machine_simd where there are the SIMD instructions. What can be named
 # after _machine_ is what cme_machine_capabilities works out.
+# AT_USE says a feature is not a fact about how a copy was built but one of
+# the ways a copy may be taken. A library that installs both its module
+# interfaces and the headers generated from them is one copy that answers to
+# either, and asking for one of them is no reason to build it again -- so such
+# a feature is never matched against what the copy was built with, and is put
+# to the copy as a component instead, which is what a CMake package config
+# reads out of <name>_FIND_COMPONENTS.
+#
+# Its OPTIONS still apply where the port is built: there the choice has to be
+# made, because there only one of them is being made.
 function(cme_port_feature port feature)
-  cmake_parse_arguments(FEATURE "" "SUMMARY"
+  cmake_parse_arguments(FEATURE "AT_USE" "SUMMARY"
     "GN_ARGS;GN_CONFIRM;GN_TARGETS;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;PATCHES;TARGETS;TREES;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
@@ -2122,7 +2132,7 @@ function(cme_port_feature port feature)
                 CONFLICTS
                 EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_CODE SYSTEM_COMPONENT
                 CONFIGURE_ARGS PATCHES TARGETS TREES
-                DEFAULT)
+                DEFAULT AT_USE)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
   endforeach()
@@ -4612,6 +4622,13 @@ function(cme_system_has_features out package port features)
     set(present "")
     set(absent "")
     foreach(feature IN LISTS features)
+      # One of the ways the copy may be taken, not something it was built
+      # with. The copy answers it as a component; there is nothing here to
+      # compare against, and nothing to reject it for.
+      cme_feature_field(at_use ${port} ${feature} AT_USE)
+      if(at_use)
+        continue()
+      endif()
       if(feature IN_LIST has)
         list(APPEND present "${feature}")
       elseif(feature IN_LIST asked)
@@ -6125,7 +6142,8 @@ is being built at" FORCE)
       cme_enabled_features(${port} wanted)
       foreach(cme_feature IN LISTS wanted)
         cme_feature_field(separate ${port} ${cme_feature} SYSTEM_COMPONENT)
-        if(separate)
+        cme_feature_field(at_use ${port} ${cme_feature} AT_USE)
+        if(separate OR at_use)
           list(APPEND asking "${cme_feature}")
         endif()
       endforeach()

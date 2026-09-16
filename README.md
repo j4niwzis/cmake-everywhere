@@ -147,6 +147,26 @@ interface and is blind to one that changes behaviour. With it, a copy built
 without `vorbis` is passed over and the port is built, and the build says
 which feature was missing.
 
+**And a feature that is not about how the copy was built.** Some are: a copy
+compiled without `vorbis` cannot read Ogg Vorbis, and a build that needs it
+has to build its own. Others are about how the copy is *taken*: a library that
+installs its module interfaces and the headers generated from them is one copy
+that answers to either, and asking for one of them is no reason to build it
+again.
+
+```cmake
+cme_port_feature(scan headers AT_USE
+  SUMMARY "the generated headers rather than the module interface units")
+```
+
+`AT_USE` says which kind it is. Such a feature is never matched against what
+the copy was built with -- there is nothing there to compare against -- and is
+put to the copy as a component instead, which is what a CMake package config
+reads out of `<name>_FIND_COMPONENTS` and answers by pointing its target at
+one thing or the other. Where the port is built rather than found, the
+feature's `OPTIONS` apply as any other's: there the choice is being made, and
+there only one of them can be.
+
 The revision is what tells two builds of a branch apart, since a version does
 not: a project that pins a commit does not ask the machine at all when what
 is installed says it is a different one, and does not take a copy that this
