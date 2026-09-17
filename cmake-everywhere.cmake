@@ -1310,8 +1310,15 @@ endfunction()
 
 # The digest of a port file that came from outside this project, recorded
 # against the port it declared.
+#
+# Written down when something asks for the port, and never for a port nothing
+# asks for -- which is the same rule the notes above follow, and for the same
+# reason. A machine with a registry declares every port it has at the head of
+# every build; a lock that recorded each of them would hold two hundred facts
+# about files this project never reads, none of which is ever checked, and all
+# of which a reader of the lock has to look past to find the five that matter.
 function(cme_lock_port_file port)
-  get_property(file GLOBAL PROPERTY CME_PORT_FILE)
+  get_property(file GLOBAL PROPERTY CME_PORT_${port}_FILE)
   if(NOT file OR NOT EXISTS "${file}")
     return()
   endif()
@@ -1362,6 +1369,18 @@ function(cme_lock_write)
     # A port file is one of several a port can have, so those are added to
     # rather than replaced.
     if(subject IN_LIST replaced AND NOT line MATCHES "^[^ ]+ port ")
+      continue()
+    endif()
+    # And a digest of a port file this build declared and nothing asked for is
+    # dropped rather than carried on. Locks written before this rule hold one
+    # for every port of the registry; they are facts about files nothing here
+    # reads, and nothing ever checks them, because a port file is only read
+    # again where the port is used. A port this build never declared is left
+    # alone -- this build knows nothing about it either way.
+    get_property(cme_was_declared GLOBAL PROPERTY CME_PORT_${port}_ORIGIN)
+    get_property(cme_was_used GLOBAL PROPERTY CME_TOUCHED)
+    if(line MATCHES "^[^ ]+ port " AND cme_was_declared AND
+       NOT port IN_LIST cme_was_used)
       continue()
     endif()
     list(APPEND all "${line}")
@@ -1900,9 +1919,15 @@ function(cme_declare_port)
     set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_ORIGIN "${origin}")
   endif()
   # A port that came from somewhere else is code this build reads, and it can
-  # be edited where it lives without a line of this project changing.
+  # be edited where it lives without a line of this project changing. Where it
+  # lies is remembered here; whether the lock says anything about it is decided
+  # when somebody asks for the port.
   if(NOT origin STREQUAL "the project")
-    cme_lock_port_file("${PORT_NAME}")
+    get_property(cme_declared_from GLOBAL PROPERTY CME_PORT_FILE)
+    if(cme_declared_from AND EXISTS "${cme_declared_from}")
+      set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_FILE
+                   "${cme_declared_from}")
+    endif()
   endif()
   get_property(asked GLOBAL PROPERTY CME_UNLOCK_ASKED_${PORT_NAME})
   if(PORT_UNLOCKED OR (asked AND asked STREQUAL origin))
@@ -4237,6 +4262,9 @@ function(cme_require port version features reason)
   get_property(visited GLOBAL PROPERTY CME_REQUIREMENTS_VISITED_${port})
   cme_remember_why(${port} "" "${reason}")
   set_property(GLOBAL APPEND PROPERTY CME_TOUCHED "${port}")
+  # And now that something has asked for it, what its port file says is a fact
+  # about this build rather than about the registry.
+  cme_lock_port_file("${port}")
   cme_schedule_finish()
   if(version AND (NOT have OR have VERSION_LESS version))
     set_property(GLOBAL PROPERTY CME_REQUIRED_VERSION_${port} "${version}")
