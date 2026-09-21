@@ -1,0 +1,66 @@
+# A tag is a release, and a release is one file with a digest.
+#
+# What a project pins is an archive and its SHA256, so what a release has to
+# offer is an archive whose bytes do not move. GitHub's generated
+# `archive/<ref>.tar.gz` is not that: it is made on request, and when the
+# compression behind it changed every digest pinned against it broke at once.
+# An asset uploaded here is stored as it was uploaded, so a pin against it is
+# a pin.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: the tag to make a release of
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      # `git archive` and not a tarball of the checkout: what is in it is what
+      # the tag says is in it, with no build leavings and no .git.
+      - name: the archive, and what it hashes to
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          name="cmake-everywhere-${tag#v}"
+          git archive --format=tar.gz --prefix="${name}/" -o "${name}.tar.gz" "${tag}"
+          sha256sum "${name}.tar.gz" | tee "${name}.tar.gz.sha256"
+          echo "name=${name}" >> "$GITHUB_ENV"
+
+      # And read back, because a pin that cannot be verified is a URL.
+      - name: taken the way a project takes it
+        run: |
+          mkdir -p check && tar -C check -xzf "${{ env.name }}.tar.gz"
+          test -f "check/${{ env.name }}/cmake-everywhere.cmake"
+          test -d "check/${{ env.name }}/registry"
+          cmake -P "check/${{ env.name }}/cmake-everywhere.cmake"
+
+      - name: said where a pin can read it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          {
+            echo "Pin it by its URL and its digest:"
+            echo
+            echo '```cmake'
+            echo "set(CME_PINNED \"${tag}\")"
+            echo "set(CME_PINNED_URL \"https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${{ env.name }}.tar.gz\")"
+            echo "set(CME_PINNED_SHA256 \"$(cut -d' ' -f1 < "${{ env.name }}.tar.gz.sha256")\")"
+            echo '```'
+          } > notes.md
+          gh release create "${tag}" --title "${tag}" --notes-file notes.md \
+            "${{ env.name }}.tar.gz" "${{ env.name }}.tar.gz.sha256"
