@@ -438,6 +438,62 @@ handful of lines in the library's own CMakeLists, for which the library gets
 its own dependencies resolved the same way. When that happens the port here
 should shrink to nothing and then be deleted.
 
+## A library that is not the top-level project
+
+A dependency provider is installed by the `project()` call that asks for one,
+and CMake reads `CMAKE_PROJECT_TOP_LEVEL_INCLUDES` at the top-level `project()`
+and nowhere else. So a library added to somebody else's build -- by
+`FetchContent`, by `add_subdirectory`, by anything -- cannot have a provider
+however much it would like to resolve what it needs. The variable it would set
+is read above it and never below, and `cmake_language(SET_DEPENDENCY_PROVIDER)`
+is refused anywhere but the provider file.
+
+That leaves the hook. Everything under it is ordinary functions, and they are
+what `cme_find_package` is:
+
+```cmake
+# In the library's own CMakeLists, where it is not the top-level project.
+set(CME_WITHOUT_PROVIDER ON)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/get_cme.cmake)
+
+cme_find_package(boost_pfr REQUIRED COMPONENTS modules)
+```
+
+The words are `find_package`'s own -- a version, `REQUIRED`, `COMPONENTS`,
+`AT_LEAST_ONE_OF`, and everything else answered here -- and what answers them
+is what would have answered the hook: the system first, a port second, built
+once and stored.
+
+`CME_WITHOUT_PROVIDER` is what says the hook is not wanted, because installing
+it there is an error rather than a no-op. Two things follow from saying it:
+
+* **`cme_find_package` is the only way in.** An ordinary `find_package` in that
+  build goes wherever it would have gone with none of this present, which for a
+  library that has to be built as a module is usually nowhere.
+* **The consumer is untouched.** Their build has whatever provider they chose,
+  or none, and a library resolving its own dependencies this way does not
+  commandeer that choice or fight another provider for it.
+
+Where a provider *is* installed, `cme_find_package` steps aside and calls
+`find_package` -- which arrives at the same place through the hook. Asking
+twice is how a build ends up with two of something, so it is asked once.
+
+### What a component is built with
+
+`COMPONENTS` says which pieces of a family are wanted, and a family is one
+port -- so "which piece" and "built how" are two questions with room for one
+answer between them. What is in brackets after a component is features of the
+port:
+
+```cmake
+cme_find_package(Boost REQUIRED COMPONENTS pfr[modules])
+cme_find_package(Boost REQUIRED COMPONENTS pfr[modules] asio system)
+```
+
+Read here and never passed on, the same as every other word this reads out of
+a find_package. Several are separated by commas -- `pfr[modules,header-only]`
+-- and a component with no brackets is what it always was.
+
 ## Asked the other way round
 
 A dependency provider is offered `find_package` and nothing else, so a

@@ -3792,7 +3792,7 @@ function(cme_install_pkgconfig_override)
         foreach(cme_pkg_port IN LISTS cme_pkg_ports)
           cme_port_field(cme_pkg_names ${cme_pkg_port} PROVIDES)
           list(GET cme_pkg_names 0 cme_pkg_package)
-          find_package(${cme_pkg_package} REQUIRED QUIET)
+          cme_find_package(${cme_pkg_package} REQUIRED QUIET)
           cme_port_targets(cme_pkg_theirs ${cme_pkg_port})
           foreach(cme_pkg_one IN LISTS cme_pkg_theirs)
             if(TARGET ${cme_pkg_one})
@@ -5234,11 +5234,16 @@ function(cme_resolve_depends port)
         "port called that.")
     endif()
     list(GET names 0 first)
+    # Through this and not through find_package: where a provider is
+    # installed the two are the same call, and where none is -- a library
+    # resolving its own dependencies inside somebody else's build -- a plain
+    # find_package walks straight past everything here and looks for a config
+    # file that was never installed.
     if(wanted_features)
-      find_package(${first} ${wanted} QUIET REQUIRED
-                   COMPONENTS ${wanted_features})
+      cme_find_package(${first} ${wanted} QUIET REQUIRED
+                       COMPONENTS ${wanted_features})
     else()
-      find_package(${first} ${wanted} QUIET REQUIRED)
+      cme_find_package(${first} ${wanted} QUIET REQUIRED)
     endif()
   endforeach()
 endfunction()
@@ -6511,6 +6516,21 @@ macro(cme_provider cme_method cme_package)
         elseif(cme_group)
           list(APPEND cme_current_group "${cme_argument}")
         elseif(cme_components)
+          # A component may say what it wants of itself, in brackets:
+          #
+          #   cme_find_package(Boost REQUIRED COMPONENTS pfr[modules])
+          #
+          # A family is one port and its pieces are components of it, so
+          # "which piece" and "built how" are two different questions and
+          # COMPONENTS only has room for the first. What is in the brackets
+          # are features of the port, read here and never passed on -- the
+          # same as every other word this reads out of a find_package.
+          set(cme_bracketed "")
+          if("${cme_argument}" MATCHES "^([^][]+)\\[([^][]*)\\]$")
+            set(cme_argument "${CMAKE_MATCH_1}")
+            string(REPLACE "," ";" cme_bracketed "${CMAKE_MATCH_2}")
+            list(REMOVE_ITEM cme_bracketed "")
+          endif()
           # A third-party project asking for COMPONENTS means its own
           # components: libsndfile asks Vorbis for Enc and File, which are
           # not features of anything here. Only a name this port declares is
@@ -6553,6 +6573,15 @@ macro(cme_provider cme_method cme_package)
                            CME_ASKED_COMPONENTS_${cme_port} "${cme_argument}")
             endif()
           endif()
+          # And what the brackets said, which is a feature of the port however
+          # the name in front of them was answered.
+          foreach(cme_one IN LISTS cme_bracketed)
+            if(cme_optional)
+              list(APPEND cme_wanted_features "${cme_one}")
+            else()
+              list(APPEND cme_asked_features "${cme_one}")
+            endif()
+          endforeach()
         elseif("${cme_argument}" MATCHES "^[0-9]+(\\.[0-9]+)*$" AND NOT cme_wanted)
           set(cme_wanted "${cme_argument}")
         endif()
@@ -6642,14 +6671,48 @@ macro(cme_provider cme_method cme_package)
   endif()
 endmacro()
 
+# find_package, asked of this by name rather than hooked in front of it.
+#
+# A provider is installed by the project() that asks for one, and CMake reads
+# CMAKE_PROJECT_TOP_LEVEL_INCLUDES at the top-level project() and nowhere else.
+# So a library added to somebody else's build cannot have a provider, however
+# much it would like to resolve what it needs -- the variable it would set is
+# read above it and never below.
+#
+# This is the same resolution, called by its name. The words are find_package's
+# own: a version, REQUIRED, COMPONENTS, and everything else this answers to.
+#
+#   cme_find_package(boost_pfr REQUIRED COMPONENTS modules)
+#
+# Where a provider is installed it steps aside, because an ordinary
+# find_package already arrives at the same place and arriving twice is how a
+# build gets two of something. Where none is, and no port answers to the name,
+# what is left is the search CMake would have done if none of this were here.
+macro(cme_find_package cme_asked_package)
+  if(CME_PROVIDER_INSTALLED)
+    find_package(${cme_asked_package} ${ARGN})
+  else()
+    cme_provider(FIND_PACKAGE "${cme_asked_package}" ${ARGN})
+    if(NOT ${cme_asked_package}_FOUND)
+      find_package(${cme_asked_package} ${ARGN})
+    endif()
+  endif()
+endmacro()
+
 # Read as a script, this file is what it says and does nothing: a provider
 # can only be registered by the project() that is asking for one, and there
 # is no project in `cmake -P`. What that leaves is every function here,
 # which is how test/flags.cmake asks the real thing what it makes of a set
 # of flags rather than asking a copy of it.
-if(NOT CMAKE_SCRIPT_MODE_FILE)
+#
+# Read by a build that is not the top-level one, the same and for the same
+# reason: CMake refuses the call anywhere but the provider file. Such a build
+# says CME_WITHOUT_PROVIDER before including this and asks for what it needs
+# with `cme_find_package`, which is every part of this except the hook.
+if(NOT CMAKE_SCRIPT_MODE_FILE AND NOT CME_WITHOUT_PROVIDER)
   cmake_language(SET_DEPENDENCY_PROVIDER cme_provider
                  SUPPORTED_METHODS FIND_PACKAGE)
+  set(CME_PROVIDER_INSTALLED TRUE)
 endif()
 
 cmake_policy(POP)
