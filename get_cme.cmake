@@ -23,10 +23,24 @@ set(CME_VERSION "d59422a1284aded6cb008536a8e17ef43e0b3ecd" CACHE STRING
   "cmake-everywhere revision: a commit, a tag, or a branch you are following")
 set(CME_SHA256 "" CACHE STRING
   "The digest of that revision's archive, or empty to take what arrives")
+set(CME_URL "" CACHE STRING
+  "Where to fetch it from, when that is not the generated archive of a revision")
 set(CME_SOURCE_DIR "${CMAKE_BINARY_DIR}/_cme-registry" CACHE PATH
   "Where the registry is unpacked")
 
-if(NOT CME_VERSION MATCHES "^[0-9a-f]${40}$" AND NOT CME_SHA256)
+# A release asset rather than a generated archive, where one is named.
+#
+# `archive/<ref>.tar.gz` is made on request, and when the compression behind
+# it changed every digest pinned against it broke at once. A file uploaded to
+# a release is stored as it was uploaded, so a digest of one stays true.
+if(CME_URL)
+  set(cme_from "${CME_URL}")
+else()
+  set(cme_from
+      "https://github.com/j4niwzis/cmake-everywhere/archive/${CME_VERSION}.tar.gz")
+endif()
+
+if(NOT CME_VERSION MATCHES "^[0-9a-f][0-9a-f]+$" AND NOT CME_SHA256)
   message(WARNING
     "cmake-everywhere: this build takes ${CME_VERSION}, which is a name "
     "rather than a revision, and no CME_SHA256 to check what arrives. What "
@@ -58,13 +72,10 @@ if(NOT EXISTS "${CME_SOURCE_DIR}/cmake-everywhere.cmake"
     message(STATUS "cmake-everywhere: fetching ${CME_VERSION}")
   endif()
   if(CME_SHA256)
-    file(DOWNLOAD
-      "https://github.com/j4niwzis/cmake-everywhere/archive/${CME_VERSION}.tar.gz"
-      "${archive}" STATUS status EXPECTED_HASH SHA256=${CME_SHA256})
+    file(DOWNLOAD "${cme_from}" "${archive}"
+         STATUS status EXPECTED_HASH SHA256=${CME_SHA256})
   else()
-    file(DOWNLOAD
-      "https://github.com/j4niwzis/cmake-everywhere/archive/${CME_VERSION}.tar.gz"
-      "${archive}" STATUS status)
+    file(DOWNLOAD "${cme_from}" "${archive}" STATUS status)
   endif()
   list(GET status 0 code)
   if(NOT code EQUAL 0)
