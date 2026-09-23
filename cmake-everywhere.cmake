@@ -5682,6 +5682,15 @@ function(cme_build_port port package version exact)
   get_property(before GLOBAL PROPERTY CME_PORT_${port}_RECIPE)
   cme_source_ports(${port} "${${port}_SOURCE_DIR}")
   get_property(after GLOBAL PROPERTY CME_PORT_${port}_RECIPE)
+  # And the file it said it in, which did not exist when the port was asked
+  # for: a library carries its own description inside the tree that has to be
+  # fetched first, so the digest of it can only be taken here. Without this
+  # the lock held the commit of a library and nothing about the file that
+  # decided what the library is -- and that file changes with the library,
+  # which is the one thing a lock is for. Taken whether or not it said
+  # anything this time, because a file that says nothing today is a file that
+  # can say something tomorrow.
+  cme_lock_port_file("${port}")
   if(NOT "${before}" STREQUAL "${after}")
     # Decided again, against a description that did not exist a moment ago.
     cme_check_closed_rules(${port})
