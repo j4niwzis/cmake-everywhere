@@ -32,5 +32,5 @@ if(NOT IS_DIRECTORY "${from}" OR NOT headers)
   return()
 endif()
 
-file(COPY "${from}/" DESTINATION "${to}"
-     PATTERN "CMakeFiles" EXCLUDE PATTERN ".git" EXCLUDE)
+include("${CMAKE_CURRENT_LIST_DIR}/store-copy.cmake")
+cme_store_copy("${from}" "${to}")

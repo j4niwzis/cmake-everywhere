@@ -936,6 +936,7 @@ include("${CME_DIR}/cmake/mesonproject.cmake")
 include("${CME_DIR}/cmake/configureproject.cmake")
 include("${CME_DIR}/cmake/cargoproject.cmake")
 include("${CME_DIR}/cmake/ninjaproject.cmake")
+include("${CME_DIR}/cmake/store-copy.cmake")
 
 set(CME_REGISTRY "${CME_DIR}/registry" CACHE PATH
   "The ports that come with this. Overlays are searched before it.")
@@ -2929,8 +2930,7 @@ function(cme_store_keep_headers out ok port entry directories)
     # could not be: CMake can install one and nothing consumes it, and
     # reusing one is left to a future that needs help from compilers.
     set(kept "${entry}/generated/${index}")
-    file(COPY "${directory}/" DESTINATION "${kept}"
-         PATTERN "CMakeFiles" EXCLUDE PATTERN ".git" EXCLUDE)
+    cme_store_copy("${directory}" "${kept}")
     list(APPEND result "\${CMAKE_CURRENT_LIST_DIR}/generated/${index}")
     math(EXPR index "${index} + 1")
     set_property(GLOBAL PROPERTY CME_STORE_INDEX_${port} "${index}")
