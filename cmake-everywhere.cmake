@@ -2067,6 +2067,29 @@ function(cme_declare_port)
           "and the tree that was fetched says ${PORT_${field}}; the tree is "
           "what is being built")
       endif()
+      # And where a library comes from is the project's to say.
+      #
+      # A description installed on this machine is declared at the head of
+      # every build, so it is always the first to name the port -- and "the
+      # first to name it is where it comes from" then means a copy installed
+      # once decides which revision every build on that machine gets, however
+      # plainly the project pinned another. Which library this is, what it
+      # needs and what it is licensed under is what such a description knows;
+      # which revision to build is not its business, and saying so cost a day
+      # of wondering why a pinned commit was fetched and a different one
+      # arrived.
+      get_property(named_by GLOBAL PROPERTY CME_PORT_${PORT_NAME}_ORIGIN)
+      if(origin STREQUAL "the project" AND named_by MATCHES "^the system"
+         AND field MATCHES
+             "^(GIT_TAG|GIT_REPOSITORY|GITHUB_REPOSITORY|GITLAB_REPOSITORY|URL|URL_HASH|SOURCE_DIR)$"
+         AND NOT "${PORT_${field}}" STREQUAL ""
+         AND NOT "${said}" STREQUAL "${PORT_${field}}")
+        set(overrules TRUE)
+        message(STATUS
+          "cmake-everywhere: ${PORT_NAME} ${field} is ${said} in the "
+          "description installed here and ${PORT_${field}} in this project; "
+          "the project chose the library, so the project's is taken")
+      endif()
       if(NOT overrules)
         if(NOT "${said}" STREQUAL "" OR "${PORT_${field}}" STREQUAL "")
           continue()
