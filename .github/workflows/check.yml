@@ -544,6 +544,8 @@ jobs:
       - run: sudo apt-get update || true; sudo apt-get install -y ninja-build pkg-config zlib1g-dev
       - name: a port from the project, a directory and a repository
         run: test/decentral.sh "${{ github.workspace }}/build/decentral-check"
+      - name: what a copy the system installed pulls in
+        run: test/system-copies.sh "${{ github.workspace }}/build/system-copies"
       - name: what the builds decided
         if: always()
         run: |

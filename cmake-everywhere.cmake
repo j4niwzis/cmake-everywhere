@@ -6297,6 +6297,7 @@ is being built at" FORCE)
       endforeach()
     endif()
     set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM TRUE)
+    set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "${as}" "${package}")
     if(asking)
       find_package(${as} ${version} QUIET GLOBAL BYPASS_PROVIDER
                    COMPONENTS ${asking})
@@ -6304,6 +6305,7 @@ is being built at" FORCE)
       find_package(${as} ${version} QUIET GLOBAL BYPASS_PROVIDER)
     endif()
     set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM FALSE)
+    set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "")
     if(NOT ${as} STREQUAL "${package}" AND ${as}_FOUND)
       set(${package}_FOUND TRUE)
       set(${package}_VERSION "${${as}_VERSION}")
@@ -6472,6 +6474,30 @@ macro(cme_provider cme_method cme_package)
   # So while a system copy is being looked for, this steps aside and lets
   # CMake search the way it would without a provider.
   get_property(cme_bypassing GLOBAL PROPERTY CME_INSIDE_SYSTEM)
+  # Stepping aside is not the same as not looking. A package the system copy
+  # asks for is answered the way the system would answer it -- no port, no
+  # build, the search CMake itself does -- but it is asked here, so that what
+  # the build used is written down. Left to CMake, it was found and never
+  # reported: a consumer of a library taken from a prefix read that the
+  # library came from the system and nothing about the library under it.
+  #
+  # Not for the package the system is being asked about: a find module that
+  # asks for its own package again, as FindGTest does, is why this steps aside
+  # at all, and asking it once more here would be the loop that was there.
+  if(cme_bypassing AND "${cme_method}" STREQUAL "FIND_PACKAGE")
+    get_property(cme_asked_of_system GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR)
+    if(NOT "${cme_package}" IN_LIST cme_asked_of_system)
+      find_package(${cme_package} ${ARGN} BYPASS_PROVIDER)
+      # Once: the copy's config is read when the system is asked and again
+      # when the answer is handed back, and each time it asks for this.
+      if(${cme_package}_FOUND)
+        get_property(cme_noted GLOBAL PROPERTY CME_DECISIONS)
+        if(NOT "${cme_package} system ${${cme_package}_VERSION}" IN_LIST cme_noted)
+          cme_note_decision("${cme_package}" "system" "${${cme_package}_VERSION}")
+        endif()
+      endif()
+    endif()
+  endif()
   # FindPkgConfig defines pkg_check_modules when it is included, and it is
   # included by find_package(PkgConfig) -- which comes through here. So this
   # is the moment the real one exists and can be stepped in front of; doing
@@ -6661,8 +6687,10 @@ macro(cme_provider cme_method cme_package)
         # provider, for as long as the stack lasts. The way out is the flag
         # the search below this already sets, which this one did not.
         set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM TRUE)
+        set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "${cme_package}")
         find_package(${cme_package} ${cme_wanted} QUIET GLOBAL BYPASS_PROVIDER)
         set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM FALSE)
+        set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "")
         # And when that finds nothing, because the copy on this machine was
         # not recognised by a find_package in the first place.
         #
