@@ -135,7 +135,12 @@ if "--boost-components" in sys.argv:
     for block in re.findall(r"cme_port_feature\(boost\s+(\S+)(.*?)\)", text, re.S):
         feature, body = block
         wanted = re.search(r"DEPENDS\s+(\S+)", body)
-        if wanted and wanted.group(1) in arranged:
+        # A component is a library: a feature that brings a part in. One
+        # that only says how the parts are built -- modules -- is not a
+        # piece of Boost, and asking for it hands it down to every part.
+        if not wanted:
+            continue
+        if wanted.group(1) in arranged:
             continue
         names.append(feature)
     print(";".join(sorted(set(names))))
