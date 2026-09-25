@@ -91,6 +91,7 @@ expect_refusal implied-through-a-chain "this build refuses chain-c"
 expect_refusal refused-feature       "this build refuses"
 expect_refusal licence               "accepts only"
 expect_refusal missing-port          "there is no port called"
+expect_refusal handed-down           "this build refuses modules"
 
 echo "the store -- built once, found again, and not found when it should not be"
 if "$here/store.sh" "$out/store" >"$out/store.log" 2>&1; then

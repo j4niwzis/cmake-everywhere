@@ -4409,11 +4409,40 @@ function(cme_require port version features reason)
       list(APPEND reasons "${port}[${feature}]")
     endforeach()
   endforeach()
+  # A virtual port builds nothing, so a feature of its own that says how
+  # things are built -- one that sets options rather than bringing a part in
+  # -- has nowhere to take effect but in its parts. It means the same there:
+  # Boost asked for with modules is each of its pieces built as a module. So
+  # it is asked of every part that declares a feature by the same name, and
+  # left alone where a part has none. Without this,
+  #
+  #   cme_find_package(Boost COMPONENTS pfr[modules])
+  #
+  # turned modules on for the name Boost, which set BOOST_USE_MODULES where
+  # nothing is built, and built Boost.PFR as headers.
+  set(handed_down "")
+  cme_port_field(virtual ${port} VIRTUAL)
+  if(virtual)
+    foreach(feature IN LISTS enabled)
+      cme_feature_field(options ${port} ${feature} OPTIONS)
+      if(options)
+        list(APPEND handed_down "${feature}")
+      endif()
+    endforeach()
+  endif()
   set(index 0)
   foreach(spec IN LISTS depends)
     list(GET reasons ${index} by)
     math(EXPR index "${index} + 1")
     cme_split_requirement("${spec}" name wanted wanted_features)
+    if(handed_down)
+      cme_port_field(part_declared ${name} FEATURES)
+      foreach(feature IN LISTS handed_down)
+        if(feature IN_LIST part_declared AND NOT feature IN_LIST wanted_features)
+          list(APPEND wanted_features "${feature}")
+        endif()
+      endforeach()
+    endif()
     cme_require("${name}" "${wanted}" "${wanted_features}" "${by}")
   endforeach()
 endfunction()
