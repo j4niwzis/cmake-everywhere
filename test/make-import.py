@@ -32,7 +32,7 @@ RULES = """# GNU Make 4.3
 .DEFAULT_GOAL := all
 # Files
 
-all: libavutil/libavutil.a libavutil/ffversion.h
+all: libavutil/libavutil.a libavutil/ffversion.h build_all libavutil.pc
 #  Phony target (prerequisite of .PHONY).
 #  Implicit rule search has not been done.
 
@@ -48,6 +48,22 @@ version.sh:
 libavutil/libavutil.a: libavutil/mem.o libavutil/log.o
 #  recipe to execute (from 'Makefile', line 12):
 \tar rc $@ $^
+
+libavutil/log.o: libavutil/log.c libavutil/config_components.h
+#  recipe to execute (from 'Makefile', line 20):
+\t$(CC) -c -o $@ $<
+
+libavutil/config_components.h: version.sh
+#  recipe to execute (from 'Makefile', line 22):
+\t./version.sh . $@
+
+build_all: libavutil/libavutil.a
+#  recipe to execute (from 'Makefile', line 30):
+\t$(MAKE) everything
+
+libavutil.pc: version.sh
+#  recipe to execute (from 'Makefile', line 32):
+\t./version.sh . $@
 
 # files hash-table stats:
 """
@@ -112,21 +128,31 @@ def main():
         if "1 commands not read" not in said:
             problems.append("a command that is neither a compile nor an "
                             "archive was not counted: " + said)
-        check("a file made some other way is made by make, from the build directory",
-              values.get("CMAKE_IMPORT_COMMAND0_OUTPUTS"), [os.path.join(build, "libavutil", "ffversion.h")])
+        # The command that makes ffversion.h, whichever it is.
+        index = next((k[len("CMAKE_IMPORT_COMMAND"):-len("_OUTPUTS")] for k, v in values.items()
+                      if k.endswith("_OUTPUTS") and v == [os.path.join(build, "libavutil", "ffversion.h")]), None)
+        check("a file made some other way is made by make, from the build directory", index is not None, True)
         check("and after what it needs",
-              values.get("CMAKE_IMPORT_COMMAND0_INPUTS"), [os.path.join(build, "version.sh")])
+              values.get("CMAKE_IMPORT_COMMAND{}_INPUTS".format(index)), [os.path.join(build, "version.sh")])
         check("by the project's make, for that file alone",
-              values.get("CMAKE_IMPORT_COMMAND0_LINE"), ["/usr/bin/make --no-print-directory V=1 libavutil/ffversion.h"])
-        if "set(CMAKE_IMPORT_COMMANDS 2)" not in open(out).read():
+              values.get("CMAKE_IMPORT_COMMAND{}_LINE".format(index)),
+              ["/usr/bin/make --no-print-directory V=1 libavutil/ffversion.h"])
+        outputs = [v for k, v in values.items() if k.endswith("_OUTPUTS")]
+        check("a header only an object's rule names is made too",
+              any(o == [os.path.join(build, "libavutil", "config_components.h")] for o in outputs), True)
+        check("a target that is not a source or a header is not made here",
+              any(o in ([os.path.join(build, "build_all")], [os.path.join(build, "libavutil.pc")]) for o in outputs),
+              False)
+        if "set(CMAKE_IMPORT_COMMANDS 3)" not in open(out).read():
             problems.append("an archive or a phony target was taken for a file to make, "
                             "or a source nothing names as a target was not made")
         check("a source a compile reads that is not there is made by name",
-              values.get("CMAKE_IMPORT_COMMAND1_OUTPUTS"), [os.path.join(build, "libavutil", "made.c")])
+              any(o == [os.path.join(build, "libavutil", "made.c")]
+                  for o in [v for k, v in values.items() if k.endswith("_OUTPUTS")]), True)
 
     for problem in problems:
         print(problem)
-    print("{} checks, {} problems".format(11, len(problems)))
+    print("{} checks, {} problems".format(13, len(problems)))
     return 1 if problems else 0
 
 

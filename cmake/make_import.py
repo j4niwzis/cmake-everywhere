@@ -227,13 +227,25 @@ def read_rules(path):
     return rules, goal
 
 
-def generated_files(rules, goal, build):
-    """What make would make that is not an object or an archive: every file
-    target reachable from the default goal that has a recipe and is not
-    there yet."""
+# What a compile reads: the files a command made that are worth making
+# here. A package description, a perl module or a phony target a make
+# never marked as one is not, and running make for one of those is running
+# the whole build of that project inside one command.
+MADE_FOR_COMPILES = (".h", ".hh", ".hpp", ".hxx", ".inc", ".ipp", ".def",
+                     ".c", ".cc", ".cpp", ".cxx", ".s", ".S", ".asm")
+
+
+def generated_files(rules, goal, build, roots=()):
+    """What make would make that a compile reads: every file reachable from
+    the default goal, or from what is compiled and archived, that has a
+    recipe, is a source or a header, and is not there yet.
+
+    From both, because a project that makes itself recursively -- OpenSSL's
+    `all` runs `$(MAKE) _build_libs` -- names its generated headers under
+    the goal and its objects' own headers only under the objects."""
     made = []
     seen = set()
-    pending = [goal] if goal else []
+    pending = ([goal] if goal else []) + list(roots)
     while pending:
         one = pending.pop()
         if one in seen:
@@ -245,7 +257,7 @@ def generated_files(rules, goal, build):
         pending.extend(rule["needs"])
         if rule["phony"] or not rule["recipe"] or "%" in one:
             continue
-        if one.endswith((".o", ".a", ".so", ".obj", ".lib", ".d")) or ".so." in one:
+        if not one.endswith(MADE_FOR_COMPILES):
             continue
         if os.path.exists(os.path.join(build, one)):
             continue
@@ -346,7 +358,9 @@ def main(argv):
         handle.write("\n")
         # The files made some other way, each by the project's make, run for
         # that file alone, from its build directory, after what it needs.
-        generated = generated_files(rules, goal, build) if make else []
+        roots = [os.path.relpath(path, build) for path in compiles]
+        roots += [os.path.relpath(path, build) for path in archives]
+        generated = generated_files(rules, goal, build, roots) if make else []
         # And every source a compile reads that is not there yet, whatever
         # the rules say or do not say: a file made by a pattern rule is not
         # a target in make's database until something has asked for it,
