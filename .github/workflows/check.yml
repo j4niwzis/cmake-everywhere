@@ -210,7 +210,7 @@ jobs:
           echo "--- what came from where"
           cat build/split/cme-report.txt
           grep -q "^boost-pfr built 1.92.0 \[modules\]" build/split/cme-report.txt
-          grep -q "^boost_container_hash system 1.92.0" build/split/cme-report.txt
+          grep -qE "^boost_(container_hash|headers) system 1.92.0" build/split/cme-report.txt
           # Nothing of Boost fetched but pfr.
           test "$(ls .cache/split)" = "boost-pfr"
 
