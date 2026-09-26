@@ -53,6 +53,10 @@ cme_declare_port(
     # library does not get to decide that a program builds SDL.
     "ALSOFT_BACKEND_SDL2 OFF"
     "ALSOFT_BACKEND_SDL3 OFF"
+    # And it looks for SDL 3 once more before any option, for its examples,
+    # with find_package(SDL3 QUIET) at the top of its CMakeLists: that look
+    # too is not taken unless SDL is asked for.
+    "CMAKE_DISABLE_FIND_PACKAGE_SDL3 ON"
 )
 
 # Which way sound leaves the machine. Every one of these is a backend OpenAL
@@ -71,7 +75,7 @@ cme_port_feature(openal-soft opensl
 cme_port_feature(openal-soft sdl3
   SUMMARY "SDL 3 as a backend, for a program that already has SDL"
   DEPENDS sdl3
-  OPTIONS "ALSOFT_BACKEND_SDL3 ON")
+  OPTIONS "ALSOFT_BACKEND_SDL3 ON" "CMAKE_DISABLE_FIND_PACKAGE_SDL3 OFF")
 
 # On Android, one of the two above rather than none.
 #
