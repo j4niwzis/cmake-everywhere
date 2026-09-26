@@ -6211,6 +6211,20 @@ function(cme_family_settled port package how)
   if(answer)
     return()
   endif()
+  # A piece built here because it was asked for with a feature only a build
+  # here has -- Boost.PFR as a module -- says nothing about where the rest of
+  # its family comes from. Settling the family on it made every piece asked
+  # for after it, by anyone, built here too, beside the installed Boost the
+  # umbrella had already been answered with.
+  if(how STREQUAL "built")
+    cme_enabled_features(${port} cme_enabled)
+    foreach(cme_feature IN LISTS cme_enabled)
+      cme_feature_field(cme_built_here ${port} ${cme_feature} BUILT_HERE)
+      if(cme_built_here)
+        return()
+      endif()
+    endforeach()
+  endif()
   get_property(chosen GLOBAL PROPERTY CME_PROVIDED_VERSION_${package})
   set_property(GLOBAL PROPERTY CME_FAMILY_${family}_ANSWER "${how}")
   set_property(GLOBAL PROPERTY CME_FAMILY_${family}_VERSION "${chosen}")
@@ -6849,10 +6863,39 @@ macro(cme_provider cme_method cme_package)
                            CME_ASKED_COMPONENTS_${cme_port} "${cme_argument}")
             endif()
           endif()
-          # And what the brackets said, which is a feature of the port however
-          # the name in front of them was answered.
+          # And what the brackets said. When the name in front of them is a
+          # piece of a family -- pfr of Boost, a feature of the umbrella that
+          # brings one port -- they are that piece's features: pfr[modules]
+          # is Boost.PFR built as a module, not all of Boost. Given to the
+          # umbrella, they were handed down to every piece the build uses, and
+          # a piece with an interface unit of its own (type_index, through
+          # beast) was built here beside the installed Boost, with everything
+          # it depends on, each defining a Boost:: target the installed Boost
+          # already had.
+          set(cme_member "")
+          if(cme_bracketed AND "${cme_argument}" IN_LIST cme_declared)
+            cme_feature_field(cme_brings "${cme_port}" "${cme_argument}" DEPENDS)
+            list(LENGTH cme_brings cme_brings_count)
+            if(cme_brings_count EQUAL 1)
+              cme_split_requirement("${cme_brings}" cme_member cme_ignored cme_ignored_features)
+              cme_port_field(cme_member_declared "${cme_member}" FEATURES)
+              foreach(cme_one IN LISTS cme_bracketed)
+                if(NOT cme_one IN_LIST cme_member_declared)
+                  set(cme_member "")
+                endif()
+              endforeach()
+            endif()
+          endif()
           foreach(cme_one IN LISTS cme_bracketed)
-            if(cme_optional)
+            if(cme_member)
+              get_property(cme_member_known GLOBAL PROPERTY
+                           CME_REQUIRED_FEATURES_${cme_member})
+              if(NOT cme_one IN_LIST cme_member_known)
+                set_property(GLOBAL APPEND PROPERTY
+                             CME_REQUIRED_FEATURES_${cme_member} "${cme_one}")
+              endif()
+              cme_remember_why(${cme_member} ${cme_one} "the project")
+            elseif(cme_optional)
               list(APPEND cme_wanted_features "${cme_one}")
             else()
               list(APPEND cme_asked_features "${cme_one}")

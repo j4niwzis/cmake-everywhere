@@ -46,6 +46,12 @@ endif()
 # x264.h documents that stdint.h comes first and does not include it, so a
 # check that includes it alone reports a library that cannot be used as a
 # library whose types do not exist.
+# And what other projects in the same build ask for afterwards, each on its
+# own: a dependency that finds boost_asio after the project found Boost.
+foreach(cme_then IN LISTS CME_PORT_THEN)
+  find_package(${cme_then} CONFIG REQUIRED)
+endforeach()
+
 set(cme_port_source "${CMAKE_CURRENT_SOURCE_DIR}/main.cc")
 if(CME_PORT_INCLUDE)
   set(cme_port_source "${CMAKE_CURRENT_BINARY_DIR}/include-check.cc")
