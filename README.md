@@ -1264,6 +1264,27 @@ too -- `CONFIGURE_CROSS "--host=@TRIPLE@"` for autotools, four other
 arguments for FFmpeg -- and a placeholder nothing can answer stops the build
 rather than reaching a shell script as an empty argument.
 
+### A configure script, and then its make read
+
+```cmake
+CONFIGURE Configure
+IMPORT make
+IMPORT_TARGETS "crypto=OpenSSL::Crypto" "ssl=OpenSSL::SSL"
+```
+
+Better than building into a prefix, where the project allows it: the
+script runs at configure time, because nothing can be read before it has,
+and then its make is asked what it would do instead of being told to do it.
+`make -n` names every compile and every archive, and those become compiles
+and targets in your graph with the flags the project gives them; an archive
+several commands add to is one target. What is neither -- a header written
+from a template, assembly written by a perl script, as OpenSSL writes half
+of what it compiles -- is named in make's database (`make -p`) and nowhere
+else, so it is read from there: each such file reachable from the default
+goal is made by the project's own make, for that file alone, as a command
+in the same graph, after what its rule says it needs. Generated headers are
+made before anything is compiled.
+
 ### A library that is wrong about the machine
 
 ```cmake

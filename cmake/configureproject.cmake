@@ -289,10 +289,21 @@ function(cme_configure_import port build)
       "cmake-everywhere: asking ${port}'s make what it would do failed\n"
       "${output}")
   endif()
+  # And its database: every rule, what it needs and whether it has a
+  # recipe. The dry run says what would be compiled; the files that are
+  # made some other way -- a header written from a template, assembly
+  # written by a script -- are named in the rules, and nowhere else. -q
+  # asks nothing to be done, and says with its exit code whether something
+  # would have been, which is not a failure here.
+  set(rules "${build}/cme-make-rules.txt")
+  execute_process(
+    COMMAND "${CME_MAKE}" "-p" "-q" "-n" "--no-print-directory" "V=1"
+    WORKING_DIRECTORY "${build}"
+    OUTPUT_FILE "${rules}" ERROR_QUIET)
   set(description "${build}/cme-targets.cmake")
   execute_process(
     COMMAND "${Python3_EXECUTABLE}" "${CME_DIR}/cmake/make_import.py"
-            "${dry}" "${build}" "${description}"
+            "${dry}" "${build}" "${description}" "${rules}" "${CME_MAKE}"
     RESULT_VARIABLE code ERROR_VARIABLE output)
   if(NOT code EQUAL 0)
     message(FATAL_ERROR
