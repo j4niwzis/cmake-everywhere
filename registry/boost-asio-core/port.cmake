@@ -26,7 +26,7 @@ cme_declare_port(
 # consumer asks for it -- find_package(boost_pfr COMPONENTS modules) -- rather
 # than setting an option that only works when it is set before whoever
 # resolves the port first asks for it.
-cme_port_feature(boost-asio-core modules BUILT_HERE
+cme_port_feature(boost-asio-core modules
   SUMMARY "built as a C++20 module, and imported rather than included"
   OPTIONS "BOOST_USE_MODULES ON")
 cme_port_feature(boost-asio-core deadline_timer

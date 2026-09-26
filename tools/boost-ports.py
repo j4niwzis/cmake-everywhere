@@ -311,6 +311,14 @@ def main(version):
             print(f"{module}: no library target, no port")
             continue
         name = target(module, defines)
+        # Built as a module only where the library has an interface unit,
+        # which its CMakeLists adds as a CXX_MODULES file set: there, no
+        # installed copy has the module, and one is built here. Boost has them
+        # from 1.89 on. Elsewhere the switch is harmless and the installed
+        # headers are as good as any.
+        here = ""
+        if "CXX_MODULES" in str(sources.get(module, "")):
+            here = " BUILT_HERE\n  SINCE 1.89.0"
         # A library that needs something of the machine's, said in the port
         # rather than left for the build to discover. Boost will not build
         # these unless it is told, and nothing that lists all of Boost should
@@ -384,7 +392,7 @@ endfunction()
 # consumer asks for it -- find_package(boost_pfr COMPONENTS modules) -- rather
 # than setting an option that only works when it is set before whoever
 # resolves the port first asks for it.
-cme_port_feature({port(module)} modules BUILT_HERE
+cme_port_feature({port(module)} modules{here}
   SUMMARY "built as a C++20 module, and imported rather than included"
   OPTIONS "BOOST_USE_MODULES ON")
 {adaptation}

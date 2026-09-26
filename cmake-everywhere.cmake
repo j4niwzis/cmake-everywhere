@@ -1716,6 +1716,30 @@ function(cme_system_header_members port package features)
     cme_feature_field(depends ${port} ${feature} DEPENDS)
     foreach(spec IN LISTS depends)
       cme_split_requirement("${spec}" member unused unused_features)
+      # A member asked for with a feature no installed copy has -- Boost.PFR
+      # as a module -- is built here, on its own, and whatever it needs of
+      # the rest is asked for the same way; the installed umbrella still
+      # answers for everything else. Modules are a choice per library, and
+      # most of Boost has no interface unit to build.
+      cme_enabled_features(${member} member_features)
+      set(member_here FALSE)
+      foreach(member_feature IN LISTS member_features)
+        cme_feature_field(built_here ${member} ${member_feature} BUILT_HERE)
+        if(built_here)
+          set(member_here TRUE)
+        endif()
+      endforeach()
+      if(member_here)
+        cme_port_field(member_names ${member} PROVIDES)
+        list(GET member_names 0 member_package)
+        message(STATUS
+          "cmake-everywhere: ${member} is asked for with "
+          "${member_features}, which the ${package} installed here does not "
+          "have, so ${member} alone is built here")
+        cme_find_package(${member_package} QUIET REQUIRED
+                         COMPONENTS ${member_features})
+        continue()
+      endif()
       cme_port_field(targets ${member} TARGETS)
       foreach(target IN LISTS targets)
         if(TARGET ${target})
@@ -2166,7 +2190,7 @@ endfunction()
 # Its OPTIONS still apply where the port is built: there the choice has to be
 # made, because there only one of them is being made.
 function(cme_port_feature port feature)
-  cmake_parse_arguments(FEATURE "AT_USE;BUILT_HERE" "SUMMARY"
+  cmake_parse_arguments(FEATURE "AT_USE;BUILT_HERE" "SUMMARY;SINCE"
     "GN_ARGS;GN_CONFIRM;GN_TARGETS;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;PATCHES;TARGETS;TREES;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
@@ -2202,7 +2226,7 @@ function(cme_port_feature port feature)
                 CONFLICTS
                 EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_CODE SYSTEM_COMPONENT
                 CONFIGURE_ARGS PATCHES TARGETS TREES
-                DEFAULT AT_USE BUILT_HERE)
+                DEFAULT AT_USE BUILT_HERE SINCE)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
   endforeach()
@@ -4754,33 +4778,42 @@ function(cme_system_has_features out package port features)
   # a check could find missing, so without this it is taken at its word and
   # the module is never built.
   #
-  # Asked of the port, or of a port one of its features is: Boost is one
-  # package to a machine, and pfr[modules] asks boost for pfr and boost-pfr
-  # for modules -- and it is boost that is found installed.
-  set(cme_whose "")
   foreach(feature IN LISTS features)
-    list(APPEND cme_whose "${port}:${feature}")
+    cme_feature_field(built_here ${port} ${feature} BUILT_HERE)
+    if(built_here)
+      message(STATUS
+        "cmake-everywhere: ${port}[${feature}] was asked for, and no "
+        "installed ${package} is taken for it, so it is built here")
+      set(${out} FALSE PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+
+  # A member of it asked for with such a feature is built on its own at the
+  # installed version, beside the rest (cme_system_header_members) -- when
+  # that version has the feature at all. Boost's interface units are there
+  # from 1.89 on: an older installed Boost has no pfr module to build at its
+  # version, and building one at a newer version beside it is two versions
+  # of one library in one build. Then all of it is built here.
+  foreach(feature IN LISTS features)
     cme_feature_field(cme_under ${port} ${feature} DEPENDS)
     foreach(cme_dep IN LISTS cme_under)
       string(REGEX REPLACE "\\[.*$" "" cme_dep "${cme_dep}")
       cme_enabled_features(${cme_dep} cme_dep_features)
       foreach(cme_dep_feature IN LISTS cme_dep_features)
-        list(APPEND cme_whose "${cme_dep}:${cme_dep_feature}")
+        cme_feature_field(cme_here ${cme_dep} ${cme_dep_feature} BUILT_HERE)
+        cme_feature_field(cme_since ${cme_dep} ${cme_dep_feature} SINCE)
+        if(cme_here AND cme_since AND "${${package}_VERSION}" VERSION_LESS "${cme_since}")
+          message(STATUS
+            "cmake-everywhere: ${cme_dep}[${cme_dep_feature}] was asked for, "
+            "which ${package} has from ${cme_since} on, and the one "
+            "installed here is ${${package}_VERSION}, so all of ${package} "
+            "is built here")
+          set(${out} FALSE PARENT_SCOPE)
+          return()
+        endif()
       endforeach()
     endforeach()
-  endforeach()
-  foreach(cme_pair IN LISTS cme_whose)
-    string(REPLACE ":" ";" cme_pair "${cme_pair}")
-    list(GET cme_pair 0 cme_of)
-    list(GET cme_pair 1 cme_feature)
-    cme_feature_field(built_here ${cme_of} ${cme_feature} BUILT_HERE)
-    if(built_here)
-      message(STATUS
-        "cmake-everywhere: ${cme_of}[${cme_feature}] was asked for, and no "
-        "installed ${package} is taken for it, so it is built here")
-      set(${out} FALSE PARENT_SCOPE)
-      return()
-    endif()
   endforeach()
 
   get_property(said GLOBAL PROPERTY CME_INSTALLED_SAID_${port})
@@ -6450,7 +6483,33 @@ is being built at" FORCE)
       "cmake-everywhere: CME_SYSTEM is ALWAYS and the system has no "
       "${package}")
   endif()
+  # A member asked for with a feature only a build here has -- Boost.PFR as
+  # a module -- beside a family the system answered: built here, and at the
+  # version the system has, so that it is still one version of the family
+  # in one build, with this piece compiled the way it was asked for.
+  set(cme_here_feature FALSE)
   if(family_answer STREQUAL "system")
+    cme_enabled_features(${port} cme_enabled)
+    foreach(cme_feature IN LISTS cme_enabled)
+      cme_feature_field(cme_built_here ${port} ${cme_feature} BUILT_HERE)
+      if(cme_built_here)
+        set(cme_here_feature TRUE)
+      endif()
+    endforeach()
+  endif()
+  if(cme_here_feature)
+    get_property(first GLOBAL PROPERTY CME_FAMILY_${family}_FIRST)
+    get_property(chosen GLOBAL PROPERTY CME_FAMILY_${family}_VERSION)
+    if(chosen)
+      set(CME_VERSION_${port} "${chosen}" CACHE STRING
+          "The version of ${port}: the version of the ${family} the system \
+has, which the rest of ${family} is taken from" FORCE)
+    endif()
+    message(STATUS
+      "cmake-everywhere: ${first} was taken from the system at ${chosen}; "
+      "${port} is asked for with ${features}, which no installed copy has, "
+      "so it is built here at ${chosen} too")
+  elseif(family_answer STREQUAL "system")
     get_property(first GLOBAL PROPERTY CME_FAMILY_${family}_FIRST)
     get_property(chosen GLOBAL PROPERTY CME_FAMILY_${family}_VERSION)
     message(FATAL_ERROR

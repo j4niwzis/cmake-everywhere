@@ -22,6 +22,7 @@ cme_declare_port(
 # than setting an option that only works when it is set before whoever
 # resolves the port first asks for it.
 cme_port_feature(boost-pfr modules BUILT_HERE
+  SINCE 1.89.0
   SUMMARY "built as a C++20 module, and imported rather than included"
   OPTIONS "BOOST_USE_MODULES ON")
 # Where the sources come from, which is the one thing about a Boost library

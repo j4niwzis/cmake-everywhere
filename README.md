@@ -193,12 +193,22 @@ nothing about it is missing that a check could look for -- so, asked for
 
 ```cmake
 cme_port_feature(boost-pfr modules BUILT_HERE
+  SINCE 1.89.0
   SUMMARY "built as a C++20 module, and imported rather than included"
   OPTIONS "BOOST_USE_MODULES ON")
 ```
 
 `BUILT_HERE` says so: when such a feature is asked for, no installed copy is
-looked at, and the port is built.
+taken for that port, and it is built. Only the port: Boost is one package to
+a machine, and the installed one still answers for every library nobody
+asked a module of -- most of Boost has no interface unit to build. The one
+that is built is built at the installed version, so that the build still has
+one version of Boost in it.
+
+`SINCE` is the release a feature first exists in. Boost's interface units
+arrived in 1.89, and an installed Boost older than that has no pfr module to
+build at its version; one built at a newer version beside it would be two
+versions of one library. So there all of Boost is built here instead.
 
 The revision is what tells two builds of a branch apart, since a version does
 not: a project that pins a commit does not ask the machine at all when what

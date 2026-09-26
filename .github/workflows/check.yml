@@ -174,7 +174,9 @@ jobs:
           fi
       # And the other way round: a feature only a build here has. A
       # distribution's Boost is headers and no module, and asked for
-      # pfr[modules] it must not be taken at its word.
+      # pfr[modules] it must not be taken at its word. From 1.89 on, pfr
+      # alone is built, at the installed version; the runner's Boost is
+      # older than Boost's interface units, so all of it is built here.
       - name: pfr as a module is built here, beside the installed Boost
         run: |
           export CPM_SOURCE_CACHE="$PWD/.cache/sources"
@@ -184,7 +186,7 @@ jobs:
             -DCME_PORT_PACKAGE=Boost \
             -DCME_PORT_TARGETS=Boost::pfr \
             "-DCME_PORT_COMPONENTS=pfr[modules]" 2>&1 | tee configure.log || true
-          grep -q "no installed Boost is taken for it, so it is built here" configure.log
+          grep -qE "so boost-pfr alone is built here|so all of Boost is built here" configure.log
 
   # A machine with no /usr, and a build with no network.
   #
