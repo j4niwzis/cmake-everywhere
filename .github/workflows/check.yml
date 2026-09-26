@@ -186,7 +186,7 @@ jobs:
             -DCME_PORT_PACKAGE=Boost \
             -DCME_PORT_TARGETS=Boost::pfr \
             "-DCME_PORT_COMPONENTS=pfr[modules]" 2>&1 | tee configure.log || true
-          grep -q "so all of Boost is built here" configure.log
+          grep -q "so all of boost is built here" configure.log
       # And a Boost new enough to have interface units, installed the way a
       # distribution installs one -- headers and CMake configs, no modules:
       # only pfr is built, and the rest is the installed Boost.
