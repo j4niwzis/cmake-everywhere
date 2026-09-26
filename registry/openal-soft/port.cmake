@@ -46,6 +46,13 @@ cme_declare_port(
     "ALSOFT_INSTALL OFF"
     "ALSOFT_BACKEND_OBOE OFF"
     "ALSOFT_BACKEND_OPENSL OFF"
+    # SDL is a backend too, and off unless asked for: OpenAL Soft looks for
+    # it whenever the option is on, and with an SDL3 port in the registry
+    # that look is a build of SDL -- which is a window library, and refuses
+    # to configure on a machine without X11 or Wayland headers. A sound
+    # library does not get to decide that a program builds SDL.
+    "ALSOFT_BACKEND_SDL2 OFF"
+    "ALSOFT_BACKEND_SDL3 OFF"
 )
 
 # Which way sound leaves the machine. Every one of these is a backend OpenAL
@@ -60,6 +67,11 @@ cme_port_feature(openal-soft oboe
 cme_port_feature(openal-soft opensl
   SUMMARY "the older Android backend, OpenSL ES"
   OPTIONS "ALSOFT_BACKEND_OPENSL ON")
+
+cme_port_feature(openal-soft sdl3
+  SUMMARY "SDL 3 as a backend, for a program that already has SDL"
+  DEPENDS sdl3
+  OPTIONS "ALSOFT_BACKEND_SDL3 ON")
 
 # On Android, one of the two above rather than none.
 #
