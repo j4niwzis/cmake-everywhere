@@ -464,7 +464,16 @@ function(cme_configure_build port source entry)
   if(cores EQUAL 0)
     set(cores 1)
   endif()
-  foreach(what "" "install")
+  # What installing it is: make's install, unless the port names the
+  # targets that install only what it produces. OpenSSL's install also
+  # writes its configuration directory, which is where it will look at run
+  # time -- /etc/ssl, the system's -- and a build may not write there; its
+  # install_sw is the libraries and headers alone.
+  cme_port_field(cme_install ${port} CONFIGURE_INSTALL)
+  if(NOT cme_install)
+    set(cme_install install)
+  endif()
+  foreach(what "" ${cme_install})
     execute_process(COMMAND "${CME_MAKE}" "-j${cores}" ${what}
                     WORKING_DIRECTORY "${build}"
                     RESULT_VARIABLE code

@@ -56,6 +56,10 @@ cme_declare_port(
   URL_HASH "SHA256=a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2"
   LICENSE Apache-2.0
   CONFIGURE Configure
+  # The libraries and headers, and not its configuration directory: that
+  # is /etc/ssl below, where it looks at run time, and a build does not
+  # write there.
+  CONFIGURE_INSTALL install_sw
   INSTALLED_TARGETS
     "lib/libcrypto.a=OpenSSL::Crypto"
     "lib/libssl.a=OpenSSL::SSL"

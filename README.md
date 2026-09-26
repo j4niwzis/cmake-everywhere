@@ -1245,6 +1245,11 @@ build -- there is no File API, no introspection, no JSON, and what gets
 compiled is decided by a `config.h` the script writes as it goes. What there
 is, is an install prefix.
 
+`CONFIGURE_INSTALL install_sw` names the make targets that install it, where
+`install` would also write somewhere a build may not: OpenSSL's install puts
+its configuration directory where it is told to look at run time, which for
+a library that should find the system's certificates is `/etc/ssl`.
+
 So the project is built the way it builds, into a directory of this build's
 choosing, with the compiler and flags this build uses, and what comes out is
 stated by the port: a path in the prefix and the target it becomes. A path
