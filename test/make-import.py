@@ -19,9 +19,10 @@ cc -I. -DHAVE_AV_CONFIG_H -O3 -std=c11 -c -o libavutil/log.o @BUILD@/libavutil/l
 c++ -I. -O2 -c -o libavcodec/dct.o @BUILD@/libavcodec/dct.cc
 ./version.sh @BUILD@ libavutil/ffversion.h
 cc -I. -DHAVE_AV_CONFIG_H -O3 -std=c11 -c -o libavutil/extra.o @BUILD@/libavutil/extra.c
+cc -I. -DHAVE_AV_CONFIG_H -O3 -std=c11 -c -o libavutil/made.o @BUILD@/libavutil/made.c
 ar rc libavutil/libavutil.a libavutil/mem.o libavutil/log.o
 ar rc libavcodec/libavcodec.a libavcodec/dct.o
-ar r libavutil/libavutil.a libavutil/extra.o
+ar r libavutil/libavutil.a libavutil/extra.o libavutil/made.o
 """
 
 # What make -p says of the same project: the default goal, a phony target,
@@ -72,6 +73,10 @@ def main():
         with open(rules, "w") as handle:
             handle.write(RULES)
         open(os.path.join(build, "version.sh"), "w").close()
+        # The sources that are there; made.c is not, and is made.
+        for there in ("libavutil/mem.c", "libavutil/log.c", "libavutil/extra.c", "libavcodec/dct.cc"):
+            os.makedirs(os.path.dirname(os.path.join(build, there)), exist_ok=True)
+            open(os.path.join(build, there), "w").close()
         result = subprocess.run([sys.executable, IMPORTER, dry, build, out, rules, "/usr/bin/make"],
                                 stderr=subprocess.PIPE)
         if result.returncode != 0:
@@ -90,7 +95,8 @@ def main():
               sorted(values["CMAKE_IMPORT_avutil_SOURCES"]),
               sorted([os.path.join(build, "libavutil", "mem.c"),
                       os.path.join(build, "libavutil", "log.c"),
-                      os.path.join(build, "libavutil", "extra.c")]))
+                      os.path.join(build, "libavutil", "extra.c"),
+                      os.path.join(build, "libavutil", "made.c")]))
         # A count is written as a number rather than a string, so it is
         # looked for as one.
         if "set(CMAKE_IMPORT_avutil_GROUPS 2)" not in open(out).read():
@@ -112,12 +118,15 @@ def main():
               values.get("CMAKE_IMPORT_COMMAND0_INPUTS"), [os.path.join(build, "version.sh")])
         check("by the project's make, for that file alone",
               values.get("CMAKE_IMPORT_COMMAND0_LINE"), ["/usr/bin/make --no-print-directory V=1 libavutil/ffversion.h"])
-        if "set(CMAKE_IMPORT_COMMANDS 1)" not in open(out).read():
-            problems.append("an archive or a phony target was taken for a file to make")
+        if "set(CMAKE_IMPORT_COMMANDS 2)" not in open(out).read():
+            problems.append("an archive or a phony target was taken for a file to make, "
+                            "or a source nothing names as a target was not made")
+        check("a source a compile reads that is not there is made by name",
+              values.get("CMAKE_IMPORT_COMMAND1_OUTPUTS"), [os.path.join(build, "libavutil", "made.c")])
 
     for problem in problems:
         print(problem)
-    print("{} checks, {} problems".format(10, len(problems)))
+    print("{} checks, {} problems".format(11, len(problems)))
     return 1 if problems else 0
 
 

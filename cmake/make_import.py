@@ -347,12 +347,26 @@ def main(argv):
         # The files made some other way, each by the project's make, run for
         # that file alone, from its build directory, after what it needs.
         generated = generated_files(rules, goal, build) if make else []
+        # And every source a compile reads that is not there yet, whatever
+        # the rules say or do not say: a file made by a pattern rule is not
+        # a target in make's database until something has asked for it,
+        # and asking make for it by name is how it is made.
+        if make:
+            for one in compiles.values():
+                source = one["source"]
+                if os.path.exists(source):
+                    continue
+                relative = os.path.relpath(source, build)
+                if relative.startswith(".."):
+                    continue
+                if relative not in generated:
+                    generated.append(relative)
         known = set(generated)
         handle.write("set(CMAKE_IMPORT_COMMANDS {})\n".format(len(generated)))
         for index, one in enumerate(generated):
             prefix = "CMAKE_IMPORT_COMMAND{}".format(index)
             inputs = []
-            for need in rules[one]["needs"]:
+            for need in rules.get(one, {"needs": []})["needs"]:
                 if need in known or os.path.exists(os.path.join(build, need)):
                     inputs.append(os.path.normpath(os.path.join(build, need)))
             emit(handle, prefix + "_OUTPUTS", [os.path.normpath(os.path.join(build, one))])
@@ -363,9 +377,10 @@ def main(argv):
         emit(handle, "CMAKE_IMPORT_GENERATED_BY_TOOLS", [])
 
     sys.stderr.write(
-        "make_import: {} targets, {} compiles, {} files made by make, "
+        "make_import: {} targets, {} compiles, {} files made by make ({}), "
         "{} commands not read\n".format(
-            len(targets), len(compiles), len(generated), len(other)))
+            len(targets), len(compiles), len(generated),
+            ", ".join(generated[:6]) + (", ..." if len(generated) > 6 else ""), len(other)))
     return 0
 
 

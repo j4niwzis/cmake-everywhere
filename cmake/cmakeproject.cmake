@@ -184,6 +184,20 @@ function(cme_cmake_import port description)
     endforeach()
   endwhile()
 
+  # What the commands make, said to be made before a target names it. CMake
+  # works out which named files are generated from the commands of the
+  # directory, and the commands are added after the targets (they may run
+  # one); a source that is not there yet is otherwise a file it cannot find.
+  if(CMAKE_IMPORT_COMMANDS GREATER 0)
+    math(EXPR last "${CMAKE_IMPORT_COMMANDS} - 1")
+    foreach(index RANGE ${last})
+      if(CMAKE_IMPORT_COMMAND${index}_OUTPUTS)
+        set_source_files_properties(${CMAKE_IMPORT_COMMAND${index}_OUTPUTS}
+                                    PROPERTIES GENERATED TRUE)
+      endif()
+    endforeach()
+  endif()
+
   set(made "")
   foreach(name IN LISTS CMAKE_IMPORT_TARGETS)
     string(REGEX REPLACE "[^A-Za-z0-9_]" "_" key "${name}")
