@@ -606,7 +606,7 @@ jobs:
           case "${{ matrix.port.port }}" in
             # A window library needs the headers of the windowing systems it
             # is a window library for.
-            glfw) sudo apt-get install -y xorg-dev libwayland-dev \
+            glfw|sdl3) sudo apt-get install -y xorg-dev libwayland-dev \
                     libxkbcommon-dev wayland-protocols ;;
             # A port that is imported from meson needs meson to read it,
             # and basu generates part of itself with gperf.
@@ -687,7 +687,7 @@ jobs:
           case "${{ matrix.port.port }}" in
             # A window library needs the headers of the windowing systems it
             # is a window library for.
-            glfw) sudo apt-get install -y xorg-dev libwayland-dev \
+            glfw|sdl3) sudo apt-get install -y xorg-dev libwayland-dev \
                     libxkbcommon-dev wayland-protocols ;;
             # A port that is imported from meson needs meson to read it,
             # and basu generates part of itself with gperf.
