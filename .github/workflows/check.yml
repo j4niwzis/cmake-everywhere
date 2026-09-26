@@ -186,7 +186,33 @@ jobs:
             -DCME_PORT_PACKAGE=Boost \
             -DCME_PORT_TARGETS=Boost::pfr \
             "-DCME_PORT_COMPONENTS=pfr[modules]" 2>&1 | tee configure.log || true
-          grep -qE "so boost-pfr alone is built here|so all of Boost is built here" configure.log
+          grep -q "so all of Boost is built here" configure.log
+      # And a Boost new enough to have interface units, installed the way a
+      # distribution installs one -- headers and CMake configs, no modules:
+      # only pfr is built, and the rest is the installed Boost.
+      - name: an installed Boost 1.92, and pfr alone built as a module
+        run: |
+          curl -sSL -o boost.tar.xz \
+            https://github.com/boostorg/boost/releases/download/boost-1.92.0/boost-1.92.0-cmake.tar.xz
+          mkdir boost-src && tar xJf boost.tar.xz -C boost-src
+          cmake -S boost-src/boost-1.92.0 -B boost-build -G Ninja \
+            -DCMAKE_INSTALL_PREFIX="$PWD/boost-sys" \
+            "-DBOOST_INCLUDE_LIBRARIES=pfr;container_hash"
+          cmake --install boost-build
+          export CPM_SOURCE_CACHE="$PWD/.cache/split"
+          cmake -S test/port -B build/split -G Ninja \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_LOCK= -DCME_STORE= \
+            -DCMAKE_PREFIX_PATH="$PWD/boost-sys" -DCMAKE_CXX_COMPILER=clang++ \
+            -DCME_PORT_PACKAGE=Boost \
+            "-DCME_PORT_TARGETS=Boost::pfr;Boost::container_hash" \
+            "-DCME_PORT_COMPONENTS=pfr[modules];container_hash" 2>&1 | tee split.log || true
+          echo "--- what came from where"
+          cat build/split/cme-report.txt
+          grep -q "^boost-pfr built 1.92.0 \[modules\]" build/split/cme-report.txt
+          grep -q "^boost_container_hash system 1.92.0" build/split/cme-report.txt
+          # Nothing of Boost fetched but pfr.
+          test "$(ls .cache/split)" = "boost-pfr"
 
   # A machine with no /usr, and a build with no network.
   #
