@@ -214,28 +214,28 @@ jobs:
           grep -qE "^boost_(container_hash|headers) system 1.92.0" build/split/cme-report.txt
           # Nothing of Boost fetched but pfr.
           test "$(ls .cache/split)" = "boost-pfr"
-      # mux's request: pfr[modules] beside libraries that do not ask for a
-      # module, one of which (beast) depends on a library that has one
-      # (type_index). The brackets are pfr's, not all of Boost's; and pfr
-      # built alone does not make the rest of Boost "built here" for whoever
-      # asks after it -- here another project finding boost_asio.
-      - name: mux's Boost, and another project asking after it
+      # pfr[modules] beside pieces that do not ask for a module, one of which
+      # (beast) depends on a piece that has one (type_index). The brackets are
+      # pfr's, not all of Boost's; and pfr built alone does not make the rest
+      # of Boost "built here" for whoever asks after it -- here another
+      # project finding boost_asio.
+      - name: pfr as a module among other pieces, and another project asking after it
         run: |
-          export CPM_SOURCE_CACHE="$PWD/.cache/mux"
-          cmake -S test/port -B build/mux -G Ninja \
+          export CPM_SOURCE_CACHE="$PWD/.cache/pieces"
+          cmake -S test/port -B build/pieces -G Ninja \
             -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
             -DCME_LOCK= -DCME_STORE= \
             -DCMAKE_PREFIX_PATH="$PWD/boost-sys" -DCMAKE_CXX_COMPILER=clang++ \
             -DCME_PORT_PACKAGE=Boost \
             "-DCME_PORT_TARGETS=Boost::asio;Boost::beast;Boost::pfr;Boost::context" \
             "-DCME_PORT_COMPONENTS=asio;beast;pfr[modules];context" \
-            "-DCME_PORT_THEN=boost_asio;boost_type_index" 2>&1 | tee mux.log || true
+            "-DCME_PORT_THEN=boost_asio;boost_type_index" 2>&1 | tee pieces.log || true
           echo "--- what came from where"
-          cat build/mux/cme-report.txt
-          if grep -q "cannot create ALIAS target" mux.log; then exit 1; fi
-          grep -q "^boost-pfr built 1.92.0 \[modules\]" build/mux/cme-report.txt
-          grep -q "^boost_asio system 1.92.0" build/mux/cme-report.txt
-          test "$(ls .cache/mux)" = "boost-pfr"
+          cat build/pieces/cme-report.txt
+          if grep -q "cannot create ALIAS target" pieces.log; then exit 1; fi
+          grep -q "^boost-pfr built 1.92.0 \[modules\]" build/pieces/cme-report.txt
+          grep -q "^boost_asio system 1.92.0" build/pieces/cme-report.txt
+          test "$(ls .cache/pieces)" = "boost-pfr"
 
   # A machine with no /usr, and a build with no network.
   #
