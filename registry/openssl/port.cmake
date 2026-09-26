@@ -1,11 +1,11 @@
-# A wrapper around OpenSSL's own build, and it says so first: OpenSSL is
-# configured by a perl script of its own (Configure), which writes the
-# Makefile and generates part of its sources -- the assembly for each
-# machine among them -- as it goes. There is nothing to read before it has
-# run, and what it would compile cannot be taken out of its make without
-# running its generators too. So it is configured, made and installed into a
-# prefix of this build's choosing, and the two archives are imported. Built
-# outside the graph, with this build's compiler and flags.
+# OpenSSL is configured by a perl script of its own (Configure), which
+# writes the Makefile -- and nothing can be read before it has run. So it is
+# run, and then its make is asked what it would do rather than told to do
+# it, the shape FFmpeg's port has: every source is compiled in the
+# consumer's graph, with the flags OpenSSL said to compile it with, and the
+# archives are this build's targets. What is neither -- the perl that writes
+# each machine's assembly and the headers made from templates -- becomes a
+# command in the same graph, run as make would have run it.
 #
 # The LTS release: supported until April 2030. OpenSSL 4 removes APIs that
 # many libraries still call; this is the version everything builds with.
@@ -56,14 +56,10 @@ cme_declare_port(
   URL_HASH "SHA256=a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2"
   LICENSE Apache-2.0
   CONFIGURE Configure
-  # The libraries and headers, and not its configuration directory: that
-  # is /etc/ssl below, where it looks at run time, and a build does not
-  # write there.
-  CONFIGURE_INSTALL install_sw
-  INSTALLED_TARGETS
-    "lib/libcrypto.a=OpenSSL::Crypto"
-    "lib/libssl.a=OpenSSL::SSL"
-  INSTALLED_INCLUDE include
+  IMPORT make
+  IMPORT_TARGETS
+    "crypto=OpenSSL::Crypto"
+    "ssl=OpenSSL::SSL"
   SYSTEM_PKGCONFIG
     "libcrypto:OpenSSL::Crypto"
     "libssl:OpenSSL::SSL"
@@ -96,16 +92,37 @@ cme_declare_port(
 )
 
 function(cme_adapt_openssl source binary)
+  # Where its headers are, for whoever links it: the checkout's, and the
+  # ones Configure made from templates beside the objects -- opensslv.h and
+  # configuration.h among them, which every other header includes.
+  set(built "${CMAKE_BINARY_DIR}/_cme/openssl-build")
+  foreach(cme_openssl_target OpenSSL::SSL OpenSSL::Crypto)
+    if(TARGET ${cme_openssl_target})
+      get_target_property(cme_openssl_real ${cme_openssl_target} ALIASED_TARGET)
+      if(NOT cme_openssl_real)
+        set(cme_openssl_real ${cme_openssl_target})
+      endif()
+      target_include_directories(${cme_openssl_real} INTERFACE
+        "$<BUILD_INTERFACE:${built}/include>" "$<BUILD_INTERFACE:${source}/include>")
+    endif()
+  endforeach()
   # What each archive calls that is not in it: libssl calls libcrypto, and
   # libcrypto calls the thread library and the dynamic loader (for its
   # providers and engines). A static archive says none of that itself.
   find_package(Threads REQUIRED)
   if(TARGET OpenSSL::SSL AND TARGET OpenSSL::Crypto)
-    set_property(TARGET OpenSSL::SSL APPEND PROPERTY INTERFACE_LINK_LIBRARIES OpenSSL::Crypto)
+    get_target_property(cme_openssl_ssl OpenSSL::SSL ALIASED_TARGET)
+    if(NOT cme_openssl_ssl)
+      set(cme_openssl_ssl OpenSSL::SSL)
+    endif()
+    target_link_libraries(${cme_openssl_ssl} INTERFACE OpenSSL::Crypto)
   endif()
   if(TARGET OpenSSL::Crypto)
-    set_property(TARGET OpenSSL::Crypto APPEND PROPERTY INTERFACE_LINK_LIBRARIES
-                 Threads::Threads ${CMAKE_DL_LIBS})
+    get_target_property(cme_openssl_crypto OpenSSL::Crypto ALIASED_TARGET)
+    if(NOT cme_openssl_crypto)
+      set(cme_openssl_crypto OpenSSL::Crypto)
+    endif()
+    target_link_libraries(${cme_openssl_crypto} INTERFACE Threads::Threads ${CMAKE_DL_LIBS})
   endif()
   # And what FindOpenSSL sets, for the projects that read variables.
   cme_export_variable(OpenSSL OPENSSL_FOUND TRUE)
@@ -116,7 +133,5 @@ function(cme_adapt_openssl source binary)
   cme_export_variable(OpenSSL OPENSSL_CRYPTO_LIBRARY OpenSSL::Crypto)
   cme_export_variable(OpenSSL OPENSSL_CRYPTO_LIBRARIES OpenSSL::Crypto)
   cme_export_variable(OpenSSL OPENSSL_LIBRARIES "OpenSSL::SSL;OpenSSL::Crypto")
-  if(CME_INSTALLED_openssl)
-    cme_export_variable(OpenSSL OPENSSL_INCLUDE_DIR "${CME_INSTALLED_openssl}/include")
-  endif()
+  cme_export_variable(OpenSSL OPENSSL_INCLUDE_DIR "${source}/include")
 endfunction()
