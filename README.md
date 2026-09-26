@@ -186,6 +186,20 @@ one thing or the other. Where the port is built rather than found, the
 feature's `OPTIONS` apply as any other's: there the choice is being made, and
 there only one of them can be.
 
+**And a feature only a build here has.** Boost as C++20 modules is compiled
+with this build's compiler and flags; a distribution's Boost is headers, and
+nothing about it is missing that a check could look for -- so, asked for
+`pfr[modules]`, it would be taken at its word and no module built.
+
+```cmake
+cme_port_feature(boost-pfr modules BUILT_HERE
+  SUMMARY "built as a C++20 module, and imported rather than included"
+  OPTIONS "BOOST_USE_MODULES ON")
+```
+
+`BUILT_HERE` says so: when such a feature is asked for, no installed copy is
+looked at, and the port is built.
+
 The revision is what tells two builds of a branch apart, since a version does
 not: a project that pins a commit does not ask the machine at all when what
 is installed says it is a different one, and does not take a copy that this

@@ -384,7 +384,7 @@ endfunction()
 # consumer asks for it -- find_package(boost_pfr COMPONENTS modules) -- rather
 # than setting an option that only works when it is set before whoever
 # resolves the port first asks for it.
-cme_port_feature({port(module)} modules
+cme_port_feature({port(module)} modules BUILT_HERE
   SUMMARY "built as a C++20 module, and imported rather than included"
   OPTIONS "BOOST_USE_MODULES ON")
 {adaptation}

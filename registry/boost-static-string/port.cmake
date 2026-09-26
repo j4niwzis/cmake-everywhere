@@ -22,7 +22,7 @@ cme_declare_port(
 # consumer asks for it -- find_package(boost_pfr COMPONENTS modules) -- rather
 # than setting an option that only works when it is set before whoever
 # resolves the port first asks for it.
-cme_port_feature(boost-static-string modules
+cme_port_feature(boost-static-string modules BUILT_HERE
   SUMMARY "built as a C++20 module, and imported rather than included"
   OPTIONS "BOOST_USE_MODULES ON")
 function(cme_adapt_boost-static-string source binary)

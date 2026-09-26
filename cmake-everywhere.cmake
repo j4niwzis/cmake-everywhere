@@ -2166,7 +2166,7 @@ endfunction()
 # Its OPTIONS still apply where the port is built: there the choice has to be
 # made, because there only one of them is being made.
 function(cme_port_feature port feature)
-  cmake_parse_arguments(FEATURE "AT_USE" "SUMMARY"
+  cmake_parse_arguments(FEATURE "AT_USE;BUILT_HERE" "SUMMARY"
     "GN_ARGS;GN_CONFIRM;GN_TARGETS;OPTIONS;DEPENDS;IMPLIES;CONFLICTS;EXCLUDES;SYSTEM_HEADERS;SYSTEM_SYMBOLS;SYSTEM_CODE;SYSTEM_COMPONENT;CONFIGURE_ARGS;PATCHES;TARGETS;TREES;DEFAULT"
     ${ARGN})
   set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_FEATURES "${feature}")
@@ -2202,7 +2202,7 @@ function(cme_port_feature port feature)
                 CONFLICTS
                 EXCLUDES SYSTEM_HEADERS SYSTEM_SYMBOLS SYSTEM_CODE SYSTEM_COMPONENT
                 CONFIGURE_ARGS PATCHES TARGETS TREES
-                DEFAULT AT_USE)
+                DEFAULT AT_USE BUILT_HERE)
     set_property(GLOBAL PROPERTY CME_FEATURE_${port}_${feature}_${field}
       "${FEATURE_${field}}")
   endforeach()
@@ -4747,6 +4747,41 @@ function(cme_system_has_features out package port features)
   # a feature happens to add to the interface, and a feature that changes
   # behaviour without adding a symbol is invisible to it.
   cme_requested_features(${port} asked)
+
+  # A feature no installed copy is taken for: Boost built as modules is a
+  # build of this project's own, with its compiler and its flags, and a
+  # distribution's Boost -- headers in /usr/include, no module -- has nothing
+  # a check could find missing, so without this it is taken at its word and
+  # the module is never built.
+  #
+  # Asked of the port, or of a port one of its features is: Boost is one
+  # package to a machine, and pfr[modules] asks boost for pfr and boost-pfr
+  # for modules -- and it is boost that is found installed.
+  set(cme_whose "")
+  foreach(feature IN LISTS features)
+    list(APPEND cme_whose "${port}:${feature}")
+    cme_feature_field(cme_under ${port} ${feature} DEPENDS)
+    foreach(cme_dep IN LISTS cme_under)
+      string(REGEX REPLACE "\\[.*$" "" cme_dep "${cme_dep}")
+      cme_enabled_features(${cme_dep} cme_dep_features)
+      foreach(cme_dep_feature IN LISTS cme_dep_features)
+        list(APPEND cme_whose "${cme_dep}:${cme_dep_feature}")
+      endforeach()
+    endforeach()
+  endforeach()
+  foreach(cme_pair IN LISTS cme_whose)
+    string(REPLACE ":" ";" cme_pair "${cme_pair}")
+    list(GET cme_pair 0 cme_of)
+    list(GET cme_pair 1 cme_feature)
+    cme_feature_field(built_here ${cme_of} ${cme_feature} BUILT_HERE)
+    if(built_here)
+      message(STATUS
+        "cmake-everywhere: ${cme_of}[${cme_feature}] was asked for, and no "
+        "installed ${package} is taken for it, so it is built here")
+      set(${out} FALSE PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
 
   get_property(said GLOBAL PROPERTY CME_INSTALLED_SAID_${port})
   if(said)
