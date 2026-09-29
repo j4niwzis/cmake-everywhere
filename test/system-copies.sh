@@ -156,4 +156,71 @@ else
   fail "a config that cannot be read twice is read once, and what it sets reaches every caller" "$work/once.log"
 fi
 
+# Four and five: a library built from source, with an older description of
+# it installed. The library declares itself in its own CMakeLists -- its
+# features with cme_port_feature, its port with GIT_TAG main -- the way skiff
+# does, and the description a copy of it left in the prefix declares no
+# features and another commit. The project pins a commit and asks for a
+# component. The registry is read before the project declares the port, as it
+# is in any project that asked for something else first, so the installed
+# description is the first to name it.
+#
+# Four: the component reaches the library. The installed port file made the
+# port look described by somebody else, and an asked name it did not declare
+# was read as another library's component and dropped: built [].
+#
+# Five: the pin stays the project's. The library's own GIT_TAG main was heard
+# as the project and replaced it, and with no commit left to compare, an
+# installed copy of another revision could be taken beside the one built.
+lib="$work/selfish-src"
+mkdir -p "$lib" "$p/share/cmake-everywhere/ports/selfish" "$work/selfish"
+cat > "$lib/CMakeLists.txt" <<'EOF'
+cmake_minimum_required(VERSION 3.28)
+project(selfish NONE)
+if(COMMAND cme_port_feature)
+  cme_port_feature(selfish shiny SUMMARY "asked for as a component")
+endif()
+set_property(GLOBAL PROPERTY SELFISH_BUILT_WITH "${CME_FEATURES_selfish}")
+add_library(selfish INTERFACE)
+add_library(selfish::selfish ALIAS selfish)
+if(COMMAND cme_declare_port)
+  cme_declare_port(NAME selfish PROVIDES selfish VERSION 1.0 LICENSE MIT
+    GITHUB_REPOSITORY nobody/selfish GIT_TAG main TARGETS selfish::selfish)
+endif()
+EOF
+(cd "$lib" && git init -q && git add . &&
+ git -c user.name=test -c user.email=test@test commit -qm selfish)
+rev=$(cd "$lib" && git rev-parse HEAD)
+cat > "$p/share/cmake-everywhere/ports/selfish/port.cmake" <<EOF
+cme_declare_port(NAME selfish PROVIDES selfish VERSION 0.9 LICENSE MIT
+  GIT_REPOSITORY "$lib" GIT_TAG 1111111111111111111111111111111111111111
+  TARGETS selfish::selfish)
+EOF
+cat > "$work/selfish/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.28)
+project(selfish_user NONE)
+cme_load_registry()
+cme_declare_port(NAME selfish PROVIDES selfish
+  GIT_REPOSITORY "$lib" GIT_TAG $rev SYSTEM NEVER)
+find_package(selfish COMPONENTS shiny REQUIRED)
+get_property(built_with GLOBAL PROPERTY SELFISH_BUILT_WITH)
+get_property(pin GLOBAL PROPERTY CME_PORT_selfish_GIT_TAG)
+file(WRITE "\${CMAKE_BINARY_DIR}/selfish.txt" "with=\${built_with}\npin=\${pin}\n")
+EOF
+if configure selfish; then
+  said="$work/selfish/build/selfish.txt"
+  if grep -q '^with=.*shiny' "$said"; then
+    ok "a component asked of a library reaches it past an installed description that lacks it"
+  else
+    fail "a component asked of a library reaches it past an installed description that lacks it" "$said"
+  fi
+  if grep -qx "pin=$rev" "$said"; then
+    ok "a library declaring itself GIT_TAG main does not replace the project's pin"
+  else
+    fail "a library declaring itself GIT_TAG main does not replace the project's pin" "$said"
+  fi
+else
+  fail "a library with an older description installed configures" "$work/selfish.log"
+fi
+
 exit $failed
