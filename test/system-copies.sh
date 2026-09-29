@@ -169,6 +169,10 @@ fi
 # port look described by somebody else, and an asked name it did not declare
 # was read as another library's component and dropped: built [].
 #
+# And the description says the old copy needed a library nothing here has
+# a port for: that is the copy's need and not the tree's, and the tree built
+# instead is configured without it being looked for.
+#
 # Five: the pin stays the project's. The library's own GIT_TAG main was heard
 # as the project and replaced it, and with no commit left to compare, an
 # installed copy of another revision could be taken beside the one built.
@@ -194,7 +198,9 @@ rev=$(cd "$lib" && git rev-parse HEAD)
 cat > "$p/share/cmake-everywhere/ports/selfish/port.cmake" <<EOF
 cme_declare_port(NAME selfish PROVIDES selfish VERSION 0.9 LICENSE MIT
   GIT_REPOSITORY "$lib" GIT_TAG 1111111111111111111111111111111111111111
+  DEPENDS "a-library-the-old-copy-needed"
   TARGETS selfish::selfish)
+cme_installed_with(selfish VERSION "0.9")
 EOF
 cat > "$work/selfish/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.28)

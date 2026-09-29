@@ -2150,6 +2150,12 @@ function(cme_declare_port)
     endif()
     set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_${field}
       "${PORT_${field}}")
+    # And who said it, where anything was said: a field filled in from a
+    # description installed beside a copy speaks for that copy.
+    if(NOT "${PORT_${field}}" STREQUAL "")
+      set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_${field}_FROM
+                   "${origin}")
+    endif()
     # A version out of a description that was installed beside a library is
     # the version of that copy. It is remembered as such, because it must
     # never be the reason something is not built.
@@ -4446,7 +4452,7 @@ function(cme_require port version features reason)
   cme_check_open_rules(${port})
   cme_register_exclusions(${port} "${enabled}")
 
-  cme_port_field(depends ${port} DEPENDS)
+  cme_port_depends(depends ${port})
   cme_absent_dependencies(${port} absent)
   list(APPEND depends ${absent})
   set(reasons "")
@@ -5415,9 +5421,53 @@ endfunction()
 # Everything a port says it needs, asked for. Asked again once a library has
 # described itself, because that is when a library nobody had ported says
 # what it needs.
+# Whether the copy installed here is refused for being another revision than
+# the one this build pins -- the same test cme_system_allowed makes.
+function(cme_installed_copy_refused out port)
+  set(${out} FALSE PARENT_SCOPE)
+  cme_port_field(pinned ${port} GIT_TAG)
+  get_property(installed_revision GLOBAL PROPERTY CME_INSTALLED_REVISION_${port})
+  get_property(installed_said GLOBAL PROPERTY CME_INSTALLED_SAID_${port})
+  string(LENGTH "${pinned}" pinned_length)
+  if(pinned_length EQUAL 40 AND pinned MATCHES "^[0-9a-f]+$" AND
+     installed_said AND NOT installed_revision STREQUAL pinned)
+    set(${out} TRUE PARENT_SCOPE)
+  endif()
+endfunction()
+
+# What a port depends on, as far as this build is concerned.
+#
+# What an installed description says the library needs is what that copy
+# needed. Where the copy is refused for being another revision, the tree
+# built instead is not that copy, and it asks for what it needs itself when
+# it is read. Taken at its word, an old skiff's "skia[png,jpeg,freetype]" had
+# the machine's Skia taken for those alone, before the skiff being built
+# asked for gif -- and the copy already taken was the answer to that too; a
+# need the old copy had and the new one has not stopped the build outright.
+function(cme_port_depends out port)
+  cme_port_field(depends ${port} DEPENDS)
+  get_property(depends_from GLOBAL PROPERTY CME_PORT_${port}_DEPENDS_FROM)
+  if(depends AND depends_from MATCHES "^the system")
+    cme_installed_copy_refused(refused ${port})
+    if(refused)
+      get_property(said GLOBAL PROPERTY CME_DEPENDS_SET_ASIDE_${port})
+      if(NOT said)
+        list(JOIN depends ", " listed)
+        message(STATUS
+          "cmake-everywhere: ${port} depends on ${listed} as the copy "
+          "installed here said, and that copy is not the one built; the tree "
+          "built asks for its own")
+        set_property(GLOBAL PROPERTY CME_DEPENDS_SET_ASIDE_${port} TRUE)
+      endif()
+      set(depends "")
+    endif()
+  endif()
+  set(${out} "${depends}" PARENT_SCOPE)
+endfunction()
+
 function(cme_resolve_depends port)
   cme_enabled_features(${port} features)
-  cme_port_field(depends ${port} DEPENDS)
+  cme_port_depends(depends ${port})
   foreach(feature IN LISTS features)
     cme_feature_field(extra ${port} ${feature} DEPENDS)
     list(APPEND depends ${extra})
