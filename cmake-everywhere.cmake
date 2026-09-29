@@ -1676,6 +1676,13 @@ endfunction()
 # and that is a better list than one kept by hand.
 function(cme_port_needs port)
   get_property(existing GLOBAL PROPERTY CME_PORT_${port}_DEPENDS)
+  # Said by a description installed beside a copy: what that copy asked for
+  # while it was built -- remembered as the copy's, so that a copy refused
+  # does not choose what the tree built instead depends on.
+  get_property(cme_needs_origin GLOBAL PROPERTY CME_PORT_ORIGIN)
+  if(cme_needs_origin MATCHES "^the system")
+    set_property(GLOBAL APPEND PROPERTY CME_PORT_${port}_DEPENDS_SYSTEM ${ARGN})
+  endif()
   foreach(spec IN LISTS ARGN)
     if(NOT spec IN_LIST existing)
       list(APPEND existing "${spec}")
@@ -2155,6 +2162,10 @@ function(cme_declare_port)
     if(NOT "${PORT_${field}}" STREQUAL "")
       set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_${field}_FROM
                    "${origin}")
+      if(field STREQUAL "DEPENDS" AND origin MATCHES "^the system")
+        set_property(GLOBAL APPEND PROPERTY CME_PORT_${PORT_NAME}_DEPENDS_SYSTEM
+                     ${PORT_DEPENDS})
+      endif()
     endif()
     # A version out of a description that was installed beside a library is
     # the version of that copy. It is remembered as such, because it must
@@ -5446,20 +5457,30 @@ endfunction()
 # need the old copy had and the new one has not stopped the build outright.
 function(cme_port_depends out port)
   cme_port_field(depends ${port} DEPENDS)
-  get_property(depends_from GLOBAL PROPERTY CME_PORT_${port}_DEPENDS_FROM)
-  if(depends AND depends_from MATCHES "^the system")
+  # Whichever way the system said it: as the description's DEPENDS, or as
+  # cme_port_needs, which is how an installed library writes down what it
+  # asked for while it was built.
+  get_property(from_system GLOBAL PROPERTY CME_PORT_${port}_DEPENDS_SYSTEM)
+  set(set_aside "")
+  foreach(spec IN LISTS from_system)
+    if(spec IN_LIST depends)
+      list(APPEND set_aside "${spec}")
+    endif()
+  endforeach()
+  if(set_aside)
     cme_installed_copy_refused(refused ${port})
     if(refused)
+      list(REMOVE_ITEM depends ${set_aside})
       get_property(said GLOBAL PROPERTY CME_DEPENDS_SET_ASIDE_${port})
       if(NOT said)
-        list(JOIN depends ", " listed)
+        list(REMOVE_DUPLICATES set_aside)
+        list(JOIN set_aside ", " listed)
         message(STATUS
           "cmake-everywhere: ${port} depends on ${listed} as the copy "
           "installed here said, and that copy is not the one built; the tree "
           "built asks for its own")
         set_property(GLOBAL PROPERTY CME_DEPENDS_SET_ASIDE_${port} TRUE)
       endif()
-      set(depends "")
     endif()
   endif()
   set(${out} "${depends}" PARENT_SCOPE)
