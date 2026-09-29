@@ -116,4 +116,44 @@ else
   fail "a find module asking for its own package again does not loop" "$work/loop.log"
 fi
 
+# Three: a config not written to be read twice -- it makes its targets with
+# no guard, as HarfBuzz's does -- is read once. The provider looks at the
+# copy before it answers with it; answering by reading it again was an
+# error about targets that exist. And what the config sets reaches every
+# caller: the first, and one in a directory of its own.
+mkdir -p "$p/lib/cmake/unguarded" "$p/share/cmake-everywhere/ports/unguarded" \
+         "$work/once/sub"
+cat > "$p/lib/cmake/unguarded/unguardedConfig.cmake" <<'EOF'
+add_library(unguarded::unguarded INTERFACE IMPORTED)
+set(unguarded_WORDS "read;once")
+EOF
+printf 'set(PACKAGE_VERSION "2.0")\nset(PACKAGE_VERSION_COMPATIBLE TRUE)\n' \
+  > "$p/lib/cmake/unguarded/unguardedConfigVersion.cmake"
+cat > "$p/share/cmake-everywhere/ports/unguarded/port.cmake" <<'EOF'
+cme_declare_port(NAME unguarded PROVIDES unguarded VERSION 2.0 LICENSE MIT
+  GITHUB_REPOSITORY nobody/unguarded GIT_TAG main TARGETS unguarded::unguarded)
+cme_installed_with(unguarded VERSION "2.0")
+EOF
+cat > "$work/once/CMakeLists.txt" <<'EOF'
+cmake_minimum_required(VERSION 3.28)
+project(once NONE)
+find_package(unguarded REQUIRED)
+if(NOT unguarded_WORDS STREQUAL "read;once" OR NOT TARGET unguarded::unguarded)
+  message(FATAL_ERROR "the first caller has [${unguarded_WORDS}]")
+endif()
+find_package(unguarded REQUIRED)
+add_subdirectory(sub)
+EOF
+cat > "$work/once/sub/CMakeLists.txt" <<'EOF'
+find_package(unguarded REQUIRED)
+if(NOT unguarded_WORDS STREQUAL "read;once" OR NOT unguarded_FOUND)
+  message(FATAL_ERROR "a caller in a directory of its own has [${unguarded_WORDS}]")
+endif()
+EOF
+if configure once; then
+  ok "a config that cannot be read twice is read once, and what it sets reaches every caller"
+else
+  fail "a config that cannot be read twice is read once, and what it sets reaches every caller" "$work/once.log"
+fi
+
 exit $failed

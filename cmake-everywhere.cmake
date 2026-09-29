@@ -6490,6 +6490,13 @@ is being built at" FORCE)
         endif()
       endforeach()
     endif()
+    # What the machine's copy makes when it is read -- its targets, and the
+    # variables it sets -- looked at on either side of reading it: a config
+    # file that is not written to be read twice (HarfBuzz's makes its
+    # targets again each time, with no guard) is not read a second time to
+    # answer the caller. What it set is handed over instead.
+    get_property(cme_targets_before DIRECTORY PROPERTY IMPORTED_TARGETS)
+    get_cmake_property(cme_variables_before VARIABLES)
     set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM TRUE)
     set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "${as}" "${package}")
     if(asking)
@@ -6500,6 +6507,14 @@ is being built at" FORCE)
     endif()
     set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM FALSE)
     set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "")
+    get_property(cme_targets_made DIRECTORY PROPERTY IMPORTED_TARGETS)
+    if(cme_targets_before)
+      list(REMOVE_ITEM cme_targets_made ${cme_targets_before})
+    endif()
+    get_cmake_property(cme_variables_set VARIABLES)
+    if(cme_variables_before)
+      list(REMOVE_ITEM cme_variables_set ${cme_variables_before})
+    endif()
     if(NOT ${as} STREQUAL "${package}" AND ${as}_FOUND)
       set(${package}_FOUND TRUE)
       set(${package}_VERSION "${${as}_VERSION}")
@@ -6510,6 +6525,22 @@ is being built at" FORCE)
       if(usable)
         set_property(GLOBAL PROPERTY CME_PROVIDED_VERSION_${package}
                      "${${package}_VERSION}")
+        # Kept for the answer (cme_provider): the targets reading it made,
+        # and what it set, to hand to the caller without reading it again.
+        # Only a config read in this call counts -- a Find module's
+        # variables are the caller's to have from its own call.
+        if(cme_targets_made AND ${as}_CONFIG)
+          set_property(GLOBAL PROPERTY CME_SYSTEM_TARGETS_${package} "${cme_targets_made}")
+          set(cme_handed "")
+          foreach(cme_variable IN LISTS cme_variables_set)
+            if(cme_variable MATCHES "^cme_|^CME_|^ARG")
+              continue()
+            endif()
+            string(REPLACE ";" "@CME@" cme_encoded "${${cme_variable}}")
+            list(APPEND cme_handed "${cme_variable}" "${cme_encoded}")
+          endforeach()
+          set_property(GLOBAL PROPERTY CME_SYSTEM_SET_${package} "${cme_handed}")
+        endif()
         cme_alias_system_targets("${port}")
         if(virtual)
           cme_system_header_members("${port}" "${package}" "${needed}")
@@ -6947,11 +6978,36 @@ macro(cme_provider cme_method cme_package)
         # provider answers "system", asks the module, the module asks the
         # provider, for as long as the stack lasts. The way out is the flag
         # the search below this already sets, which this one did not.
-        set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM TRUE)
-        set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "${cme_package}")
-        find_package(${cme_package} ${cme_wanted} QUIET GLOBAL BYPASS_PROVIDER)
-        set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM FALSE)
-        set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "")
+        # Unless its config was read in this build already and what it made
+        # is there: then what it set is handed over, and it is not read
+        # again. A config that makes its targets each time it is read, with
+        # no guard -- HarfBuzz's -- fails on a second read, about targets
+        # that exist.
+        get_property(cme_system_made GLOBAL PROPERTY CME_SYSTEM_TARGETS_${cme_package})
+        set(cme_read_already FALSE)
+        if(cme_system_made)
+          set(cme_read_already TRUE)
+          foreach(cme_one IN LISTS cme_system_made)
+            if(NOT TARGET ${cme_one})
+              set(cme_read_already FALSE)
+            endif()
+          endforeach()
+        endif()
+        if(cme_read_already)
+          get_property(cme_handed GLOBAL PROPERTY CME_SYSTEM_SET_${cme_package})
+          while(cme_handed)
+            list(POP_FRONT cme_handed cme_name cme_value)
+            string(REPLACE "@CME@" ";" cme_value "${cme_value}")
+            set(${cme_name} "${cme_value}")
+          endwhile()
+          set(${cme_package}_FOUND TRUE)
+        else()
+          set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM TRUE)
+          set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "${cme_package}")
+          find_package(${cme_package} ${cme_wanted} QUIET GLOBAL BYPASS_PROVIDER)
+          set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM FALSE)
+          set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "")
+        endif()
         # And when that finds nothing, because the copy on this machine was
         # not recognised by a find_package in the first place.
         #
