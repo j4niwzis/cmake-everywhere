@@ -6012,11 +6012,34 @@ function(cme_build_port port package version exact)
       set(built "${CMAKE_BINARY_DIR}/_cme/${port}")
     endif()
     cme_note_name_clash(${port} "${package}")
+    # Who is speaking while the tree is read.
+    #
+    # A library that declares itself in its own CMakeLists -- skiff says
+    # cme_declare_port(NAME skiff ... GIT_TAG main) -- was heard as "the
+    # project", because nothing was said about who was speaking. And the
+    # project is the one voice that overrules the revision an installed
+    # description gives: so skiff's "main" replaced the commit mux had
+    # pinned, the check that refuses an installed copy of another revision
+    # had no commit to compare, and the skiff installed on the machine was
+    # taken for skiff-widgets beside the skiff just built from source.
+    #
+    # What a library says about itself, and about the ports it declares, is
+    # the library's: it fills in what the project did not say and overrules
+    # none of what it did.
+    get_property(cme_outer_origin GLOBAL PROPERTY CME_PORT_ORIGIN)
+    get_property(cme_outer_directory GLOBAL PROPERTY CME_PORT_DIRECTORY)
+    get_property(cme_outer_file GLOBAL PROPERTY CME_PORT_FILE)
+    set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "the ${port} library itself")
+    set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "")
+    set_property(GLOBAL PROPERTY CME_PORT_FILE "")
     if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.25)
       add_subdirectory("${tree}" "${built}" EXCLUDE_FROM_ALL SYSTEM)
     else()
       add_subdirectory("${tree}" "${built}" EXCLUDE_FROM_ALL)
     endif()
+    set_property(GLOBAL PROPERTY CME_PORT_ORIGIN "${cme_outer_origin}")
+    set_property(GLOBAL PROPERTY CME_PORT_DIRECTORY "${cme_outer_directory}")
+    set_property(GLOBAL PROPERTY CME_PORT_FILE "${cme_outer_file}")
   endif()
 
   # The port says what the result has to look like. Everything upstream calls
