@@ -658,6 +658,20 @@ function(cme_gn_import port description)
           target_compile_options(${target} PRIVATE
             "$<$<COMPILE_LANGUAGE:CXX>:SHELL:${flag}>")
         endforeach()
+        # The build's own flags last, after GN's. CMAKE_<LANG>_FLAGS come
+        # first on a compile line and GN's were added after them, so where
+        # the two disagreed -- an optimisation level, debug information, a
+        # target the code is for -- GN's won, and a change to CMAKE_CXX_FLAGS
+        # changed nothing in these objects: the build reconfigured and
+        # compiled the same library. Said again here, they win, as they do
+        # for everything else this build compiles.
+        foreach(language IN ITEMS C CXX)
+          cme_gn_build_flags(text ${language})
+          if(text)
+            target_compile_options(${target} PRIVATE
+              "$<$<COMPILE_LANGUAGE:${language}>:SHELL:${text}>")
+          endif()
+        endforeach()
       endif()
       if(${prefix}_LDFLAGS AND NOT kind STREQUAL "OBJECT_LIBRARY")
         # On a static library these belong to whoever links it, not to a
@@ -794,6 +808,18 @@ function(cme_gn_target_name out label)
     set(name "root")
   endif()
   set(${out} "${name}" PARENT_SCOPE)
+endfunction()
+
+# The flags this build compiles a language with: the ones that apply always
+# and the ones its build type adds, as one line.
+function(cme_gn_build_flags out language)
+  set(text "${CMAKE_${language}_FLAGS}")
+  if(CMAKE_BUILD_TYPE)
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" config)
+    string(APPEND text " ${CMAKE_${language}_FLAGS_${config}}")
+  endif()
+  string(STRIP "${text}" text)
+  set(${out} "${text}" PARENT_SCOPE)
 endfunction()
 
 function(cme_gn_build port source)
