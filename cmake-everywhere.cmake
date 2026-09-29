@@ -4790,6 +4790,24 @@ function(cme_system_rules_or_build out package port present absent)
   set(${out} TRUE PARENT_SCOPE)
 endfunction()
 
+# What a probe is compiled with besides the build's own flags: no
+# optimisation.
+#
+# A probe asks whether a copy has an entry point by taking its address --
+# "return fn == nullptr;" -- and linking. An optimiser knows a function's
+# address is never null, folds the comparison to false and drops the
+# reference, and the program links whether or not the copy has the symbol:
+# at -O2 every such probe said yes. A Skia with no GIF decoder was taken as
+# having one, SK_CODEC_DECODES_GIF was defined, and the consumer's own link
+# failed on SkGifDecoder. Last on the line, so it wins over the build's -O.
+function(cme_probe_flags out)
+  if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    set(${out} "/Od" PARENT_SCOPE)
+  else()
+    set(${out} "-O0" PARENT_SCOPE)
+  endif()
+endfunction()
+
 function(cme_system_has_features out package port features)
   set(${out} TRUE PARENT_SCOPE)
   # If the copy says what it was built with, that is the answer. Looking for
@@ -4966,6 +4984,8 @@ function(cme_system_has_features out package port features)
   set(CMAKE_REQUIRED_INCLUDES "${includes}")
   set(CMAKE_REQUIRED_LIBRARIES "${libraries}")
   set(CMAKE_REQUIRED_QUIET TRUE)
+  cme_probe_flags(cme_unoptimised)
+  string(APPEND CMAKE_REQUIRED_FLAGS " ${cme_unoptimised}")
   # Whether this copy can be linked against at all, before asking what it was
   # built with.
   #
@@ -4988,6 +5008,7 @@ function(cme_system_has_features out package port features)
     try_compile(cme_usable
       SOURCE_FROM_VAR "cme_${port}_usable.cc" whole
       LINK_LIBRARIES ${libraries}
+      COMPILE_DEFINITIONS ${cme_unoptimised}
       CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${includes}"
       OUTPUT_VARIABLE cme_usable_output)
     if(NOT cme_usable)
@@ -5081,7 +5102,7 @@ function(cme_system_has_features out package port features)
     cme_feature_field(code ${port} ${feature} SYSTEM_CODE)
     if(code)
       include(CheckCXXSourceCompiles)
-      string(MAKE_C_IDENTIFIER "cme_${package}_${feature}_links" variable)
+      string(MAKE_C_IDENTIFIER "cme_${package}_${feature}_linked" variable)
       check_cxx_source_compiles("${code}" ${variable})
       if(NOT ${variable})
         message(STATUS

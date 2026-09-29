@@ -245,6 +245,17 @@ namespace SkPngDecoder {
 std::unique_ptr<SkCodec> Decode(sk_sp<const SkData>, SkCodec::Result*, SkCodecs::DecodeContext);
 }
 EOF
+# And a GIF decoder declared and not built: a header is there whether or not
+# the feature was, and only a link can tell. At -O2 a probe taking the
+# address to compare with nullptr had the comparison folded away and linked
+# regardless, so the build here is optimised on purpose.
+cat > "$fs/include/skia/codec/SkGifDecoder.h" <<'EOF'
+#pragma once
+#include <skia/codec/SkPngDecoder.h>
+namespace SkGifDecoder {
+std::unique_ptr<SkCodec> Decode(sk_sp<const SkData>, SkCodec::Result*, SkCodecs::DecodeContext);
+}
+EOF
 cat > "$fs/png.cc" <<'EOF'
 #include <skia/codec/SkPngDecoder.h>
 std::unique_ptr<SkCodec> SkPngDecoder::Decode(sk_sp<const SkData>, SkCodec::Result*, SkCodecs::DecodeContext) { return nullptr; }
@@ -269,7 +280,7 @@ add_library(fakeskia STATIC "$fs/png.cc")
 target_include_directories(fakeskia PRIVATE "$fs/include")
 set_target_properties(fakeskia PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "$fs/build")
 EOF
-if configure defines; then
+if CXXFLAGS=-O2 configure defines; then
   said="$work/defines/build/defines.txt"
   if [ "$(cat "$said")" = "SK_CODEC_DECODES_PNG;SK_CODEC_ENCODES_PNG" ]; then
     ok "an installed Skia is used with the defines of what it was built with"
