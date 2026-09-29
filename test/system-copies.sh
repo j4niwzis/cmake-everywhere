@@ -223,4 +223,61 @@ else
   fail "a library with an older description installed configures" "$work/selfish.log"
 fi
 
+# Six: the defines an installed Skia is used with are the copy's own. Skia's
+# headers are cut by SK_GANESH and SK_CODEC_DECODES_*, and nothing installed
+# records which were on, so they were worked out from what was asked -- by
+# whichever ask came first. skiff's description asked for png and jpeg
+# before skiff asked for gl, and a machine's Skia with both was used with no
+# defines at all: no pictures decoded, and GL compiled out. A Skia with only
+# a PNG decoder, asked for gl, png and gif, is used with the PNG defines and
+# nothing else.
+fs="$work/fakeskia"
+mkdir -p "$fs/include/skia/codec" "$fs/include/skia/core" "$work/defines"
+: > "$fs/include/skia/core/SkCanvas.h"
+cat > "$fs/include/skia/codec/SkPngDecoder.h" <<'EOF'
+#pragma once
+#include <memory>
+template <class T> struct sk_sp { T* p = nullptr; };
+struct SkData {};
+struct SkCodec { enum Result { kSuccess }; };
+namespace SkCodecs { using DecodeContext = void*; }
+namespace SkPngDecoder {
+std::unique_ptr<SkCodec> Decode(sk_sp<const SkData>, SkCodec::Result*, SkCodecs::DecodeContext);
+}
+EOF
+cat > "$fs/png.cc" <<'EOF'
+#include <skia/codec/SkPngDecoder.h>
+std::unique_ptr<SkCodec> SkPngDecoder::Decode(sk_sp<const SkData>, SkCodec::Result*, SkCodecs::DecodeContext) { return nullptr; }
+EOF
+cat > "$work/defines/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.28)
+project(defines LANGUAGES CXX)
+try_compile(built PROJECT fakeskia SOURCE_DIR "$fs/lib" BINARY_DIR "$fs/build")
+add_library(fakeskia STATIC IMPORTED)
+set_target_properties(fakeskia PROPERTIES IMPORTED_LOCATION "$fs/build/libfakeskia.a")
+cme_load_registry()
+cme_features(skia gl png gif)
+cme_adapt_skia_system("$fs/include/skia;$fs/include" fakeskia)
+get_target_property(defines fakeskia INTERFACE_COMPILE_DEFINITIONS)
+file(WRITE "\${CMAKE_BINARY_DIR}/defines.txt" "\${defines}")
+EOF
+mkdir -p "$fs/lib"
+cat > "$fs/lib/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.28)
+project(fakeskia LANGUAGES CXX)
+add_library(fakeskia STATIC "$fs/png.cc")
+target_include_directories(fakeskia PRIVATE "$fs/include")
+set_target_properties(fakeskia PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "$fs/build")
+EOF
+if configure defines; then
+  said="$work/defines/build/defines.txt"
+  if [ "$(cat "$said")" = "SK_CODEC_DECODES_PNG;SK_CODEC_ENCODES_PNG" ]; then
+    ok "an installed Skia is used with the defines of what it was built with"
+  else
+    fail "an installed Skia is used with the defines of what it was built with" "$said"
+  fi
+else
+  fail "an installed Skia's defines are asked of the copy" "$work/defines.log"
+fi
+
 exit $failed

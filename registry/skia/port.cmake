@@ -621,6 +621,12 @@ cme_port_feature(skia unicode
 # instead, from the features it asked for, which is the same list either way.
 function(cme_skia_defines out)
   cme_enabled_features(skia features)
+  cme_skia_defines_of(defines "${features}")
+  set(${out} "${defines}" PARENT_SCOPE)
+endfunction()
+
+# The same, for a given list of features.
+function(cme_skia_defines_of out features)
   set(defines "")
   if("gl" IN_LIST features)
     list(APPEND defines SK_GANESH SK_GL)
@@ -739,9 +745,60 @@ function(cme_arrange_skia_system out includes)
   set(${out} "${arranged}" PARENT_SCOPE)
 endfunction()
 
+# Which of the features that cut Skia's headers an installed copy was built
+# with, asked of the copy itself.
+#
+# The defines say how the library was compiled, so they are the copy's to
+# answer and not the asker's. Worked out from what was asked, they were
+# whatever the first ask happened to name: skiff's description says
+# DEPENDS "skia[png,jpeg,freetype]", that ask came first and named no
+# backend, the machine's Skia was taken with no defines at all -- "the
+# installed Skia is used with" and nothing after it -- and skiff's own ask
+# for gl, gif and webp, a moment later, was answered by the copy already
+# taken. A program then compiled with no decoder and no GL against a Skia
+# that had both: no pictures, and drawn in software.
+#
+# So each feature with a probe -- the program that decides whether a copy
+# has it at all -- is compiled with the feature's own defines and linked
+# against the copy, and the defines of those that build are the answer. A
+# feature with no probe is taken at the asker's word, as before.
+function(cme_skia_system_features out includes targets)
+  set(CMAKE_REQUIRED_INCLUDES "${includes}")
+  set(CMAKE_REQUIRED_LIBRARIES "${targets}")
+  set(CMAKE_REQUIRED_QUIET TRUE)
+  include(CheckCXXSourceCompiles)
+  cme_enabled_features(skia asked)
+  set(present "")
+  foreach(feature IN ITEMS gl vulkan graphite graphite-vulkan png jpeg webp gif)
+    cme_feature_field(code skia ${feature} SYSTEM_CODE)
+    if(NOT code)
+      if(feature IN_LIST asked)
+        list(APPEND present ${feature})
+      endif()
+      continue()
+    endif()
+    cme_skia_defines_of(own "${feature}")
+    set(CMAKE_REQUIRED_DEFINITIONS "")
+    foreach(define IN LISTS own)
+      list(APPEND CMAKE_REQUIRED_DEFINITIONS "-D${define}")
+    endforeach()
+    string(MAKE_C_IDENTIFIER "cme_skia_installed_has_${feature}" variable)
+    check_cxx_source_compiles("${code}" ${variable})
+    if(${variable})
+      list(APPEND present ${feature})
+    elseif(feature IN_LIST asked)
+      message(STATUS
+        "cmake-everywhere: ${feature} was asked of Skia, and the Skia "
+        "installed here, taken already, was not built with it")
+    endif()
+  endforeach()
+  set(${out} "${present}" PARENT_SCOPE)
+endfunction()
+
 function(cme_adapt_skia_system includes targets)
   cme_arrange_skia_system(arranged "${includes}")
-  cme_skia_defines(defines)
+  cme_skia_system_features(found "${includes};${arranged}" "${targets}")
+  cme_skia_defines_of(defines "${found}")
   foreach(target IN LISTS targets)
     if(NOT TARGET ${target})
       continue()
