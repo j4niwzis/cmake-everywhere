@@ -1989,6 +1989,22 @@ function(cme_declare_port)
                    "${directory}")
     endif()
   endif()
+  # Whether somebody other than the library says what it is.
+  #
+  # A port with a file in the registry, in an overlay or at a URL was
+  # described by whoever wrote that file, and a name it does not declare is
+  # not a feature of it. A port file the library wrote about itself is
+  # another thing: installed into a prefix, or shipped in its own tree, it
+  # says what that copy of the library declared -- and the copy about to be
+  # built may declare more. An old skiff installed on the machine, with no
+  # features at all, was enough to make every component a project asked of
+  # the skiff it builds read as somebody else's, and dropped: the installed
+  # copy was refused for being old, and still decided how the new one was
+  # built.
+  if(directory AND NOT origin MATCHES "^the system"
+     AND NOT origin MATCHES " library itself$")
+    set_property(GLOBAL PROPERTY CME_PORT_${PORT_NAME}_DESCRIBED TRUE)
+  endif()
   # What the port said, for a port that has no file of its own to hash.
   set(recipe "")
   foreach(field IN LISTS one many)
@@ -4338,7 +4354,7 @@ function(cme_require port version features reason)
   # file is a name and where the source comes from, and its features are the
   # library's own, declared in the library's CMakeLists -- which this call is
   # deciding whether to read.
-  get_property(cme_port_dirs GLOBAL PROPERTY CME_PORT_${port}_DIRS)
+  get_property(cme_port_dirs GLOBAL PROPERTY CME_PORT_${port}_DESCRIBED)
   # cme_features() is called before the registry is loaded, so its names can
   # only be checked here.
   foreach(feature IN LISTS CME_FEATURES_${port} CME_FEATURES_OFF_${port})
@@ -4503,8 +4519,8 @@ function(cme_enabled_features port out)
   # has, and a name it does not declare is somebody's own component:
   # libsndfile asks Vorbis for Enc and File, and Vorbis is not a different
   # library for having been asked.
-  get_property(port_dirs GLOBAL PROPERTY CME_PORT_${port}_DIRS)
-  if(NOT port_dirs)
+  get_property(described GLOBAL PROPERTY CME_PORT_${port}_DESCRIBED)
+  if(NOT described)
     get_property(components GLOBAL PROPERTY CME_ASKED_COMPONENTS_${port})
     list(APPEND enabled ${components})
     get_property(components GLOBAL PROPERTY CME_WANTED_COMPONENTS_${port})
@@ -6455,7 +6471,7 @@ is being built at" FORCE)
     # take the headers and miss that the compiled parts are there too.
     set(asking "")
     cme_enabled_features(${port} cme_wanted_of_it)
-    get_property(cme_port_dirs GLOBAL PROPERTY CME_PORT_${port}_DIRS)
+    get_property(cme_port_dirs GLOBAL PROPERTY CME_PORT_${port}_DESCRIBED)
     get_property(cme_components GLOBAL PROPERTY CME_ASKED_COMPONENTS_${port})
     foreach(cme_feature IN LISTS cme_wanted_of_it)
       # A feature that is one of the ways a copy may be taken, rather than
