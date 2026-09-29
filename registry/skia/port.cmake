@@ -646,6 +646,12 @@ function(cme_skia_defines out)
   if("webp" IN_LIST features)
     list(APPEND defines SK_CODEC_DECODES_WEBP SK_CODEC_ENCODES_WEBP)
   endif()
+  # GIF is decoded only -- Skia has no GIF encoder -- and its decoder's
+  # header, SkGifDecoder.h, is behind this as the others are behind theirs.
+  # Missing here, a consumer never saw a GIF decoder in a Skia that had one.
+  if("gif" IN_LIST features)
+    list(APPEND defines SK_CODEC_DECODES_GIF)
+  endif()
   if(defines)
     list(REMOVE_DUPLICATES defines)
   endif()
