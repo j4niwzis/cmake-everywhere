@@ -2539,6 +2539,167 @@ function(cme_port_rule port kind)
   cme_export_line(${port} "${said})")
 endfunction()
 
+# ---- Installing a library, with what it needs said again ----
+#
+#   cme_install_package(<target> [PACKAGE <name>] [NAMESPACE <ns>::])
+#
+# Installs a library the way a prefix can be found from: the target and its
+# C++ module interface units (a consumer compiles its own binary interfaces
+# from them), an export of it, a version file, and a <name>Config.cmake --
+# so that find_package(<name>) finds it, as <ns><target> and by its own name
+# too.
+#
+# What it links that a port gave it is said again in that file, by the
+# port's own name and with the features it was asked for --
+# find_dependency(boost_pfr COMPONENTS modules) -- so that a consumer finds
+# it again the way this build did: from its provider, or from a prefix. And
+# a port's target made in this build -- fetched and compiled here -- is a
+# target of this build directory, which install(EXPORT) refuses to export,
+# rightly: what would be installed is a library whose dependency exists
+# nowhere else. So it is linked in this build only, and put back by the
+# config on the installed target: on what it links, and on what its modules
+# are compiled with (IMPORTED_CXX_MODULES_LINK_LIBRARIES), which is what a
+# consumer's binary interfaces of those modules need -- without it, an
+# import of the dependency's module in one of them is not found.
+#
+# The library's own port, where the project declares one, is installed
+# beside it as every declaration a project makes is (CME_EXPORT_PORTS).
+function(cme_install_package target)
+  cmake_parse_arguments(PARSE_ARGV 1 arg "" "PACKAGE;NAMESPACE" "")
+  if(NOT arg_PACKAGE)
+    set(arg_PACKAGE "${PROJECT_NAME}")
+  endif()
+  if(NOT DEFINED arg_NAMESPACE)
+    set(arg_NAMESPACE "${arg_PACKAGE}::")
+  endif()
+  include(GNUInstallDirs)
+  include(CMakePackageConfigHelpers)
+  get_property(ports GLOBAL PROPERTY CME_PORTS)
+  get_target_property(links ${target} INTERFACE_LINK_LIBRARIES)
+  if(NOT links)
+    set(links "")
+  endif()
+  set(rewritten "")
+  set(found "")
+  set(put_back "")
+  foreach(link IN LISTS links)
+    # Which port gave it, by the targets a port says it makes.
+    set(port "")
+    foreach(candidate IN LISTS ports)
+      cme_port_field(targets ${candidate} TARGETS)
+      if(link IN_LIST targets)
+        set(port "${candidate}")
+        break()
+      endif()
+    endforeach()
+    if(NOT port OR NOT TARGET ${link})
+      list(APPEND rewritten "${link}")
+      continue()
+    endif()
+    # Found again by the port's own name, with the features it was asked for.
+    cme_port_field(provides ${port} PROVIDES)
+    list(GET provides 0 package)
+    cme_enabled_features(${port} features)
+    cme_port_field(declared ${port} FEATURES)
+    set(asked "")
+    foreach(feature IN LISTS features)
+      if(feature IN_LIST declared)
+        list(APPEND asked "${feature}")
+      endif()
+    endforeach()
+    list(REMOVE_DUPLICATES asked)
+    set(line "find_dependency(${package}")
+    if(asked)
+      list(JOIN asked " " asked)
+      string(APPEND line " COMPONENTS ${asked}")
+    endif()
+    string(APPEND line ")\n")
+    if(NOT line IN_LIST found)
+      list(APPEND found "${line}")
+    endif()
+    # Made in this build: linked here only, and put back by the config.
+    set(real "${link}")
+    get_target_property(aliased ${link} ALIASED_TARGET)
+    if(aliased)
+      set(real "${aliased}")
+    endif()
+    get_target_property(imported ${real} IMPORTED)
+    if(imported)
+      list(APPEND rewritten "${link}")
+    else()
+      list(APPEND rewritten "$<BUILD_INTERFACE:${link}>")
+      list(APPEND put_back "${link}")
+    endif()
+  endforeach()
+  set_property(TARGET ${target} PROPERTY INTERFACE_LINK_LIBRARIES "${rewritten}")
+  # And where the target itself links them -- what its own modules are
+  # compiled with, which an export says again for a consumer's binary
+  # interfaces: in this build only there too. A build interface is this
+  # build, so the target still links them.
+  get_target_property(own ${target} LINK_LIBRARIES)
+  if(own AND put_back)
+    set(own_rewritten "")
+    foreach(link IN LISTS own)
+      if(link IN_LIST put_back)
+        list(APPEND own_rewritten "$<BUILD_INTERFACE:${link}>")
+      else()
+        list(APPEND own_rewritten "${link}")
+      endif()
+    endforeach()
+    set_property(TARGET ${target} PROPERTY LINK_LIBRARIES "${own_rewritten}")
+  endif()
+
+  get_target_property(module_sets ${target} INTERFACE_CXX_MODULE_SETS)
+  set(modules "")
+  if(module_sets)
+    set(modules FILE_SET CXX_MODULES DESTINATION ${CMAKE_INSTALL_LIBDIR}/${arg_PACKAGE}/modules)
+  endif()
+  install(TARGETS ${target}
+    EXPORT ${arg_PACKAGE}Targets
+    ${modules}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  set(where ${CMAKE_INSTALL_LIBDIR}/cmake/${arg_PACKAGE})
+  if(module_sets)
+    install(EXPORT ${arg_PACKAGE}Targets NAMESPACE ${arg_NAMESPACE}
+      CXX_MODULES_DIRECTORY modules DESTINATION ${where})
+  else()
+    install(EXPORT ${arg_PACKAGE}Targets NAMESPACE ${arg_NAMESPACE} DESTINATION ${where})
+  endif()
+
+  get_target_property(name ${target} EXPORT_NAME)
+  if(NOT name)
+    set(name "${target}")
+  endif()
+  set(installed "${arg_NAMESPACE}${name}")
+  set(config "include(CMakeFindDependencyMacro)\n")
+  foreach(line IN LISTS found)
+    string(APPEND config "${line}")
+  endforeach()
+  string(APPEND config "include(\"\${CMAKE_CURRENT_LIST_DIR}/${arg_PACKAGE}Targets.cmake\")\n")
+  foreach(link IN LISTS put_back)
+    string(APPEND config
+      "set_property(TARGET ${installed} APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${link})\n"
+      "set_property(TARGET ${installed} APPEND PROPERTY IMPORTED_CXX_MODULES_LINK_LIBRARIES ${link})\n")
+  endforeach()
+  # And by its own name, as the build that made it links it.
+  if(NOT installed STREQUAL target)
+    string(APPEND config
+      "if(NOT TARGET ${target})\n"
+      "  add_library(${target} ALIAS ${installed})\n"
+      "endif()\n")
+  endif()
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${arg_PACKAGE}Config.cmake" "${config}")
+  set(files "${CMAKE_CURRENT_BINARY_DIR}/${arg_PACKAGE}Config.cmake")
+  if(PROJECT_VERSION)
+    write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/${arg_PACKAGE}ConfigVersion.cmake"
+      VERSION ${PROJECT_VERSION} COMPATIBILITY SameMinorVersion)
+    list(APPEND files "${CMAKE_CURRENT_BINARY_DIR}/${arg_PACKAGE}ConfigVersion.cmake")
+  endif()
+  install(FILES ${files} DESTINATION ${where})
+endfunction()
+
 function(cme_port_field out port field)
   get_property(value GLOBAL PROPERTY CME_PORT_${port}_${field})
   set(${out} "${value}" PARENT_SCOPE)
