@@ -5373,14 +5373,31 @@ function(cme_apply_patches port source)
       "builds, so it is not patched again: remove it and configure again.")
   endif()
 
-  find_program(CME_PATCH NAMES patch)
-  if(NOT CME_PATCH)
+  # A program of the machine building, not of the one built for: looked for
+  # outside a cross build's sysroot -- a toolchain file that keeps programs to
+  # its find root (CMAKE_FIND_ROOT_PATH_MODE_PROGRAM ONLY) hid /usr/bin/patch.
+  # Where there is no patch, git applies them as well.
+  find_program(CME_PATCH NAMES patch NO_CMAKE_FIND_ROOT_PATH)
+  set(apply "")
+  if(CME_PATCH)
+    set(apply "${CME_PATCH}" -p1 --forward -i)
+  else()
+    if(NOT GIT_EXECUTABLE)
+      find_package(Git QUIET BYPASS_PROVIDER)
+    endif()
+    if(GIT_EXECUTABLE)
+      set(apply "${GIT_EXECUTABLE}" apply -p1 --whitespace=nowarn)
+    endif()
+  endif()
+  if(NOT apply)
     message(FATAL_ERROR
-      "cmake-everywhere: ${port} carries patches and there is no patch "
-      "program here to apply them with")
+      "cmake-everywhere: ${port} carries patches and there is neither a patch "
+      "program nor git here to apply them with (looked for patch on the PATH "
+      "and the system's program directories, outside any sysroot: set "
+      "CME_PATCH to one)")
   endif()
   foreach(file IN LISTS files)
-    execute_process(COMMAND "${CME_PATCH}" -p1 --forward -i "${file}"
+    execute_process(COMMAND ${apply} "${file}"
                     WORKING_DIRECTORY "${source}"
                     RESULT_VARIABLE code
                     OUTPUT_VARIABLE output ERROR_VARIABLE output)
