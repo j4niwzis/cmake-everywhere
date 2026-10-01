@@ -6279,6 +6279,15 @@ function(cme_build_port port package version exact)
   # anything is asked to compile it.
   cme_place_trees(${port} "${${port}_SOURCE_DIR}")
 
+  # What a project's own build does to its checkout before it compiles it --
+  # a source written by a script of its own, say -- done here by the port:
+  # cme_prepare_<port>(source), the counterpart of cme_adapt_<port>, which
+  # comes after. Called at every configure; what it does is to be the same
+  # each time.
+  if(COMMAND cme_prepare_${port})
+    cmake_language(CALL cme_prepare_${port} "${${port}_SOURCE_DIR}")
+  endif()
+
   if(machine STREQUAL "build")
     # A program this build runs rather than a library it links: its steps
     # come into this graph with the compiler they name.

@@ -121,6 +121,40 @@ function(cme_cargo_toolchain_libraries out work target)
   set(${out} "${libraries}" PARENT_SCOPE)
 endfunction()
 
+# The compilers a crate's build script compiles C and C++ with: this build's.
+#
+# The cc crate -- under cxx-build, bindgen's users and most -sys crates --
+# looks for CC, CXX, AR and their flags, and failing that takes the
+# machine's cc and c++. A C++ bridge built by g++ against libstdc++ beside a
+# program built by clang against libc++ links into two standard libraries
+# that do not mix, and fails on std:: symbols neither side has. So the
+# compilers and flags of this build are said, and the C++ standard library
+# its flags choose (CXXSTDLIB, which cc links the crate against).
+function(cme_cargo_compiler_env out)
+  set(env "")
+  if(CMAKE_C_COMPILER)
+    list(APPEND env "CC=${CMAKE_C_COMPILER}")
+  endif()
+  if(CMAKE_CXX_COMPILER)
+    list(APPEND env "CXX=${CMAKE_CXX_COMPILER}")
+  endif()
+  if(CMAKE_AR)
+    list(APPEND env "AR=${CMAKE_AR}")
+  endif()
+  string(STRIP "${CMAKE_C_FLAGS}" cflags)
+  string(STRIP "${CMAKE_CXX_FLAGS}" cxxflags)
+  if(cflags)
+    list(APPEND env "CFLAGS=${cflags}")
+  endif()
+  if(cxxflags)
+    list(APPEND env "CXXFLAGS=${cxxflags}")
+  endif()
+  if(cxxflags MATCHES "-stdlib=libc\\+\\+")
+    list(APPEND env "CXXSTDLIB=c++")
+  endif()
+  set(${out} "${env}" PARENT_SCOPE)
+endfunction()
+
 # The arguments every cargo command here shares.
 function(cme_cargo_arguments out port source)
   cme_port_field(package ${port} CARGO_PACKAGE)
@@ -198,6 +232,10 @@ function(cme_cargo_build port source)
     set(convert "${Python3_EXECUTABLE}" "${CME_DIR}/cmake/cargo_plan.py"
         --plan "${work}/plan.json" --out "${work}/plan.cmake"
         --stamp "${work}/ran")
+    cme_cargo_compiler_env(compilers)
+    foreach(one IN LISTS compilers)
+      list(APPEND convert --env "${one}")
+    endforeach()
     # Cargo names the compiler "rustc" and finds it on a PATH of its own
     # making; this build runs the one that was found here, by its path.
     find_program(CME_RUSTC NAMES rustc)
@@ -238,8 +276,10 @@ function(cme_cargo_build port source)
   else()
     # Cargo drives. What it built is read from its own report rather than
     # looked for in likely places.
+    cme_cargo_compiler_env(compilers)
     execute_process(
-      COMMAND "${CME_CARGO}" build ${common} --message-format json
+      COMMAND "${CMAKE_COMMAND}" -E env ${compilers}
+              "${CME_CARGO}" build ${common} --message-format json
       WORKING_DIRECTORY "${source}"
       OUTPUT_FILE "${work}/build.json"
       ERROR_VARIABLE trouble
@@ -301,6 +341,9 @@ function(cme_cargo_build port source)
     endif()
     cme_port_field(headers ${port} CARGO_INCLUDE)
     if(headers)
+      # Written by the crate's build script when it runs, which is after
+      # this: there now, as an imported target's include directory has to be.
+      file(MAKE_DIRECTORY "${work}/target/${headers}")
       set_property(TARGET ${named} APPEND PROPERTY
                    INTERFACE_INCLUDE_DIRECTORIES "${work}/target/${headers}")
     endif()

@@ -576,6 +576,34 @@ jobs:
         if: always()
         run: cat build/cargo/cme-report.txt || true
 
+  # vodozemac through its C++ bindings: a Rust staticlib with a cxx bridge,
+  # its checkout prepared by the port (the bindings write their lib.rs with a
+  # script of their own), the bridge compiled by the build's own compiler --
+  # clang and libc++, as a program built so links it -- and Megolm run from
+  # C++. The runner's rustup toolchain: Ubuntu's rustc is too old for it.
+  vodozemac:
+    needs: quick
+    runs-on: ubuntu-latest
+    name: vodozemac, its C++ bindings
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update || true
+          sudo apt-get install -y ninja-build clang libc++-dev libc++abi-dev perl
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - run: |
+          cmake -S test/vodozemac -B build/vodozemac -G Ninja \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_FLAGS=-stdlib=libc++ \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
+            -DCME_SYSTEM=NEVER -DCME_LOCK= -DCME_STORE=
+          cmake --build build/vodozemac
+          ./build/vodozemac/cme-vodozemac
+      - name: what the build decided
+        if: always()
+        run: cat build/vodozemac/cme-report.txt || true
+
   # A program the build runs rather than links, built by the build that runs
   # it. What it checks is that the steps of a project with its own toolchain
   # become steps of this one: the tool's compile and link appear in this

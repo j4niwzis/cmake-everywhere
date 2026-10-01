@@ -104,6 +104,9 @@ def main():
                         help="the script that makes those paths absolute")
     parser.add_argument("--rustc", default=None,
                         help="the compiler this build runs, found by cmake")
+    parser.add_argument("--env", action="append", default=[],
+                        help="NAME=VALUE every command is run with as well: "
+                             "the C and C++ compilers build scripts use")
     arguments = parser.parse_args()
 
     with open(arguments.plan, encoding="utf-8") as file:
@@ -139,6 +142,7 @@ def main():
             if name in SKIP:
                 continue
             environment.append(f"{name}={value}")
+        environment += arguments.env
 
         lines.append("")
         lines.append(f"# {one.get('package_name')} "
