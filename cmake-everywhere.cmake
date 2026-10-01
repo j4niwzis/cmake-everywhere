@@ -2091,13 +2091,44 @@ function(cme_declare_port)
       file(WRITE "${exported}" "${text}")
       set_property(GLOBAL PROPERTY CME_EXPORTED_${PORT_NAME} "${exported}")
       set_property(GLOBAL APPEND PROPERTY CME_EXPORTING "${PORT_NAME}")
-      install(FILES "${exported}"
-              DESTINATION "${CME_EXPORT_DESTINATION}/${PORT_NAME}")
+      # The project's own port, installed now. One it only needs, at the
+      # end: what is installed beside the project for it is the library's own
+      # declaration where the library has one, and the project's only where
+      # it has none (cme_finish_exports).
+      if(mine)
+        install(FILES "${exported}"
+                DESTINATION "${CME_EXPORT_DESTINATION}/${PORT_NAME}")
+      endif()
       # The install rule is made now, when the path is known. What goes in
       # the file is finished at the end of the configuration, when what this
       # project actually asked for is known.
       cme_schedule_finish()
     endif()
+  endif()
+
+  # What a library declares about itself, from its own tree -- as it said
+  # it: what is installed beside a project that needs it, in place of the
+  # project's declaration of it, which says what that project pinned.
+  if(origin STREQUAL "the ${PORT_NAME} library itself")
+    set(own "# The ${PORT_NAME} library's own declaration, from its tree.\ncme_declare_port(\n")
+    foreach(field IN LISTS one)
+      if(NOT "${PORT_${field}}" STREQUAL "")
+        cme_quote(value "${PORT_${field}}")
+        string(APPEND own "  ${field} \"${value}\"\n")
+      endif()
+    endforeach()
+    foreach(field IN LISTS many)
+      if(PORT_${field})
+        set(items "")
+        foreach(item IN LISTS PORT_${field})
+          cme_quote(value "${item}")
+          string(APPEND items " \"${value}\"")
+        endforeach()
+        string(APPEND own "  ${field}${items}\n")
+      endif()
+    endforeach()
+    string(APPEND own ")\n")
+    set_property(GLOBAL PROPERTY CME_OWN_DECLARATION_${PORT_NAME} "${own}")
   endif()
 
   get_property(fixed GLOBAL PROPERTY CME_PORT_${PORT_NAME}_FIXED)
@@ -3804,6 +3835,21 @@ function(cme_finish_exports)
     get_property(record GLOBAL PROPERTY CME_EXPORT_IS_RECORD_${name})
     cme_enabled_features(${name} built_with)
     if(NOT record)
+      get_property(exported GLOBAL PROPERTY CME_EXPORTED_${name})
+      get_property(own GLOBAL PROPERTY CME_OWN_DECLARATION_${name})
+      get_property(installed GLOBAL PROPERTY CME_PORT_${name}_VERSION_INSTALLED)
+      if(own)
+        # The library said what it is, in its own tree: that, and not what
+        # this project pinned of it, goes beside the project.
+        file(WRITE "${exported}" "${own}")
+        install(FILES "${exported}" DESTINATION "${CME_EXPORT_DESTINATION}/${name}")
+        continue()
+      endif()
+      if(installed)
+        # A prefix has the library's own port already: nothing said for it.
+        continue()
+      endif()
+      install(FILES "${exported}" DESTINATION "${CME_EXPORT_DESTINATION}/${name}")
       # What this library needed here is still worth saying -- it is a fact
       # about the library, and the next project reading this would otherwise
       # have to find it out by building. What is not said is what a copy in
