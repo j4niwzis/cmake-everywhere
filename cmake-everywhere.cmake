@@ -2572,7 +2572,8 @@ endfunction()
 
 # ---- Installing a library, with what it needs said again ----
 #
-#   cme_install_package(<target> [PACKAGE <name>] [NAMESPACE <ns>::])
+#   cme_install_package(<target> [PACKAGE <name>] [NAMESPACE <ns>::]
+#                       [ALIASES <name>...] [EXTRA <cmake code>...])
 #
 # Installs a library the way a prefix can be found from: the target and its
 # C++ module interface units (a consumer compiles its own binary interfaces
@@ -2593,10 +2594,15 @@ endfunction()
 # consumer's binary interfaces of those modules need -- without it, an
 # import of the dependency's module in one of them is not found.
 #
+# ALIASES: other names the library goes by -- a component's (alef::precis,
+# alef_precis) -- made again on the installed target. EXTRA: what else the
+# config has to say, said after the targets: a dependency no port gives,
+# asked for the way a machine can answer for it (Skia, through pkg-config).
+#
 # The library's own port, where the project declares one, is installed
 # beside it as every declaration a project makes is (CME_EXPORT_PORTS).
 function(cme_install_package target)
-  cmake_parse_arguments(PARSE_ARGV 1 arg "" "PACKAGE;NAMESPACE" "")
+  cmake_parse_arguments(PARSE_ARGV 1 arg "" "PACKAGE;NAMESPACE" "ALIASES;EXTRA")
   if(NOT arg_PACKAGE)
     set(arg_PACKAGE "${PROJECT_NAME}")
   endif()
@@ -2714,13 +2720,23 @@ function(cme_install_package target)
       "set_property(TARGET ${installed} APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${link})\n"
       "set_property(TARGET ${installed} APPEND PROPERTY IMPORTED_CXX_MODULES_LINK_LIBRARIES ${link})\n")
   endforeach()
-  # And by its own name, as the build that made it links it.
+  # And by its own name, as the build that made it links it, and by the
+  # other names it goes by.
+  set(names ${arg_ALIASES})
   if(NOT installed STREQUAL target)
-    string(APPEND config
-      "if(NOT TARGET ${target})\n"
-      "  add_library(${target} ALIAS ${installed})\n"
-      "endif()\n")
+    list(PREPEND names "${target}")
   endif()
+  foreach(alias IN LISTS names)
+    if(NOT alias STREQUAL installed)
+      string(APPEND config
+        "if(NOT TARGET ${alias})\n"
+        "  add_library(${alias} ALIAS ${installed})\n"
+        "endif()\n")
+    endif()
+  endforeach()
+  foreach(line IN LISTS arg_EXTRA)
+    string(APPEND config "${line}\n")
+  endforeach()
   file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${arg_PACKAGE}Config.cmake" "${config}")
   set(files "${CMAKE_CURRENT_BINARY_DIR}/${arg_PACKAGE}Config.cmake")
   if(PROJECT_VERSION)
