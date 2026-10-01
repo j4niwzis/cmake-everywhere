@@ -219,8 +219,14 @@ function(cme_cmake_import port description)
     # assembler file when it sees one and preprocesses the capital-S ones.
     # Said here, on the files themselves, because a consumer cannot enable a
     # language for a library it has not looked inside.
+    set(cme_nasm_sources "")
     foreach(cme_source IN LISTS sources)
-      if(cme_source MATCHES "[.]S$")
+      if(cme_source MATCHES "[.]asm$")
+        # NASM's: no compiler CMake knows takes it, and a language of its
+        # own (ASM_NASM) is one more the consumer never enabled. Given to
+        # nasm below, as the project's own build gives it.
+        list(APPEND cme_nasm_sources "${cme_source}")
+      elseif(cme_source MATCHES "[.]S$")
         # Given to the C compiler, and told what it is. Saying only the
         # language makes CMake write -x c, and then the C parser reads
         # ".arch armv8-a" and says what a C parser says about it: "expected
@@ -235,6 +241,67 @@ function(cme_cmake_import port description)
           LANGUAGE C COMPILE_OPTIONS "-x;assembler")
       endif()
     endforeach()
+
+    # NASM assembly, assembled here: nasm run on each file with the flags,
+    # defines and include directories the project's build gives it, its
+    # object put in the target as an object of its own. Left to CMake, a
+    # .asm went to the gas-syntax ASM language -- with ASM not enabled,
+    # generate stopped over CMAKE_ASM_COMPILE_OBJECT; with it, cc took the
+    # file for a linker input, made nothing, and the archive was missing
+    # libjpeg-turbo's SIMD objects.
+    if(cme_nasm_sources)
+      list(REMOVE_ITEM sources ${cme_nasm_sources})
+      find_program(CME_NASM NAMES nasm yasm REQUIRED)
+      if(APPLE)
+        set(cme_nasm_format macho)
+      elseif(WIN32)
+        set(cme_nasm_format win)
+      else()
+        set(cme_nasm_format elf)
+      endif()
+      if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        string(APPEND cme_nasm_format 64)
+      else()
+        string(APPEND cme_nasm_format 32)
+      endif()
+      set(cme_nasm_args "")
+      if(${prefix}_GROUPS GREATER 0)
+        math(EXPR cme_last_group "${${prefix}_GROUPS} - 1")
+        foreach(group RANGE ${cme_last_group})
+          if(NOT "${${prefix}_GROUP${group}_LANGUAGE}" STREQUAL "ASM_NASM")
+            continue()
+          endif()
+          foreach(fragment IN LISTS ${prefix}_GROUP${group}_FLAGS)
+            separate_arguments(pieces UNIX_COMMAND "${fragment}")
+            list(APPEND cme_nasm_args ${pieces})
+          endforeach()
+          foreach(define IN LISTS ${prefix}_GROUP${group}_DEFINES)
+            list(APPEND cme_nasm_args "-D${define}")
+          endforeach()
+          # nasm joins an include path to a file name as it is: the slash
+          # is said.
+          foreach(directory IN LISTS ${prefix}_GROUP${group}_INCLUDES)
+            list(APPEND cme_nasm_args "-I${directory}/")
+          endforeach()
+        endforeach()
+      endif()
+      foreach(cme_source IN LISTS cme_nasm_sources)
+        get_filename_component(cme_nasm_name "${cme_source}" NAME)
+        string(MD5 cme_nasm_key "${cme_source}")
+        string(SUBSTRING "${cme_nasm_key}" 0 8 cme_nasm_key)
+        set(cme_nasm_object "${CMAKE_CURRENT_BINARY_DIR}/${target}.nasm/${cme_nasm_key}/${cme_nasm_name}.o")
+        get_filename_component(cme_nasm_dir "${cme_nasm_object}" DIRECTORY)
+        file(MAKE_DIRECTORY "${cme_nasm_dir}")
+        add_custom_command(
+          OUTPUT "${cme_nasm_object}"
+          COMMAND "${CME_NASM}" -f ${cme_nasm_format} ${cme_nasm_args} -o "${cme_nasm_object}" "${cme_source}"
+          DEPENDS "${cme_source}"
+          COMMENT "Assembling ${cme_nasm_name} with nasm"
+          VERBATIM)
+        set_source_files_properties("${cme_nasm_object}" PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+        list(APPEND sources "${cme_nasm_object}")
+      endforeach()
+    endif()
 
     if(type STREQUAL "STATIC_LIBRARY" OR type STREQUAL "SHARED_LIBRARY"
        OR type STREQUAL "MODULE_LIBRARY")
