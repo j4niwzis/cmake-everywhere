@@ -385,6 +385,25 @@ function(cme_configure_configure port source build prefix)
       "cmake-everywhere: ${port} is told where ${cme_pkg_path} is")
   endif()
 
+  # Run again only where what it is run with changed: the script, what it
+  # is told, where it installs and its environment. Run at every configure
+  # of this build, it wrote config.h and what goes with it again, newer --
+  # FFmpeg's every source includes config.h, and all of libav was built
+  # again at every run, a build directory kept between them or not.
+  file(SHA256 "${source}/${script}" cme_script_hash)
+  string(SHA256 cme_run_now
+         "${source}/${script}|--prefix=${prefix}|${arguments}|${environment}|${cme_script_hash}")
+  set(cme_run_stamp "${build}/cme-configured.sha256")
+  set(cme_run_before "")
+  if(EXISTS "${cme_run_stamp}")
+    file(READ "${cme_run_stamp}" cme_run_before)
+  endif()
+  if(cme_run_before STREQUAL cme_run_now)
+    message(STATUS "cmake-everywhere: ${port} configured as before; its configure is not run again")
+    return()
+  endif()
+  file(REMOVE "${cme_run_stamp}")
+
   message(STATUS "cmake-everywhere: building ${port} with its own configure")
   execute_process(
     COMMAND ${CMAKE_COMMAND} -E env ${environment}
@@ -423,6 +442,9 @@ function(cme_configure_configure port source build prefix)
     message(FATAL_ERROR
       "cmake-everywhere: ${port}'s configure failed\n${output}${cme_said}")
   endif()
+  # Gone through: the next configure of this build, run with the same, is
+  # this one's.
+  file(WRITE "${cme_run_stamp}" "${cme_run_now}")
 endfunction()
 
 # Configured, made and installed: the whole project as its own build sees
