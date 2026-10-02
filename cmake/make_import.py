@@ -80,9 +80,19 @@ def split(command):
         return []
 
 
+def assembler(words):
+    """Whether a command is NASM's (or yasm's), which assembles a .asm
+    without the -c every compiler is given: FFmpeg's make runs
+    nasm -f elf64 ... -o x.o x.asm, and read as a compile only where it said
+    -c, every .asm of it was dropped while its C still called what they
+    define -- ff_tx_fft*_asm_*, undefined at the link."""
+    return bool(words) and os.path.basename(words[0]) in ("nasm", "yasm")
+
+
 def compile_of(words, root):
     """A compile, as the source it reads and the object it writes."""
-    if "-c" not in words:
+    nasm = assembler(words)
+    if "-c" not in words and not nasm:
         return None
     source = None
     output = None
@@ -102,6 +112,21 @@ def compile_of(words, root):
         if word.startswith("-D"):
             defines.append(word[2:])
             continue
+        if nasm:
+            # The object format is this build's to say (it says -f for the
+            # machine it builds for), and so is whether there is debug
+            # information: both dropped, with their values.
+            if word in ("-f", "-F") and index < len(words):
+                index += 1
+                continue
+            if word.startswith(("-f", "-F")) and len(word) > 2:
+                continue
+            # A file included before the source -- FFmpeg's -Pconfig.asm --
+            # named from where its make ran, which is not where nasm runs
+            # here.
+            if word.startswith("-P") and len(word) > 2:
+                flags.append("-P" + os.path.normpath(os.path.join(root, word[2:])))
+                continue
         if word.startswith("-I"):
             includes.append(word[2:])
             continue
