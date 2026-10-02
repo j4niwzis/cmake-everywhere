@@ -220,6 +220,7 @@ function(cme_cmake_import port description)
     # Said here, on the files themselves, because a consumer cannot enable a
     # language for a library it has not looked inside.
     set(cme_nasm_sources "")
+    set(cme_nasm_objects "")
     foreach(cme_source IN LISTS sources)
       if(cme_source MATCHES "[.]asm$")
         # NASM's: no compiler CMake knows takes it, and a language of its
@@ -300,6 +301,7 @@ function(cme_cmake_import port description)
           VERBATIM)
         set_source_files_properties("${cme_nasm_object}" PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
         list(APPEND sources "${cme_nasm_object}")
+        list(APPEND cme_nasm_objects "${cme_nasm_object}")
       endforeach()
     endif()
 
@@ -314,6 +316,12 @@ function(cme_cmake_import port description)
         continue()
       endif()
       add_library(${target} OBJECT ${sources})
+      # Its NASM objects said on it, for what takes its objects: an external
+      # object is no object the target built, and $<TARGET_OBJECTS:...> has
+      # only those. libjpeg-turbo's simd library is its .asm files and
+      # jsimd.c; the archive got jsimd.c's object alone, and a link said
+      # jpeg_simd_cpu_support and every jsimd_*_sse2 and _avx2 undefined.
+      set_property(TARGET ${target} PROPERTY CME_NASM_OBJECTS "${cme_nasm_objects}")
     elseif(type STREQUAL "EXECUTABLE")
       if(NOT sources)
         continue()
@@ -561,6 +569,13 @@ function(cme_cmake_import port description)
          AND NOT kind STREQUAL "INTERFACE_LIBRARY"
          AND NOT kind STREQUAL "OBJECT_LIBRARY")
         target_sources(${target} PRIVATE "$<TARGET_OBJECTS:${other}>")
+        # And its NASM objects, which that leaves out (above): assembled by
+        # commands of this directory, so a target here can take their
+        # outputs as its own sources.
+        get_target_property(other_nasm ${other} CME_NASM_OBJECTS)
+        if(other_nasm)
+          target_sources(${target} PRIVATE ${other_nasm})
+        endif()
       endif()
       add_dependencies(${target} ${other})
     endforeach()
