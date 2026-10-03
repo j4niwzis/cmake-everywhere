@@ -7480,7 +7480,24 @@ endmacro()
 # build gets two of something. Where none is, and no port answers to the name,
 # what is left is the search CMake would have done if none of this were here.
 macro(cme_find_package cme_asked_package)
-  if(CME_PROVIDER_INSTALLED)
+  # Asked from the config file of a copy found on the system, a plain
+  # find_package would arrive at a provider that steps aside (a system copy's
+  # pieces come from the system). This call is not one of those pieces: the
+  # copy's author wrote cme_find_package to say that what it needs is to be
+  # had through the ports -- built here if the machine has none -- so it is
+  # answered with the provider stepped back in for the length of the call.
+  get_property(cme_find_inside_system GLOBAL PROPERTY CME_INSIDE_SYSTEM)
+  if(cme_find_inside_system)
+    get_property(cme_find_inside_for GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR)
+    set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM FALSE)
+    set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "")
+    cme_provider(FIND_PACKAGE "${cme_asked_package}" ${ARGN})
+    set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM TRUE)
+    set_property(GLOBAL PROPERTY CME_INSIDE_SYSTEM_FOR "${cme_find_inside_for}")
+    if(NOT ${cme_asked_package}_FOUND)
+      find_package(${cme_asked_package} ${ARGN} BYPASS_PROVIDER)
+    endif()
+  elseif(CME_PROVIDER_INSTALLED)
     find_package(${cme_asked_package} ${ARGN})
   else()
     cme_provider(FIND_PACKAGE "${cme_asked_package}" ${ARGN})
