@@ -1,0 +1,24 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ac304a4..96c093c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -510,6 +510,11 @@ if(WARNINGS_AS_ERRORS)
+ 	endif()
+ endif()
+ 
++# Installed only where it is asked for: a build that takes it in as a part
++# of itself, its dependencies its own targets, has nothing of it to install,
++# and CMake checks an install(EXPORT) whether it runs or not.
++option(LIBDATACHANNEL_INSTALL "Install the library and its CMake package" ON)
++if(LIBDATACHANNEL_INSTALL)
+ install(TARGETS datachannel EXPORT LibDataChannelTargets
+ 	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+ 	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+@@ -551,6 +556,7 @@ install(FILES
+ 	${CMAKE_BINARY_DIR}/LibDataChannelConfig.cmake
+ 	${CMAKE_BINARY_DIR}/LibDataChannelConfigVersion.cmake
+     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LibDataChannel)
++endif()
+ 
+ # Tests
+ if(NOT NO_TESTS)

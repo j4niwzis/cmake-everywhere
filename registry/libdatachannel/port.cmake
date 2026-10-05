@@ -8,7 +8,17 @@ cme_declare_port(
   GITHUB_REPOSITORY paullouisageneau/libdatachannel
   GIT_TAG v0.24.6
   DEPENDS openssl plog usrsctp libsrtp libjuice
+  # Its install rules behind an option, off here: they export its targets,
+  # and its dependencies are this build's own targets, in no export set of
+  # its -- CMake refused the install(EXPORT), which it checks whether it
+  # runs or not.
+  PATCHES "patches/0001-install-rules-behind-an-option.patch"
   OPTIONS
+    "LIBDATACHANNEL_INSTALL OFF"
+    # C++17, in a build whose own C++ says import std: none of that for
+    # this one's targets, which CMake would require C++20 of.
+    "CMAKE_CXX_MODULE_STD OFF"
+    "CMAKE_CXX_SCAN_FOR_MODULES OFF"
     "BUILD_SHARED_LIBS OFF"
     "USE_SYSTEM_PLOG ON"
     "USE_SYSTEM_USRSCTP ON"
