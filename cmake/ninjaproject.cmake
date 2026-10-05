@@ -54,6 +54,26 @@ function(cme_build_machine_build port source)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
   set(build "${CMAKE_BINARY_DIR}/_cme/${port}-for-this-machine")
+  # A build directory made from another source -- the port's pin moved, and
+  # its source was fetched anew elsewhere, while the build directory was
+  # kept (a CI cache) -- is begun again: CMake refuses to configure a source
+  # in a tree that was generated from another one.
+  if(EXISTS "${build}/CMakeCache.txt")
+    file(STRINGS "${build}/CMakeCache.txt" made_from
+         REGEX "^CMAKE_HOME_DIRECTORY:INTERNAL=")
+    string(REGEX REPLACE "^CMAKE_HOME_DIRECTORY:INTERNAL=" "" made_from
+           "${made_from}")
+    file(REAL_PATH "${source}" source_now)
+    if(EXISTS "${made_from}")
+      file(REAL_PATH "${made_from}" made_from)
+    endif()
+    if(NOT made_from STREQUAL source_now)
+      message(STATUS
+        "cmake-everywhere: ${port}'s build for this machine was made from "
+        "${made_from}; begun again from ${source_now}")
+      file(REMOVE_RECURSE "${build}")
+    endif()
+  endif()
   set(arguments "-S" "${source}" "-B" "${build}" "-G" "Ninja"
                 "-DCMAKE_BUILD_TYPE=Release"
                 "-DCMAKE_MAKE_PROGRAM=${CME_NINJA}")
