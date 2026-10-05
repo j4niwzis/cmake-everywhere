@@ -1,0 +1,37 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e33f862..ed3ca98 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -298,6 +298,11 @@ if(WIN32)
+   target_compile_definitions(srtp2 PUBLIC _CRT_SECURE_NO_WARNINGS)
+ endif()
+ 
++# Installed only where it is asked for: a build that takes it in as a part
++# of itself, its crypto that build's own target, has nothing of it to
++# install, and CMake checks an install(EXPORT) whether it runs or not.
++option(LIBSRTP_INSTALL "Install the library and its CMake package" ON)
++if(LIBSRTP_INSTALL)
+ install(TARGETS srtp2 DESTINATION lib
+   EXPORT libSRTPTargets
+ )
+@@ -306,6 +311,7 @@ install(FILES include/srtp.h crypto/include/auth.h
+   crypto/include/cipher.h
+   crypto/include/crypto_types.h
+   DESTINATION include/srtp2)
++endif()
+ 
+ if(LIBSRTP_TEST_APPS)
+   enable_testing()
+@@ -475,6 +481,7 @@ if(LIBSRTP_TEST_APPS)
+   endif()
+ endif()
+ 
++if(LIBSRTP_INSTALL)
+ # Export targets
+ install(
+   EXPORT libSRTPTargets
+@@ -511,3 +518,4 @@ install(FILES
+   ${CMAKE_CURRENT_BINARY_DIR}/libSRTPConfigVersion.cmake
+   DESTINATION lib/cmake/libSRTP
+ )
++endif()

@@ -7,7 +7,12 @@ cme_declare_port(
   GITHUB_REPOSITORY cisco/libsrtp
   GIT_TAG v2.8.1
   DEPENDS openssl
+  # Its install rules behind an option, off here: they export srtp2, and
+  # its OpenSSL is this build's own target, in no export set of its --
+  # CMake refused the install(EXPORT), which it checks whether it runs.
+  PATCHES "patches/0001-install-rules-behind-an-option.patch"
   OPTIONS
+    "LIBSRTP_INSTALL OFF"
     "ENABLE_OPENSSL ON"
     "LIBSRTP_TEST_APPS OFF"
     "BUILD_TESTING OFF"
