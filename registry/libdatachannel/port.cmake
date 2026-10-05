@@ -13,6 +13,9 @@ cme_declare_port(
   # its -- CMake refused the install(EXPORT), which it checks whether it
   # runs or not.
   PATCHES "patches/0001-install-rules-behind-an-option.patch"
+          # std::transform with no <algorithm>: another header brought it in
+          # once, and libc++ no longer does.
+          "patches/0002-configuration-includes-algorithm.patch"
   OPTIONS
     "LIBDATACHANNEL_INSTALL OFF"
     # C++17, in a build whose own C++ says import std: none of that for

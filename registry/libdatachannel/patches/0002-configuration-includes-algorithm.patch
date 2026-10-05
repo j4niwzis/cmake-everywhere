@@ -1,0 +1,12 @@
+diff --git a/src/configuration.cpp b/src/configuration.cpp
+index fe28aef..897be5e 100644
+--- a/src/configuration.cpp
++++ b/src/configuration.cpp
+@@ -10,6 +10,7 @@
+ 
+ #include "impl/utils.hpp"
+ 
++#include <algorithm>
+ #include <cassert>
+ #include <regex>
+ 
