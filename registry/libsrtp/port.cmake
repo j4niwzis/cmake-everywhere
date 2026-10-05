@@ -25,5 +25,10 @@ cme_declare_port(
 )
 
 function(cme_adapt_libsrtp source binary)
+  # Installed, its header is srtp2/srtp.h, which is what a consumer writes
+  # (libdatachannel among them); from the source tree it is include/srtp.h,
+  # with no such prefix, and the install is off here.
+  cme_header_prefix(named srtp2 "${source}/include")
+  target_include_directories(srtp2 INTERFACE "$<BUILD_INTERFACE:${named}>")
   cme_export_variable(libSRTP libSRTP_FOUND TRUE)
 endfunction()
