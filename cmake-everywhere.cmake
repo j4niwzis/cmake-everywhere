@@ -5569,7 +5569,9 @@ endfunction()
 #
 # And a patch that does not apply is an error rather than a warning. A
 # library that moved on is a port that has to be looked at.
-function(cme_apply_patches port source)
+# The patches a port carries -- its own, and those of the features that are
+# on -- found beside whichever file named them, and each one's digest.
+function(cme_port_patches port out_files out_digests)
   cme_port_field(patches ${port} PATCHES)
   # And whatever a feature that is on carries. A patch is how a library is
   # told something its own build has no option for -- openal-soft has no
@@ -5582,6 +5584,8 @@ function(cme_apply_patches port source)
     list(APPEND patches ${extra})
   endforeach()
   if(NOT patches)
+    set(${out_files} "" PARENT_SCOPE)
+    set(${out_digests} "" PARENT_SCOPE)
     return()
   endif()
   # Beside whichever file named it. A port declared in two places -- an
@@ -5613,6 +5617,17 @@ function(cme_apply_patches port source)
     file(SHA256 "${file}" digest)
     list(APPEND files "${file}")
     list(APPEND digests "${digest}")
+  endforeach()
+  set(${out_files} "${files}" PARENT_SCOPE)
+  set(${out_digests} "${digests}" PARENT_SCOPE)
+endfunction()
+
+function(cme_apply_patches port source)
+  cme_port_patches(${port} files digests)
+  if(NOT files)
+    return()
+  endif()
+  foreach(digest IN LISTS digests)
     cme_lock_fact("${port}" "patch" "${digest}")
   endforeach()
   list(JOIN digests " " applied)
@@ -6131,6 +6146,19 @@ function(cme_build_port port package version exact)
         "is offline. Either say where its sources are -- a port with "
         "SOURCE_DIR, or an overlay that declares one -- or say where a "
         "cache of fetched sources is, with -DCME_SOURCES=/path.")
+    endif()
+    # Patched sources are kept apart from the same sources patched another
+    # way: CPM names a cached directory by what it was fetched with alone,
+    # and a port whose patches changed found the directory patched by the
+    # old ones -- which, shared between builds, is not patched again. The
+    # patches' digests go into the name.
+    cme_port_patches(${port} patch_files patch_digests)
+    if(patch_digests AND NOT source_dir)
+      set(origin ${arguments})
+      list(SORT origin)
+      string(SHA1 cache_key "${origin};${patch_digests}")
+      string(SUBSTRING "${cache_key}" 0 12 cache_key)
+      list(APPEND arguments CUSTOM_CACHE_KEY "p${cache_key}")
     endif()
     CPMAddPackage(${arguments})
   endif()
