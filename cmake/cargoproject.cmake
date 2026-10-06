@@ -57,7 +57,18 @@ function(cme_cargo_triple out)
       set(triple "armv7-linux-androideabi")
     endif()
   elseif(system STREQUAL "linux")
-    set(triple "${architecture}-unknown-linux-gnu")
+    # The C library the compiler targets: musl where its triple (or the
+    # library directory it was found to use) says so -- Alpine's
+    # aarch64-alpine-linux-musl -- and glibc otherwise. A Rust library
+    # built for the other one links against symbols the target has not got.
+    set(libc "gnu")
+    foreach(said IN ITEMS "${CMAKE_C_COMPILER_TARGET}" "${CMAKE_CXX_COMPILER_TARGET}"
+                          "${CMAKE_LIBRARY_ARCHITECTURE}")
+      if(said MATCHES "musl")
+        set(libc "musl")
+      endif()
+    endforeach()
+    set(triple "${architecture}-unknown-linux-${libc}")
   elseif(system STREQUAL "darwin")
     set(triple "${architecture}-apple-darwin")
   elseif(system STREQUAL "windows")
@@ -143,6 +154,21 @@ function(cme_cargo_compiler_env out)
   endif()
   string(STRIP "${CMAKE_C_FLAGS}" cflags)
   string(STRIP "${CMAKE_CXX_FLAGS}" cxxflags)
+  # Cross-compiling: the target and the sysroot CMake hands its compilers
+  # apart from the flags, said in them -- else cc compiles a crate's C++
+  # against the host's headers.
+  if(CMAKE_C_COMPILER_TARGET)
+    string(APPEND cflags " --target=${CMAKE_C_COMPILER_TARGET}")
+  endif()
+  if(CMAKE_CXX_COMPILER_TARGET)
+    string(APPEND cxxflags " --target=${CMAKE_CXX_COMPILER_TARGET}")
+  endif()
+  if(CMAKE_SYSROOT)
+    string(APPEND cflags " --sysroot=${CMAKE_SYSROOT}")
+    string(APPEND cxxflags " --sysroot=${CMAKE_SYSROOT}")
+  endif()
+  string(STRIP "${cflags}" cflags)
+  string(STRIP "${cxxflags}" cxxflags)
   if(cflags)
     list(APPEND env "CFLAGS=${cflags}")
   endif()
