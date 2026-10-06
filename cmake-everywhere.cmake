@@ -30,6 +30,16 @@ include_guard(GLOBAL)
 
 set(CME_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "cmake-everywhere root")
 
+# A cross build's assembler: the C compiler's target where the toolchain
+# says none for ASM. CMake keeps a target for each language, and a toolchain
+# naming C's and C++'s only left the assembly a library brings (Boost.Context's
+# for aarch64) to clang with no target -- the build machine's assembler.
+foreach(cme_asm IN ITEMS ASM ASM-ATT)
+  if(CMAKE_C_COMPILER_TARGET AND NOT CMAKE_${cme_asm}_COMPILER_TARGET)
+    set(CMAKE_${cme_asm}_COMPILER_TARGET "${CMAKE_C_COMPILER_TARGET}")
+  endif()
+endforeach()
+
 # Fetched sources land in the build directory, the way anything a build
 # fetches does, unless somebody asks for them to be kept outside it. Kept,
 # a second build directory does not fetch Skia's 65 MiB again and deleting
