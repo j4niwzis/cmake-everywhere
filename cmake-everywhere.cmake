@@ -6880,6 +6880,38 @@ is being built at" FORCE)
     # versions of one library in one build.
     set(try_system FALSE)
   endif()
+  # The same for a name for others -- Boost -- asked for with a member's
+  # feature no installed copy has, that comes only from a version on
+  # (Boost.PFR as a module, from 1.89): the machine is not asked for the
+  # name either. Its config, found, defines the members it has -- Boost's
+  # headers, its context -- before the version can turn it down, and those
+  # stayed beside the ones then built here: Boost::headers defined twice,
+  # an installed 1.84 and a built 1.92 in one build.
+  if(virtual AND try_system)
+    cme_port_field(cme_family_of_it ${port} FAMILY)
+    if(cme_family_of_it)
+      get_property(cme_all_ports GLOBAL PROPERTY CME_PORTS)
+      foreach(cme_other IN LISTS cme_all_ports)
+        cme_port_field(cme_other_family ${cme_other} FAMILY)
+        if(NOT cme_other_family STREQUAL cme_family_of_it)
+          continue()
+        endif()
+        get_property(cme_other_asked GLOBAL PROPERTY CME_REQUIRED_FEATURES_${cme_other})
+        foreach(cme_feature IN LISTS cme_other_asked)
+          cme_feature_field(cme_here ${cme_other} ${cme_feature} BUILT_HERE)
+          cme_feature_field(cme_since ${cme_other} ${cme_feature} SINCE)
+          if(cme_here AND cme_since AND try_system)
+            message(STATUS
+              "cmake-everywhere: ${cme_other}[${cme_feature}] is asked for, "
+              "which ${cme_family_of_it} has from ${cme_since} on and no "
+              "installed copy has, so all of ${cme_family_of_it} is built here "
+              "-- an installed ${package} is not asked")
+            set(try_system FALSE)
+          endif()
+        endforeach()
+      endforeach()
+    endif()
+  endif()
   if(try_system)
     # BYPASS_PROVIDER is what keeps this call from being routed straight back
     # here. It is the one place the keyword is allowed.
