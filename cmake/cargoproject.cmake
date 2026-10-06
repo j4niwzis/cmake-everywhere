@@ -239,25 +239,6 @@ function(cme_cargo_build port source)
 
   set(work "${CMAKE_BINARY_DIR}/_cme/${port}-cargo")
 
-  # Built for another machine: rustc has to have that machine's standard
-  # library -- a distribution's Rust has only its own. Said now, rather than
-  # as every crate failing to find core.
-  if(CMAKE_CROSSCOMPILING)
-    cme_cargo_triple(cross)
-    find_program(CME_RUSTC NAMES rustc)
-    if(cross AND CME_RUSTC)
-      execute_process(COMMAND "${CME_RUSTC}" --print sysroot
-                      OUTPUT_VARIABLE rust_sysroot OUTPUT_STRIP_TRAILING_WHITESPACE
-                      RESULT_VARIABLE asked_sysroot)
-      if(asked_sysroot EQUAL 0 AND NOT EXISTS "${rust_sysroot}/lib/rustlib/${cross}")
-        message(FATAL_ERROR
-          "cmake-everywhere: ${port} is built for ${cross}, and ${CME_RUSTC} "
-          "has no standard library for it (nothing in "
-          "${rust_sysroot}/lib/rustlib/${cross}). With rustup: rustup target "
-          "add ${cross} -- and its cargo and rustc first in PATH.")
-      endif()
-    endif()
-  endif()
   file(MAKE_DIRECTORY "${work}")
   cme_cargo_arguments(common ${port} "${source}")
   list(APPEND common --target-dir "${work}/target")
@@ -347,8 +328,19 @@ function(cme_cargo_build port source)
                 "import json,sys\nfor line in open(sys.argv[1], encoding='utf-8', errors='replace'):\n    try: m = json.loads(line)\n    except ValueError: continue\n    msg = m.get('message') or {}\n    if m.get('reason') == 'compiler-message' and msg.get('level') == 'error' and msg.get('rendered'): print(msg['rendered'])"
                 "${work}/build.json"
         OUTPUT_VARIABLE said)
+      # No standard library for the target (E0463: no core): a
+      # distribution's rustc has only its own machine's. Said, with what
+      # gives one -- unless cargo builds std itself (build-std), when the
+      # error is something else.
+      set(hint "")
+      if(said MATCHES "E0463" AND CME_CARGO_TRIPLE)
+        set(hint "\nrustc has no standard library for ${CME_CARGO_TRIPLE}: with rustup, "
+                 "rustup target add ${CME_CARGO_TRIPLE} (its cargo and rustc first in PATH); "
+                 "or let cargo build it, -Z build-std in its config.")
+        string(JOIN "" hint ${hint})
+      endif()
       message(FATAL_ERROR
-        "cmake-everywhere: cargo could not build ${port}\n${said}\n${trouble}")
+        "cmake-everywhere: cargo could not build ${port}\n${said}\n${trouble}${hint}")
     endif()
     execute_process(
       COMMAND "${Python3_EXECUTABLE}" "${CME_DIR}/cmake/cargo_import.py"
