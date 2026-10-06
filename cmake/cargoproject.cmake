@@ -403,11 +403,21 @@ function(cme_cargo_build port source)
     endif()
     cme_port_field(headers ${port} CARGO_INCLUDE)
     if(headers)
+      # Under the target's own directory where cargo was given --target (a
+      # cross build): target/<triple>/, as it writes everything then.
+      cme_port_field(headers_triple ${port} CARGO_TARGET)
+      if(NOT headers_triple)
+        cme_cargo_triple(headers_triple)
+      endif()
+      set(headers_dir "${work}/target/${headers}")
+      if(headers_triple)
+        set(headers_dir "${work}/target/${headers_triple}/${headers}")
+      endif()
       # Written by the crate's build script when it runs, which is after
       # this: there now, as an imported target's include directory has to be.
-      file(MAKE_DIRECTORY "${work}/target/${headers}")
+      file(MAKE_DIRECTORY "${headers_dir}")
       set_property(TARGET ${named} APPEND PROPERTY
-                   INTERFACE_INCLUDE_DIRECTORIES "${work}/target/${headers}")
+                   INTERFACE_INCLUDE_DIRECTORIES "${headers_dir}")
     endif()
     message(STATUS "cmake-everywhere: ${port} produces ${named}")
   endforeach()
