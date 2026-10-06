@@ -238,6 +238,26 @@ function(cme_cargo_build port source)
   endif()
 
   set(work "${CMAKE_BINARY_DIR}/_cme/${port}-cargo")
+
+  # Built for another machine: rustc has to have that machine's standard
+  # library -- a distribution's Rust has only its own. Said now, rather than
+  # as every crate failing to find core.
+  if(CMAKE_CROSSCOMPILING)
+    cme_cargo_triple(cross)
+    find_program(CME_RUSTC NAMES rustc)
+    if(cross AND CME_RUSTC)
+      execute_process(COMMAND "${CME_RUSTC}" --print sysroot
+                      OUTPUT_VARIABLE rust_sysroot OUTPUT_STRIP_TRAILING_WHITESPACE
+                      RESULT_VARIABLE asked_sysroot)
+      if(asked_sysroot EQUAL 0 AND NOT EXISTS "${rust_sysroot}/lib/rustlib/${cross}")
+        message(FATAL_ERROR
+          "cmake-everywhere: ${port} is built for ${cross}, and ${CME_RUSTC} "
+          "has no standard library for it (nothing in "
+          "${rust_sysroot}/lib/rustlib/${cross}). With rustup: rustup target "
+          "add ${cross} -- and its cargo and rustc first in PATH.")
+      endif()
+    endif()
+  endif()
   file(MAKE_DIRECTORY "${work}")
   cme_cargo_arguments(common ${port} "${source}")
   list(APPEND common --target-dir "${work}/target")
@@ -320,8 +340,15 @@ function(cme_cargo_build port source)
       ERROR_VARIABLE trouble
       RESULT_VARIABLE code)
     if(NOT code EQUAL 0)
+      # With --message-format json the compiler's own errors went into the
+      # build log, not to stderr: what it said of each, as it renders it.
+      execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c
+                "import json,sys\nfor line in open(sys.argv[1], encoding='utf-8', errors='replace'):\n    try: m = json.loads(line)\n    except ValueError: continue\n    msg = m.get('message') or {}\n    if m.get('reason') == 'compiler-message' and msg.get('level') == 'error' and msg.get('rendered'): print(msg['rendered'])"
+                "${work}/build.json"
+        OUTPUT_VARIABLE said)
       message(FATAL_ERROR
-        "cmake-everywhere: cargo could not build ${port}\n${trouble}")
+        "cmake-everywhere: cargo could not build ${port}\n${said}\n${trouble}")
     endif()
     execute_process(
       COMMAND "${Python3_EXECUTABLE}" "${CME_DIR}/cmake/cargo_import.py"
