@@ -6815,6 +6815,65 @@ function(cme_build_virtual port package)
   cme_note_decision("${port}" "as a name for" "${listed}")
 endfunction()
 
+# The version of a package installed here, as its CMake version file says --
+# <Name>ConfigVersion.cmake or <name>-config-version.cmake, in the places
+# find_package looks for a config. Read alone, that file sets PACKAGE_VERSION
+# and defines nothing: no target, nothing to stay behind if the copy is then
+# turned down, which is what reading the config itself would leave. The
+# highest, where there are several; empty where there is none.
+function(cme_installed_config_version out name)
+  set(${out} "" PARENT_SCOPE)
+  string(TOLOWER "${name}" lower)
+  set(prefixes ${CMAKE_PREFIX_PATH} ${CMAKE_SYSTEM_PREFIX_PATH})
+  if(DEFINED ENV{CMAKE_PREFIX_PATH})
+    file(TO_CMAKE_PATH "$ENV{CMAKE_PREFIX_PATH}" from_environment)
+    list(APPEND prefixes ${from_environment})
+  endif()
+  if(CMAKE_SYSROOT)
+    set(rooted "")
+    foreach(prefix IN LISTS prefixes)
+      list(APPEND rooted "${CMAKE_SYSROOT}${prefix}")
+    endforeach()
+    set(prefixes ${rooted})
+  endif()
+  set(files "")
+  foreach(prefix IN LISTS prefixes)
+    if(NOT prefix OR NOT IS_DIRECTORY "${prefix}")
+      continue()
+    endif()
+    foreach(leaf "${name}ConfigVersion.cmake" "${lower}-config-version.cmake")
+      file(GLOB found
+        "${prefix}/lib/cmake/${name}*/${leaf}" "${prefix}/lib64/cmake/${name}*/${leaf}"
+        "${prefix}/lib/*/cmake/${name}*/${leaf}" "${prefix}/share/cmake/${name}*/${leaf}"
+        "${prefix}/lib/cmake/${lower}*/${leaf}" "${prefix}/lib64/cmake/${lower}*/${leaf}"
+        "${prefix}/lib/*/cmake/${lower}*/${leaf}" "${prefix}/share/${lower}*/cmake/${leaf}")
+      list(APPEND files ${found})
+    endforeach()
+  endforeach()
+  set(best "")
+  foreach(file IN LISTS files)
+    cme_read_config_version(one "${file}")
+    if(one AND (NOT best OR one VERSION_GREATER best))
+      set(best "${one}")
+    endif()
+  endforeach()
+  set(${out} "${best}" PARENT_SCOPE)
+endfunction()
+
+# One version file, read in a scope of its own: what it sets stays here.
+function(cme_read_config_version out file)
+  set(PACKAGE_FIND_NAME "")
+  set(PACKAGE_FIND_VERSION "0")
+  set(PACKAGE_FIND_VERSION_MAJOR 0)
+  set(PACKAGE_FIND_VERSION_MINOR 0)
+  set(PACKAGE_FIND_VERSION_PATCH 0)
+  set(PACKAGE_FIND_VERSION_TWEAK 0)
+  set(PACKAGE_FIND_VERSION_COUNT 1)
+  set(PACKAGE_VERSION "")
+  include("${file}")
+  set(${out} "${PACKAGE_VERSION}" PARENT_SCOPE)
+endfunction()
+
 function(cme_resolve package port version exact features out_answer)
   # A floor learned on an earlier run, so this one does not repeat it.
   if(CME_REQUIRE_${package} AND
@@ -6892,13 +6951,28 @@ is being built at" FORCE)
   endif()
   # The same for a name for others -- Boost -- asked for with a member's
   # feature no installed copy has, that comes only from a version on
-  # (Boost.PFR as a module, from 1.89): the machine is not asked for the
-  # name either. Its config, found, defines the members it has -- Boost's
-  # headers, its context -- before the version can turn it down, and those
-  # stayed beside the ones then built here: Boost::headers defined twice,
-  # an installed 1.84 and a built 1.92 in one build.
+  # (Boost.PFR as a module, from 1.89), where the copy installed here is
+  # older than that: the machine is not asked for the name either. Its
+  # config, found, defines the members it has -- Boost's headers, its
+  # context -- before the version can turn it down, and those stayed beside
+  # the ones then built here: Boost::headers defined twice, an installed 1.84
+  # and a built 1.92 in one build.
+  #
+  # Which version is installed is read from its version file, which defines
+  # nothing. A copy from that version on is asked, as any is: the name is
+  # the system's, and the member alone is built, at the version installed
+  # (cme_system_header_members). Refusing every copy here built all of
+  # Boost beside a Boost 1.90 that had everything but the one module.
   if(virtual AND try_system)
     cme_port_field(cme_family_of_it ${port} FAMILY)
+    cme_port_field(cme_as_installed ${port} SYSTEM_PACKAGE)
+    if(NOT cme_as_installed)
+      set(cme_as_installed "${package}")
+    endif()
+    set(cme_installed_version "")
+    if(cme_family_of_it)
+      cme_installed_config_version(cme_installed_version "${cme_as_installed}")
+    endif()
     if(cme_family_of_it)
       get_property(cme_all_ports GLOBAL PROPERTY CME_PORTS)
       foreach(cme_other IN LISTS cme_all_ports)
@@ -6910,11 +6984,18 @@ is being built at" FORCE)
         foreach(cme_feature IN LISTS cme_other_asked)
           cme_feature_field(cme_here ${cme_other} ${cme_feature} BUILT_HERE)
           cme_feature_field(cme_since ${cme_other} ${cme_feature} SINCE)
-          if(cme_here AND cme_since AND try_system)
+          if(cme_here AND cme_since AND try_system AND
+             (NOT cme_installed_version OR
+              cme_installed_version VERSION_LESS cme_since))
+            if(cme_installed_version)
+              set(cme_seen "the one installed here is ${cme_installed_version}")
+            else()
+              set(cme_seen "no installed ${cme_as_installed} says its version")
+            endif()
             message(STATUS
               "cmake-everywhere: ${cme_other}[${cme_feature}] is asked for, "
-              "which ${cme_family_of_it} has from ${cme_since} on and no "
-              "installed copy has, so all of ${cme_family_of_it} is built here "
+              "which ${cme_family_of_it} has from ${cme_since} on, and "
+              "${cme_seen}, so all of ${cme_family_of_it} is built here "
               "-- an installed ${package} is not asked")
             set(try_system FALSE)
           endif()
@@ -7026,12 +7107,17 @@ is being built at" FORCE)
           set_property(GLOBAL PROPERTY CME_SYSTEM_SET_${package} "${cme_handed}")
         endif()
         cme_alias_system_targets("${port}")
+        # Settled before the members built here are asked for: one of them
+        # -- Boost.PFR as a module -- is built at the version of the family
+        # the system has, and until the family is settled there is no such
+        # version to build it at, and it was built at the port's own: a 1.92
+        # PFR beside an installed 1.90.
+        cme_family_settled("${port}" "${package}" "system")
         if(virtual)
           cme_system_header_members("${port}" "${package}" "${needed}")
         endif()
         cme_check_promised("${port}" "${package}" "by the system")
         cme_note_decision("${package}" "system" "${${package}_VERSION}")
-        cme_family_settled("${port}" "${package}" "system")
         set(${out_answer} "system" PARENT_SCOPE)
         return()
       endif()
