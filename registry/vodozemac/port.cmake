@@ -26,8 +26,15 @@ cme_declare_port(
 # Maybe the C++ side reads. Done here the same way, by the same script.
 function(cme_prepare_vodozemac source)
   find_program(CME_PERL NAMES perl REQUIRED)
+  # In one order every time. The script writes the Maybe types it found in
+  # the order of a Perl hash, and Perl orders a hash differently in every
+  # run: lib.rs came out different at each configure, cargo built the crate
+  # again, cxx wrote lib.rs.h again in that order, and everything including
+  # it -- through the modules made of it, everything importing those --
+  # was compiled again. A fixed seed and no perturbing is one order.
   execute_process(
-    COMMAND "${CME_PERL}" ./inject-maybe
+    COMMAND "${CMAKE_COMMAND}" -E env PERL_HASH_SEED=0 PERL_PERTURB_KEYS=0
+            "${CME_PERL}" ./inject-maybe
     INPUT_FILE "${source}/cpp/src/lib.rs.in"
     OUTPUT_FILE "${source}/cpp/src/lib.rs.made"
     ERROR_VARIABLE said
