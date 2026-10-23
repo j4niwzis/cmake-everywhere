@@ -3900,7 +3900,21 @@ function(cme_finish_exports)
       get_property(installed GLOBAL PROPERTY CME_PORT_${name}_VERSION_INSTALLED)
       if(own)
         # The library said what it is, in its own tree: that, and not what
-        # this project pinned of it, goes beside the project.
+        # this project pinned of it, goes beside the project -- but at the
+        # revision this build had of it. A library names the branch it lives
+        # on (main), and the next build that reads this fetches what it
+        # names: whatever main had become by then, a library the copy beside
+        # it was never built with. Where the revision built is known, that is
+        # what is said.
+        get_property(built_revision GLOBAL PROPERTY CME_BUILT_REVISION_${name})
+        if(built_revision)
+          cme_quote(value "${built_revision}")
+          if(own MATCHES "\n  GIT_TAG \"[^\"]*\"\n")
+            string(REGEX REPLACE "\n  GIT_TAG \"[^\"]*\"\n" "\n  GIT_TAG \"${value}\"\n" own "${own}")
+          else()
+            string(REGEX REPLACE "\\)\n$" "  GIT_TAG \"${value}\"\n)\n" own "${own}")
+          endif()
+        endif()
         file(WRITE "${exported}" "${own}")
         install(FILES "${exported}" DESTINATION "${CME_EXPORT_DESTINATION}/${name}")
         continue()
