@@ -106,7 +106,11 @@ def main():
         for dep in dict.fromkeys(deps):
             command += ["--dep", dep]
         invocations.append({
-            "program": arguments.python, "args": command, "env": passed(env),
+            # CARGO_TARGET_DIR: where a script that writes beside the crates
+            # looks first (cxx-build's <target>/cxxbridge), and a changed
+            # command, so a run from before this is made again.
+            "program": arguments.python, "args": command,
+            "env": {**passed(env), "CARGO_TARGET_DIR": real},
             "cwd": package_dir or run["cwd"],
             "outputs": [output_of(run), output_of(run) + ".args"],
             "inputs": [script] + [dep.partition("=")[2] for dep in deps],
