@@ -258,37 +258,44 @@ function(cme_cargo_build port source)
   cme_cargo_arguments(common ${port} "${source}")
   list(APPEND common --target-dir "${work}/target")
 
-  # Watch it build: rustc reached through the recorder, which compiles the
-  # host's units and writes the target's down. A program, since that is what
-  # RUSTC_WRAPPER names: the interpreter and the script, behind a line of
-  # shell (or of cmd on Windows).
+  # Watch it build, and build nothing: cargo in a scratch directory with
+  # rustc reached through the recorder, which writes each unit down and
+  # leaves empty files (a stand-in program for a build script) where its
+  # outputs go. A program, since that is what RUSTC_WRAPPER names: the
+  # interpreter and the script behind a line of shell -- so not on Windows,
+  # where cargo builds the crate itself (below).
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   cme_cargo_compiler_env(compilers)
-  if(CMAKE_HOST_WIN32)
-    set(recorder "${work}/record.bat")
-    file(WRITE "${recorder}" "@\"${Python3_EXECUTABLE}\" \"${CME_DIR}/cmake/cargo_record.py\" %*\r\n")
-  else()
+  set(asked 1)
+  set(refused "a build script's stand-in is a shell script, and this is Windows")
+  if(NOT CMAKE_HOST_WIN32)
     set(recorder "${work}/record")
     file(WRITE "${work}/record.in"
          "#!/bin/sh\nexec \"${Python3_EXECUTABLE}\" \"${CME_DIR}/cmake/cargo_record.py\" \"$@\"\n")
     file(COPY_FILE "${work}/record.in" "${recorder}")
     file(CHMOD "${recorder}" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
          GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+    # Afresh every time: cargo there must call rustc for every unit, and it
+    # does not for what it thinks made.
+    file(REMOVE_RECURSE "${work}/scratch" "${work}/units")
+    set(watched ${common})
+    list(TRANSFORM watched REPLACE "^${work}/target$" "${work}/scratch")
+    execute_process(
+      COMMAND "${CMAKE_COMMAND}" -E env ${compilers} "RUSTC_WRAPPER=${recorder}"
+              "CME_CARGO_UNITS=${work}/units"
+              "${CME_CARGO}" build ${watched} --message-format json
+      WORKING_DIRECTORY "${source}"
+      OUTPUT_FILE "${work}/watched.json"
+      ERROR_VARIABLE refused
+      RESULT_VARIABLE asked)
   endif()
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E env ${compilers} "RUSTC_WRAPPER=${recorder}"
-            "CME_CARGO_UNITS=${work}/units"
-            "${CME_CARGO}" build ${common} --message-format json
-    WORKING_DIRECTORY "${source}"
-    OUTPUT_FILE "${work}/watched.json"
-    ERROR_VARIABLE refused
-    RESULT_VARIABLE asked)
   if(asked EQUAL 0)
     execute_process(
       COMMAND "${Python3_EXECUTABLE}" "${CME_DIR}/cmake/cargo_units.py"
-              --units "${work}/units" --build-log "${work}/watched.json"
-              --source "${source}" --plan "${work}/plan.json"
-              --depends "${work}/depends.cmake"
+              --units "${work}/units" --scratch "${work}/scratch"
+              --target-dir "${work}/target"
+              --python "${Python3_EXECUTABLE}" --runner "${CME_DIR}/cmake/cargo_run.py"
+              --native "${work}/native.rsp" --plan "${work}/plan.json"
       RESULT_VARIABLE asked
       ERROR_VARIABLE refused)
   endif()
@@ -322,10 +329,12 @@ function(cme_cargo_build port source)
                     ERROR_VARIABLE conversion_trouble)
     if(converted EQUAL 0)
       set(described TRUE)
-      # A local build script or procedural macro, built while configuring:
-      # changed, it is built again by configuring again.
-      include("${work}/depends.cmake")
-      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CME_CARGO_CONFIGURE_DEPENDS})
+      # What cargo resolved comes from these: changed, it is asked again.
+      foreach(manifest IN ITEMS Cargo.toml Cargo.lock)
+        if(EXISTS "${source}/${manifest}")
+          set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}/${manifest}")
+        endif()
+      endforeach()
     else()
       message(STATUS
         "cmake-everywhere: ${port} described a build this cannot read "
@@ -347,9 +356,13 @@ function(cme_cargo_build port source)
     # library built here waits for the commands that produce it.
     add_custom_target(${port}-rust DEPENDS ${CME_CARGO_OUTPUTS})
     set(libraries ${CME_CARGO_LIBRARIES})
-    # And what its crates link from the system (a -sys crate's library).
-    list(APPEND needed ${CME_CARGO_NATIVE_LIBRARIES})
-    set(native_directories ${CME_CARGO_NATIVE_DIRECTORIES})
+    # And what its crates link from the system (a -sys crate's library),
+    # known once its build scripts ran: a response file the build writes,
+    # empty until then.
+    if(NOT EXISTS "${work}/native.rsp")
+      file(WRITE "${work}/native.rsp" "")
+    endif()
+    set(native_options "@${work}/native.rsp")
   else()
     # Cargo drives. What it built is read from its own report rather than
     # looked for in likely places.
@@ -436,9 +449,9 @@ function(cme_cargo_build port source)
       set_property(TARGET ${named} APPEND PROPERTY
                    INTERFACE_LINK_LIBRARIES ${needed})
     endif()
-    if(native_directories)
+    if(native_options)
       set_property(TARGET ${named} APPEND PROPERTY
-                   INTERFACE_LINK_DIRECTORIES ${native_directories})
+                   INTERFACE_LINK_OPTIONS "${native_options}")
     endif()
     cme_port_field(headers ${port} CARGO_INCLUDE)
     if(headers)

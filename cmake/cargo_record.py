@@ -1,37 +1,28 @@
-"""What cargo runs rustc with, written down as it happens.
+"""What cargo runs, written down while configuring -- and nothing built.
 
 Cargo used to answer "what would you run" without running it: `cargo build
 --build-plan`. Current cargo has no such flag, so the question is asked the
-other way: cargo builds, and rustc is reached through this script, set as
-RUSTC_WRAPPER for that one build. Each call that compiles a crate is
-recorded -- the compiler, its arguments, its environment, where it ran and
-the files it makes -- in a file of its own, one per unit.
+other way: cargo is let loose on a scratch directory with rustc reached
+through this script (RUSTC_WRAPPER), and every call that compiles a unit is
+written down -- the compiler, its arguments, its environment, where it ran,
+the files it makes -- and not compiled. Empty files stand where its outputs
+go, so cargo goes on as if they had been made.
 
-Two kinds of unit come through, and they are told apart by --target, which
-cmake-everywhere always gives cargo:
+A build script is the one thing cargo runs itself, and what it prints
+decides the arguments of the crate it belongs to. So the "binary" that
+stands for a build script is this script again (a line of shell calling
+it, with --ran): run by cargo, it writes down how it was run -- its
+environment says everything cargo told it -- prints nothing, and succeeds.
+What the real one prints is applied when the crate is compiled, by
+cargo_run.py, in the build, where the script is compiled and run as well.
 
-- The host's: build scripts, procedural macros and what they use. Cargo runs
-  build scripts itself and needs their output to go on, so these are
-  compiled now, for real. They are recorded only so that a change to a local
-  one asks for a configure again.
-- The target's: everything that ends up in the library. These are recorded
-  and not compiled -- empty files stand where their outputs go, so cargo
-  goes on as if they had been made -- and this build compiles them later,
-  each a command in its graph. A file already there (compiled by an earlier
-  build) is left as it is.
-
-Anything else goes straight to rustc: `rustc -vV`, cargo asking what a
-target's files are called (`--crate-name ___`), and a build script trying
-the compiler out (proc-macro2's, autocfg's: RUSTC_WRAPPER is theirs to use
-too). That last one must be compiled for real -- an empty file standing for
-it tells the script the compiler can do what it cannot -- and it is told
-apart from a unit by what cargo gives every unit and a build script never
-does: -C metadata, and an environment with no HOST and TARGET in it (those
-are said to build scripts, not to the compiler).
+Anything that does not compile a unit goes straight to rustc: `rustc -vV`,
+cargo asking what a target's files are called (`--crate-name ___`).
 """
 
 import json
 import os
+import stat
 import subprocess
 import sys
 
@@ -60,8 +51,18 @@ def codegen(args, key):
     return None
 
 
+def host_platform():
+    """The machine's own platform, in the words a target triple uses."""
+    if sys.platform == "darwin":
+        return "apple-darwin"
+    if sys.platform == "win32":
+        return "windows-msvc"
+    return "linux-gnu"
+
+
 def produces(args, target):
-    """The files rustc makes for these arguments, by rustc's own naming."""
+    """The files rustc makes for these arguments, by rustc's own naming,
+    and which of them is the program (a build script's)."""
     out_dir = (option(args, "--out-dir") or ["."])[-1]
     crate = option(args, "--crate-name")[-1]
     extra = codegen(args, "extra-filename") or ""
@@ -94,51 +95,76 @@ def produces(args, target):
             return f"{stem}.wasm"
         return stem
 
-    names = []
+    names, program = [], None
     for emit in emits:
         if emit == "dep-info":
             names.append(f"{stem}.d")
         elif emit == "metadata":
             names.append(f"lib{stem}.rmeta")
         elif emit == "link":
-            names += [linked(kind) for kind in kinds]
-    return [os.path.abspath(os.path.join(out_dir, name)) for name in dict.fromkeys(names)]
+            for kind in kinds:
+                names.append(linked(kind))
+                if kind == "bin":
+                    program = os.path.abspath(os.path.join(out_dir, linked(kind)))
+    outputs = [os.path.abspath(os.path.join(out_dir, name)) for name in dict.fromkeys(names)]
+    return outputs, program
+
+
+def save(units, name, record):
+    os.makedirs(units, exist_ok=True)
+    # Written whole under another name and moved: cargo runs many of these
+    # at once, and a reader never sees half of one.
+    part = os.path.join(units, name + ".part")
+    with open(part, "w", encoding="utf-8") as file:
+        json.dump(record, file)
+    os.replace(part, os.path.join(units, name))
+
+
+def ran(program, args):
+    """A build script, as cargo ran it: written down, nothing printed."""
+    units = os.environ["CME_CARGO_UNITS"]
+    out_dir = os.environ.get("OUT_DIR", "")
+    save(units, "run-" + os.path.basename(os.path.dirname(out_dir)) + ".json", {
+        "kind": "run",
+        "program": os.path.abspath(program),
+        "args": args,
+        "env": dict(os.environ),
+        "cwd": os.getcwd(),
+    })
+    return 0
 
 
 def main():
+    if len(sys.argv) > 2 and sys.argv[1] == "--ran":
+        return ran(sys.argv[2], sys.argv[3:])
     rustc, args = sys.argv[1], sys.argv[2:]
     units = os.environ.get("CME_CARGO_UNITS")
     crate = option(args, "--crate-name")
-    probing = codegen(args, "metadata") is None or ("HOST" in os.environ and "TARGET" in os.environ)
-    if not units or not crate or crate[-1] == "___" or probing:
-        os.execv(rustc, [rustc] + args) if os.path.sep in rustc else os.execvp(rustc, [rustc] + args)
+    if not units or not crate or crate[-1] == "___" or codegen(args, "metadata") is None:
+        if os.path.sep in rustc:
+            os.execv(rustc, [rustc] + args)
+        os.execvp(rustc, [rustc] + args)
     targets = option(args, "--target")
-    host = not targets
-    record = {
+    outputs, program = produces(args, targets[-1] if targets else host_platform())
+    for path in outputs:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as file:
+            if path == program:
+                file.write(f'#!/bin/sh\nexec "{sys.executable}" "{os.path.abspath(__file__)}" --ran "$0" "$@"\n')
+        if path == program:
+            os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    extra = codegen(args, "extra-filename") or ""
+    save(units, f"{crate[-1]}{extra}-{'host' if not targets else 'target'}.json", {
+        "kind": "rustc",
         "program": rustc,
         "args": args,
         "env": dict(os.environ),
         "cwd": os.getcwd(),
-        "host": host,
+        "host": not targets,
         "crate_types": option(args, "--crate-type"),
-        "outputs": produces(args, targets[-1] if targets else sys.platform),
-    }
-    if host:
-        code = subprocess.call([rustc] + args)
-        if code != 0:
-            return code
-    else:
-        for path in record["outputs"]:
-            if not os.path.exists(path):
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                open(path, "wb").close()
-    os.makedirs(units, exist_ok=True)
-    name = f"{crate[-1]}{codegen(args, 'extra-filename') or ''}-{'host' if host else 'target'}.json"
-    # Written whole under another name and moved: cargo runs many of these
-    # at once, and a reader never sees half of one.
-    with open(os.path.join(units, name + ".part"), "w", encoding="utf-8") as file:
-        json.dump(record, file)
-    os.replace(os.path.join(units, name + ".part"), os.path.join(units, name))
+        "outputs": outputs,
+        "program_output": program,
+    })
     return 0
 
 

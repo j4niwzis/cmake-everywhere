@@ -1,17 +1,18 @@
 """What cargo_record.py wrote down, as the plan cargo_plan.py reads.
 
-The records are one file per unit and outlive a configure: cargo compiles
-only what is out of date, so a configure after the first sees calls for the
-units that changed and none for the rest. Which units this build is made of
-is what cargo said this time (`--message-format json`, every unit, fresh or
-not), and a record is kept when one of its files is among them -- the file
-itself, or the copy cargo makes of it under the profile directory, named
-without the hash.
+Cargo ran in a scratch directory, so that configuring touches nothing the
+build made; every path in what it said is moved to the real one here. Then
+three kinds of command:
 
-The target's units become the plan, in an order where each comes after the
-units whose files its arguments name (--extern name=path). The host's are
-not in it -- they were built while configuring -- but the sources of theirs
-that live in the project ask for a configure again when they change.
+- each crate: rustc itself, as cargo called it, and -- where the crate has
+  a build script -- `@` the arguments file its run wrote;
+- each build script's run (cargo_run.py run), after the script is compiled
+  and after the runs of the packages it gets DEP_ variables from;
+- for each static library a program links, what it needs from the system
+  (cargo_run.py native), from rustc's own list.
+
+Each comes after the commands that make the files it names: the --extern
+paths, the script it runs, the arguments file it reads.
 """
 
 import argparse
@@ -20,111 +21,141 @@ import os
 import sys
 
 
-def reported(build_log):
-    """Every file cargo says this build is made of."""
-    files = set()
-    with open(build_log, encoding="utf-8", errors="replace") as stream:
-        for line in stream:
-            line = line.strip()
-            if not line.startswith("{"):
-                continue
-            try:
-                message = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if message.get("reason") == "compiler-artifact":
-                files.update(os.path.abspath(name) for name in message.get("filenames", []))
-    return files
+def moved(value, scratch, real):
+    if isinstance(value, str):
+        return value.replace(scratch, real)
+    if isinstance(value, list):
+        return [moved(one, scratch, real) for one in value]
+    if isinstance(value, dict):
+        return {key: moved(one, scratch, real) for key, one in value.items()}
+    return value
 
 
-def uplifted(path, extra):
-    """Where cargo copies a unit's file: up from deps/, without its hash."""
-    name = os.path.basename(path)
-    if extra:
-        name = name.replace(extra, "", 1)
-    return os.path.join(os.path.dirname(os.path.dirname(path)), name)
-
-
-def extra_of(args):
-    for at, arg in enumerate(args):
-        said = args[at + 1] if arg == "-C" and at + 1 < len(args) else arg[2:] if arg.startswith("-C") else ""
-        if said.startswith("extra-filename="):
-            return said.split("=", 1)[1]
-    return ""
-
-
-def native(records):
-    """What the target's crates link from the system, said to rustc as -l.
-
-    A build script's cargo:rustc-link-lib reaches the compiler as -l on its
-    crate's command line, and a static library made of the crate does not
-    carry it: rustc bundles the static ones (-l static=) and leaves the rest
-    to whoever links the result. So the rest is read here, in order, with
-    the directories (-L native=, -L all=) they are looked for in.
-    """
-    libraries, directories = [], []
-    for one in records:
-        args = one["args"]
-        for at, arg in enumerate(args):
-            if arg in ("-l", "-L") and at + 1 < len(args):
-                flag, said = arg, args[at + 1]
-            elif arg.startswith(("-l", "-L")) and len(arg) > 2:
-                flag, said = arg[:2], arg[2:]
-            else:
-                continue
-            kind, _, name = said.rpartition("=")
-            kind = kind.split(":", 1)[0]
-            if flag == "-L":
-                if kind in ("", "native", "all", "framework"):
-                    directories.append(name)
-            elif kind in ("", "dylib"):
-                libraries.append(name.split(":", 1)[-1])
-            elif kind == "framework":
-                libraries.append(f"$<LINK_LIBRARY:FRAMEWORK,{name}>")
-    return list(dict.fromkeys(libraries)), list(dict.fromkeys(directories))
-
-
-# Cargo's own conversation with the compiler, and the wrapper's: nothing a
+# Cargo's conversation with the compiler and the recorder's own: nothing a
 # command run later needs, and the jobserver's descriptors are long closed.
 NOT_PASSED = {"RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "CME_CARGO_UNITS",
               "CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS"}
 
 
+def passed(env):
+    return {name: value for name, value in env.items()
+            if name not in NOT_PASSED and os.environ.get(name) != value}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--units", required=True, help="where the records are")
-    parser.add_argument("--build-log", required=True)
-    parser.add_argument("--source", required=True, help="the crate's checkout")
-    parser.add_argument("--plan", required=True, help="the plan to write")
-    parser.add_argument("--depends", required=True,
-                        help="the CMake file naming what asks for a configure")
+    parser.add_argument("--units", required=True)
+    parser.add_argument("--scratch", required=True, help="where cargo ran")
+    parser.add_argument("--target-dir", required=True, help="where the build puts it")
+    parser.add_argument("--python", required=True)
+    parser.add_argument("--runner", required=True, help="cargo_run.py")
+    parser.add_argument("--native", required=True, help="the response file to write")
+    parser.add_argument("--plan", required=True)
     arguments = parser.parse_args()
 
-    files = reported(arguments.build_log)
+    scratch = os.path.abspath(arguments.scratch)
+    real = os.path.abspath(arguments.target_dir)
     records = []
     for name in sorted(os.listdir(arguments.units)):
-        if not name.endswith(".json"):
-            continue
-        with open(os.path.join(arguments.units, name), encoding="utf-8") as file:
-            one = json.load(file)
-        extra = extra_of(one["args"])
-        if any(out in files or uplifted(out, extra) in files for out in one["outputs"]):
-            records.append(one)
-    target = [one for one in records if not one["host"]]
-    if not target:
-        print("no unit for the target was recorded", file=sys.stderr)
+        if name.endswith(".json"):
+            with open(os.path.join(arguments.units, name), encoding="utf-8") as file:
+                records.append(moved(json.load(file), scratch, real))
+    compiles = [one for one in records if one["kind"] == "rustc"]
+    runs = [one for one in records if one["kind"] == "run"]
+    if not compiles:
+        print("cargo compiled nothing", file=sys.stderr)
         return 1
 
-    # Which unit makes which file, and so which units each one waits for.
-    maker = {out: at for at, one in enumerate(target) for out in one["outputs"]}
+    def output_of(run):
+        return os.path.join(os.path.dirname(run["env"]["OUT_DIR"]), "cme-output")
 
-    def waits_for(one):
+    # Which compile made a script: the one whose program sits where cargo
+    # ran it from (it runs the copy beside what rustc wrote).
+    script_of = {}
+    for one in compiles:
+        if one.get("program_output"):
+            script_of[os.path.dirname(one["program_output"])] = one["program_output"]
+    run_of_out_dir = {run["env"]["OUT_DIR"]: run for run in runs}
+
+    # The packages a run's package depends on, by its crate's --extern.
+    maker = {out: one for one in compiles for out in one["outputs"]}
+
+    def externs(one):
         named = {arg.split("=", 1)[1] if "=" in arg else arg for arg in one["args"]}
-        return sorted({maker[path] for path in named if path in maker})
+        return [maker[path] for path in named if path in maker]
 
-    waits = [waits_for(one) for one in target]
+    invocations = []
+    for run in runs:
+        env = run["env"]
+        script = script_of.get(os.path.dirname(run["program"]))
+        if not script:
+            print(f"no compiled script for the run in {env.get('OUT_DIR')}", file=sys.stderr)
+            return 1
+        package_dir = env.get("CARGO_MANIFEST_DIR")
+        deps = []
+        for crate in compiles:
+            if crate["env"].get("CARGO_MANIFEST_DIR") != package_dir or crate.get("program_output"):
+                continue
+            if crate["env"].get("OUT_DIR") != env["OUT_DIR"]:
+                continue
+            for dep in externs(crate):
+                other = run_of_out_dir.get(dep["env"].get("OUT_DIR"))
+                if other and other["env"].get("CARGO_MANIFEST_LINKS"):
+                    deps.append(f"{other['env']['CARGO_MANIFEST_LINKS']}={output_of(other)}")
+        command = [arguments.runner, "run", "--script", script, "--output", output_of(run)]
+        for dep in dict.fromkeys(deps):
+            command += ["--dep", dep]
+        invocations.append({
+            "program": arguments.python, "args": command, "env": passed(env),
+            "cwd": package_dir or run["cwd"],
+            "outputs": [output_of(run), output_of(run) + ".args"],
+            "inputs": [script] + [dep.partition("=")[2] for dep in deps],
+            "depfile": output_of(run) + ".d",
+            "package_name": env.get("CARGO_PKG_NAME", ""),
+            "package_version": env.get("CARGO_PKG_VERSION", ""),
+            "compile_mode": "run-custom-build",
+        })
+
+    libraries, native = [], []
+    for one in compiles:
+        args = list(one["args"])
+        inputs = [path for path in {a.split("=", 1)[1] if "=" in a else a for a in args}
+                  if path in maker and maker[path] is not one]
+        run = run_of_out_dir.get(one["env"].get("OUT_DIR"))
+        if run and not one.get("program_output"):
+            args.append("@" + output_of(run) + ".args")
+            inputs.append(output_of(run) + ".args")
+        static = [out for out in one["outputs"]
+                  if "staticlib" in one["crate_types"] and out.endswith((".a", ".lib"))]
+        if static:
+            listed = arguments.native + ".txt"
+            args.append(f"--print=native-static-libs={listed}")
+            libraries += static
+            native.append((static, listed))
+        invocations.append({
+            "program": one["program"], "args": args, "env": passed(one["env"]),
+            "cwd": one["cwd"], "outputs": one["outputs"], "inputs": sorted(inputs),
+            "package_name": one["env"].get("CARGO_PKG_NAME", ""),
+            "package_version": one["env"].get("CARGO_PKG_VERSION", ""),
+            "compile_mode": "build", "libraries": static,
+        })
+    for static, listed in native:
+        command = [arguments.runner, "native", "--listed", listed, "--rsp", arguments.native]
+        for run in runs:
+            command += ["--search", output_of(run)]
+        invocations.append({
+            "program": arguments.python, "args": command, "env": {}, "cwd": real,
+            "outputs": [arguments.native], "inputs": static + [output_of(run) for run in runs],
+            "package_name": "native libraries", "package_version": "",
+            "compile_mode": "link",
+        })
+
+    # In an order where each comes after what makes its inputs.
+    producer = {out: at for at, one in enumerate(invocations) for out in one["outputs"]}
+    waits = [sorted({producer[path] for path in one.pop("inputs") if path in producer} - {at})
+             for at, one in enumerate(invocations)]
     order, placed = [], {}
-    pending = list(range(len(target)))
+    pending = list(range(len(invocations)))
     while pending:
         ready = [at for at in pending if all(dep in placed for dep in waits[at])]
         if not ready:
@@ -134,60 +165,14 @@ def main():
             placed[at] = len(order)
             order.append(at)
         pending = [at for at in pending if at not in placed]
-
-    invocations = []
+    plan = []
     for at in order:
-        one = target[at]
-        env = {name: value for name, value in one["env"].items()
-               if name not in NOT_PASSED and os.environ.get(name) != value}
-        invocations.append({
-            "program": one["program"],
-            "args": one["args"],
-            "env": env,
-            "cwd": one["cwd"],
-            "outputs": one["outputs"],
-            "links": {},
-            "deps": [placed[dep] for dep in waits[at]],
-            "package_name": one["env"].get("CARGO_PKG_NAME", ""),
-            "package_version": one["env"].get("CARGO_PKG_VERSION", ""),
-            "compile_mode": "build",
-            # Linked from where rustc writes it, not from cargo's copy: that
-            # copy is a hard link to what stood there while configuring.
-            "libraries": [out for out in one["outputs"]
-                          if "staticlib" in one["crate_types"] and out.endswith((".a", ".lib"))],
-        })
+        one = invocations[at]
+        one["deps"] = [placed[dep] for dep in waits[at]]
+        one["links"] = {}
+        plan.append(one)
     with open(arguments.plan, "w", encoding="utf-8") as file:
-        json.dump({"invocations": invocations}, file)
-
-    source = os.path.realpath(arguments.source)
-    local = set()
-    for one in records:
-        if not one["host"]:
-            continue
-        for out in one["outputs"]:
-            if not out.endswith(".d") or not os.path.exists(out):
-                continue
-            with open(out, encoding="utf-8", errors="replace") as file:
-                for line in file:
-                    line = line.strip()
-                    if line.endswith(":") and not line.startswith("#"):
-                        path = os.path.realpath(os.path.join(one["cwd"], line[:-1]))
-                        if path.startswith(source + os.sep):
-                            local.add(path)
-    local.update(os.path.join(source, name) for name in ("Cargo.toml", "Cargo.lock")
-                 if os.path.exists(os.path.join(source, name)))
-    with open(arguments.depends, "w", encoding="utf-8") as file:
-        file.write("set(CME_CARGO_CONFIGURE_DEPENDS\n")
-        for path in sorted(local):
-            file.write('  "' + path.replace("\\", "/").replace('"', '\\"') + '"\n')
-        file.write(")\n")
-        libraries, directories = native(target)
-        for variable, values in (("CME_CARGO_NATIVE_LIBRARIES", libraries),
-                                 ("CME_CARGO_NATIVE_DIRECTORIES", directories)):
-            file.write(f"set({variable}\n")
-            for value in values:
-                file.write('  "' + value.replace("\\", "/").replace('"', '\\"') + '"\n')
-            file.write(")\n")
+        json.dump({"invocations": plan}, file)
     return 0
 
 

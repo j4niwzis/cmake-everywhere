@@ -172,7 +172,10 @@ def main():
         if depends:
             lines.append("  DEPENDS " + " ".join(quote(x) for x in depends))
         wrote = dep_info(one.get("args", []))
-        if wrote and arguments.ninja and arguments.rewriter:
+        if one.get("depfile") and arguments.ninja:
+            # A build script's run: what it said it reads, absolute already.
+            lines.append("  DEPFILE " + quote(one["depfile"]))
+        elif wrote and arguments.ninja and arguments.rewriter:
             # rustc names what it read relative to where it ran; ninja reads
             # such a file relative to the build directory. The paths are made
             # absolute by the step that follows the compiler, and that is the
