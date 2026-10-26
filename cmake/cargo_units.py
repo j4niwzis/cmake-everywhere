@@ -107,10 +107,13 @@ def main():
             command += ["--dep", dep]
         invocations.append({
             # CARGO_TARGET_DIR: where a script that writes beside the crates
-            # looks first (cxx-build's <target>/cxxbridge), and a changed
-            # command, so a run from before this is made again.
+            # looks first (cxx-build's <dir>/cxxbridge) -- the directory it
+            # would have found walking up from OUT_DIR under cargo, the one
+            # cargo marked: the layout's root, target/<triple> where a
+            # target is given (OUT_DIR is <root>/<profile>/build/<unit>/out).
             "program": arguments.python, "args": command,
-            "env": {**passed(env), "CARGO_TARGET_DIR": real},
+            "env": {**passed(env), "CARGO_TARGET_DIR": os.path.dirname(os.path.dirname(
+                os.path.dirname(os.path.dirname(env["OUT_DIR"]))))},
             "cwd": package_dir or run["cwd"],
             "outputs": [output_of(run), output_of(run) + ".args"],
             "inputs": [script] + [dep.partition("=")[2] for dep in deps],
