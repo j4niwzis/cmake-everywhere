@@ -108,6 +108,7 @@ def run(arguments):
         return done.returncode
     # What rustc is given as @FILE.args: one argument a line.
     args = []
+    unstable = False
     for key, value in lines:
         if key == "rustc-cfg":
             args += ["--cfg", value]
@@ -120,16 +121,17 @@ def run(arguments):
         elif key == "rustc-flags":
             args += shlex.split(value)
         elif key == "rustc-env":
-            # rustc takes no environment from an argument file, and the crate
-            # is compiled by rustc itself: nothing can carry it there.
-            print(f"cmake-everywhere: the build script of {name} sets {value.partition('=')[0]} "
-                  "for its crate (cargo:rustc-env), which a crate compiled by this build "
-                  "does not get", file=sys.stderr)
-            return 1
+            # Said to rustc itself, as env!() reads it: --env-set, unstable,
+            # which the crate's command allows for that crate alone
+            # (RUSTC_BOOTSTRAP=<crate>, set where it has a build script).
+            unstable = True
+            args += ["--env-set", value]
     if any("\n" in arg for arg in args):
         print(f"cmake-everywhere: {name}'s build script said an argument with a line break in it",
               file=sys.stderr)
         return 1
+    if unstable:
+        args = ["-Z", "unstable-options"] + args
     write_if_changed(output, text)
     write_if_changed(output + ".args", "".join(arg + "\n" for arg in args))
     watched = [os.path.join(root, value) for key, value in lines if key == "rerun-if-changed"]

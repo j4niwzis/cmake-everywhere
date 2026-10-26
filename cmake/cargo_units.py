@@ -122,9 +122,15 @@ def main():
         inputs = [path for path in {a.split("=", 1)[1] if "=" in a else a for a in args}
                   if path in maker and maker[path] is not one]
         run = run_of_out_dir.get(one["env"].get("OUT_DIR"))
+        env = passed(one["env"])
         if run and not one.get("program_output"):
             args.append("@" + output_of(run) + ".args")
             inputs.append(output_of(run) + ".args")
+            # What its script sets with cargo:rustc-env reaches rustc as
+            # --env-set, unstable: allowed for this crate and no other.
+            crate = next((a.split("=", 1)[1] if "=" in a else args[i + 1]
+                          for i, a in enumerate(args) if a.startswith("--crate-name")), "")
+            env["RUSTC_BOOTSTRAP"] = crate
         static = [out for out in one["outputs"]
                   if "staticlib" in one["crate_types"] and out.endswith((".a", ".lib"))]
         if static:
@@ -133,7 +139,7 @@ def main():
             libraries += static
             native.append((static, listed))
         invocations.append({
-            "program": one["program"], "args": args, "env": passed(one["env"]),
+            "program": one["program"], "args": args, "env": env,
             "cwd": one["cwd"], "outputs": one["outputs"], "inputs": sorted(inputs),
             "package_name": one["env"].get("CARGO_PKG_NAME", ""),
             "package_version": one["env"].get("CARGO_PKG_VERSION", ""),
