@@ -290,6 +290,16 @@ function(cme_cargo_build port source)
       RESULT_VARIABLE asked)
   endif()
   if(asked EQUAL 0)
+    # The marks cargo leaves in a target directory, in the real one too:
+    # cargo never runs there, and a build script finding its target
+    # directory by them (cxx-build, which puts the bridge's headers in
+    # <target>/cxxbridge) would otherwise find none.
+    foreach(mark IN ITEMS CACHEDIR.TAG .rustc_info.json)
+      if(EXISTS "${work}/scratch/${mark}")
+        file(MAKE_DIRECTORY "${work}/target")
+        file(COPY_FILE "${work}/scratch/${mark}" "${work}/target/${mark}" ONLY_IF_DIFFERENT)
+      endif()
+    endforeach()
     execute_process(
       COMMAND "${Python3_EXECUTABLE}" "${CME_DIR}/cmake/cargo_units.py"
               --units "${work}/units" --scratch "${work}/scratch"
