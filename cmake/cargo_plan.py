@@ -1,8 +1,9 @@
 """What cargo would do, as commands this build runs itself.
 
-`cargo build --build-plan` answers the question every other build system
-here is asked: not "please build this", but "what would you run". The answer
-is one entry per invocation of rustc -- the program, its arguments, its
+The plan answers the question every other build system here is asked: not
+"please build this", but "what would you run". cargo_units.py writes it from
+what cargo_record.py saw cargo run (the shape `cargo build --build-plan` used
+to give, before cargo dropped the flag): one entry per invocation of rustc -- the program, its arguments, its
 environment, the directory to run it in, what it produces and which other
 invocations must come first -- and that is enough to make each of them a
 command in the graph this project builds with.
@@ -200,6 +201,7 @@ def main():
         for stable in one.get("links", {}):
             if stable.endswith((".a", ".lib", ".so", ".dylib", ".dll")):
                 linked.append(stable)
+        linked += one.get("libraries", [])
     lines.append("set(CME_CARGO_LIBRARIES " +
                  " ".join(quote(x) for x in linked) + ")")
     with open(arguments.out, "w", encoding="utf-8") as file:

@@ -7,20 +7,22 @@
 # Cargo.lock, and that lock is what says which versions are built -- the same
 # role this registry's lock plays for everything else.
 #
-# Cargo is asked what it would do and then steps out of the way. `cargo build
-# --build-plan` answers with one entry per invocation of rustc: the program,
-# its arguments, its environment, where to run it, what it produces and which
-# invocations must come first. Each becomes a command in this build's graph,
-# so the compiling happens where every other compilation happens, in one
-# scheduler with one job pool, and a source file that changes rebuilds what
-# depends on it and nothing else.
+# Cargo is watched doing it once and then steps out of the way. It used to
+# answer `cargo build --build-plan` without building anything; that flag is
+# gone from current cargo, so the build is run while configuring with rustc
+# reached through cargo_record.py (RUSTC_WRAPPER), which writes down every
+# call that compiles a crate: the program, its arguments, its environment,
+# where it ran and what it makes. The host's units -- build scripts,
+# procedural macros, what they use -- are compiled then, because cargo runs
+# build scripts and needs what they print. The target's are only written
+# down, and each becomes a command in this build's graph, so the compiling
+# happens where every other compilation happens, in one scheduler with one
+# job pool, and a source file that changes rebuilds what depends on it and
+# nothing else.
 #
-# That flag is unstable and, unlike --unit-graph, undocumented: cargo's own
-# message points at rust-lang/cargo#5579 and the unstable book does not
-# mention it. So it is asked for, and a cargo that will not answer is not an
-# error -- it builds the crate itself and this build collects the result,
-# with a line saying so, because losing the incrementality quietly would be
-# worse than losing it.
+# What cannot be read that way is not an error: cargo builds the crate itself
+# and this build collects the result, with a line saying so, because losing
+# the incrementality quietly would be worse than losing it.
 
 include_guard(GLOBAL)
 
@@ -215,6 +217,19 @@ function(cme_cargo_arguments out port source)
   if(no_default)
     list(APPEND arguments --no-default-features)
   endif()
+  # The target always said, the machine's own included: then cargo builds
+  # the host's units without --target and the target's with it, which is
+  # how cargo_record.py tells the ones to compile now from the ones to leave
+  # to this build.
+  if(NOT target)
+    find_program(CME_RUSTC NAMES rustc)
+    if(CME_RUSTC)
+      execute_process(COMMAND "${CME_RUSTC}" -vV OUTPUT_VARIABLE version RESULT_VARIABLE asked)
+      if(asked EQUAL 0 AND version MATCHES "\nhost: ([^\n]+)")
+        set(target "${CMAKE_MATCH_1}")
+      endif()
+    endif()
+  endif()
   if(target)
     list(APPEND arguments --target "${target}")
   endif()
@@ -243,22 +258,41 @@ function(cme_cargo_build port source)
   cme_cargo_arguments(common ${port} "${source}")
   list(APPEND common --target-dir "${work}/target")
 
-  # Ask what it would do.
-  #
-  # RUSTC_BOOTSTRAP is what lets a released cargo answer an unstable
-  # question, and it is set for this one command and no other: nothing is
-  # compiled here, so nothing is compiled with a toolchain pretending to be
-  # a different one. A cargo that refuses anyway leaves the plan empty and
-  # the build falls back below.
+  # Watch it build: rustc reached through the recorder, which compiles the
+  # host's units and writes the target's down. A program, since that is what
+  # RUSTC_WRAPPER names: the interpreter and the script, behind a line of
+  # shell (or of cmd on Windows).
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  cme_cargo_compiler_env(compilers)
+  if(CMAKE_HOST_WIN32)
+    set(recorder "${work}/record.bat")
+    file(WRITE "${recorder}" "@\"${Python3_EXECUTABLE}\" \"${CME_DIR}/cmake/cargo_record.py\" %*\r\n")
+  else()
+    set(recorder "${work}/record")
+    file(WRITE "${work}/record.in"
+         "#!/bin/sh\nexec \"${Python3_EXECUTABLE}\" \"${CME_DIR}/cmake/cargo_record.py\" \"$@\"\n")
+    file(COPY_FILE "${work}/record.in" "${recorder}")
+    file(CHMOD "${recorder}" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+         GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+  endif()
   execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E env RUSTC_BOOTSTRAP=1
-            "${CME_CARGO}" build ${common} -Z unstable-options --build-plan
+    COMMAND "${CMAKE_COMMAND}" -E env ${compilers} "RUSTC_WRAPPER=${recorder}"
+            "CME_CARGO_UNITS=${work}/units"
+            "${CME_CARGO}" build ${common} --message-format json
     WORKING_DIRECTORY "${source}"
-    OUTPUT_FILE "${work}/plan.json"
+    OUTPUT_FILE "${work}/watched.json"
     ERROR_VARIABLE refused
     RESULT_VARIABLE asked)
+  if(asked EQUAL 0)
+    execute_process(
+      COMMAND "${Python3_EXECUTABLE}" "${CME_DIR}/cmake/cargo_units.py"
+              --units "${work}/units" --build-log "${work}/watched.json"
+              --source "${source}" --plan "${work}/plan.json"
+              --depends "${work}/depends.cmake"
+      RESULT_VARIABLE asked
+      ERROR_VARIABLE refused)
+  endif()
 
-  find_package(Python3 REQUIRED COMPONENTS Interpreter)
   set(described FALSE)
   if(asked EQUAL 0)
     set(ninja FALSE)
@@ -288,6 +322,10 @@ function(cme_cargo_build port source)
                     ERROR_VARIABLE conversion_trouble)
     if(converted EQUAL 0)
       set(described TRUE)
+      # A local build script or procedural macro, built while configuring:
+      # changed, it is built again by configuring again.
+      include("${work}/depends.cmake")
+      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CME_CARGO_CONFIGURE_DEPENDS})
     else()
       message(STATUS
         "cmake-everywhere: ${port} described a build this cannot read "
@@ -295,9 +333,9 @@ function(cme_cargo_build port source)
     endif()
   else()
     message(STATUS
-      "cmake-everywhere: this cargo will not say what it would do, so it "
-      "builds ${port} itself and this build collects the result. What is "
-      "lost is rebuilding one crate when one file changes.")
+      "cmake-everywhere: what cargo ran for ${port} could not be written "
+      "down (${refused}), so it builds it itself and this build collects the "
+      "result. What is lost is rebuilding one crate when one file changes.")
   endif()
 
   cme_port_targets(names ${port})
@@ -309,10 +347,15 @@ function(cme_cargo_build port source)
     # library built here waits for the commands that produce it.
     add_custom_target(${port}-rust DEPENDS ${CME_CARGO_OUTPUTS})
     set(libraries ${CME_CARGO_LIBRARIES})
+    # And what its crates link from the system (a -sys crate's library).
+    list(APPEND needed ${CME_CARGO_NATIVE_LIBRARIES})
+    set(native_directories ${CME_CARGO_NATIVE_DIRECTORIES})
   else()
     # Cargo drives. What it built is read from its own report rather than
     # looked for in likely places.
-    cme_cargo_compiler_env(compilers)
+    # In a directory of its own: the watched build left empty files where
+    # the target's units go, and cargo there takes them as made.
+    list(TRANSFORM common REPLACE "^${work}/target$" "${work}/target-cargo")
     execute_process(
       COMMAND "${CMAKE_COMMAND}" -E env ${compilers}
               "${CME_CARGO}" build ${common} --message-format json
@@ -393,17 +436,18 @@ function(cme_cargo_build port source)
       set_property(TARGET ${named} APPEND PROPERTY
                    INTERFACE_LINK_LIBRARIES ${needed})
     endif()
+    if(native_directories)
+      set_property(TARGET ${named} APPEND PROPERTY
+                   INTERFACE_LINK_DIRECTORIES ${native_directories})
+    endif()
     cme_port_field(headers ${port} CARGO_INCLUDE)
     if(headers)
       # Under the target's own directory where cargo was given --target (a
       # cross build): target/<triple>/, as it writes everything then.
-      cme_port_field(headers_triple ${port} CARGO_TARGET)
-      if(NOT headers_triple)
-        cme_cargo_triple(headers_triple)
-      endif()
+      # (Always given now: the machine's own triple where not cross.)
       set(headers_dir "${work}/target/${headers}")
-      if(headers_triple)
-        set(headers_dir "${work}/target/${headers_triple}/${headers}")
+      if(CME_CARGO_TRIPLE)
+        set(headers_dir "${work}/target/${CME_CARGO_TRIPLE}/${headers}")
       endif()
       # Written by the crate's build script when it runs, which is after
       # this: there now, as an imported target's include directory has to be.
