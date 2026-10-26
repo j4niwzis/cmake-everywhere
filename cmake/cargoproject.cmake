@@ -463,6 +463,13 @@ function(cme_cargo_build port source)
       set_property(TARGET ${named} APPEND PROPERTY
                    INTERFACE_LINK_OPTIONS "${native_options}")
     endif()
+    # Every Rust static library carries its own copy of std, and a program
+    # linking two (vodozemac and skiff-blitz) gets each of its symbols twice:
+    # the same code from the same toolchain, so the first is taken.
+    if(NOT MSVC AND NOT APPLE)
+      set_property(TARGET ${named} APPEND PROPERTY
+                   INTERFACE_LINK_OPTIONS "LINKER:--allow-multiple-definition")
+    endif()
     cme_port_field(headers ${port} CARGO_INCLUDE)
     if(headers)
       # Under the target's own directory where cargo was given --target (a
