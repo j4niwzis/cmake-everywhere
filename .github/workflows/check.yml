@@ -46,6 +46,8 @@ jobs:
       - run: sudo apt-get update || true; sudo apt-get install -y ninja-build
       - name: what can be checked without building
         run: python3 check.py
+      - name: OpenSSL cross targets and platform options
+        run: cmake -P test/openssl-platform.cmake
       - name: the target toolchain passed to Meson
         run: cmake -P test/meson-machine.cmake
       - name: what a meson project's answer becomes

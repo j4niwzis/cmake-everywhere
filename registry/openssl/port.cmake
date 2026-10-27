@@ -13,7 +13,14 @@
 # The machine, in the names OpenSSL's Configure knows, for a cross build: it
 # reads no triple, and a target it is not told is the machine it runs on.
 set(cme_openssl_machine "")
-if(CMAKE_CROSSCOMPILING)
+set(cme_openssl_platform_args)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  # The portable compiler target: linux-generic32 enables AF_ALG and reads
+  # Linux kernel headers which do not exist in the browser sysroot.
+  set(cme_openssl_machine "gcc")
+  set(cme_openssl_platform_args no-asm no-dso no-afalgeng)
+endif()
+if(CMAKE_CROSSCOMPILING AND NOT cme_openssl_machine)
   string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" cme_openssl_processor)
   if(CMAKE_SYSTEM_NAME STREQUAL "Android")
     if(cme_openssl_processor MATCHES "^(aarch64|arm64)$")
@@ -69,6 +76,7 @@ cme_declare_port(
   TARGETS OpenSSL::SSL OpenSSL::Crypto
   CHECK_HEADER openssl/ssl.h
   CONFIGURE_ARGS
+    ${cme_openssl_platform_args}
     # Into lib whatever the machine: its default is lib64 on some, and the
     # paths above are what this port promises.
     "--libdir=lib"
