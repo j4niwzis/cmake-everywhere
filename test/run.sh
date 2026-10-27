@@ -73,6 +73,12 @@ expect_refusal() {
 
 mkdir -p "$out"
 
+if cmake -P "$here/meson-machine.cmake" >"$out/meson-machine.log" 2>&1; then
+  report 0 "meson-machine"
+else
+  report 1 "meson-machine (see $out/meson-machine.log)"
+fi
+
 # Before anything is fetched or configured: a command that is called and
 # never defined is a mistake that would otherwise be found after a download
 # and a gn run.
