@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.24)
+project(cme-iconv C)
+find_package(LibIconv REQUIRED)
+add_executable(cme-iconv main.c)
+target_link_libraries(cme-iconv PRIVATE Iconv::Iconv)

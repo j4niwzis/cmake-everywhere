@@ -153,6 +153,11 @@ function(cme_meson_machine_file port out_file out_kind)
   if(CMAKE_CROSSCOMPILING)
     set(kind "cross")
     string(TOLOWER "${CMAKE_SYSTEM_NAME}" system)
+    # Some Android toolchains deliberately use CMAKE_SYSTEM_NAME=Linux to
+    # avoid CMake's NDK discovery. Meson still needs the actual target OS.
+    if(ANDROID)
+      set(system android)
+    endif()
     cme_meson_cpu_family(family "${CMAKE_SYSTEM_PROCESSOR}")
     string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" cpu)
     # CMake has no variable for endianness of the machine it builds for,

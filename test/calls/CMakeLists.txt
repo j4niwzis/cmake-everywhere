@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.24)
+project(cme-calls C)
+find_package(LibNice REQUIRED)
+add_executable(cme-calls main.c)
+target_link_libraries(cme-calls PRIVATE LibNice::LibNice)

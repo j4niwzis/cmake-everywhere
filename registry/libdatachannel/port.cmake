@@ -36,6 +36,15 @@ cme_declare_port(
   CHECK_HEADER rtc/rtc.hpp
 )
 
+# A system copy does not advertise its ICE backend. This feature builds the
+# library here so TURN TCP/TLS and credential restarts have known behaviour.
+cme_port_feature(libdatachannel nice
+  SUMMARY "ICE through libnice, including TURN TCP/TLS"
+  BUILT_HERE
+  DEPENDS libnice
+  OPTIONS "USE_NICE ON"
+  PATCHES "patches/0003-nice-credential-restart.patch")
+
 function(cme_adapt_libdatachannel source binary)
   cme_export_variable(LibDataChannel LibDataChannel_FOUND TRUE)
 endfunction()

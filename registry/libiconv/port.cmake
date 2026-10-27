@@ -1,0 +1,19 @@
+# Android before API 28 has no iconv in libc. Build GNU libiconv rather than
+# silently using headers or libraries from the machine doing the build.
+cme_declare_port(
+  NAME libiconv
+  PROVIDES LibIconv libiconv iconv
+  VERSION 1.18
+  URL "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz"
+  URL_HASH "SHA256=3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8"
+  LICENSE LGPL-2.1-or-later
+  CONFIGURE YES
+  INSTALLED_TARGETS "lib/libiconv.a=Iconv::Iconv"
+  INSTALLED_INCLUDE include
+  SYSTEM_PKGCONFIG "libiconv:Iconv::Iconv"
+  LINK_NAMES "iconv=Iconv::Iconv"
+  TARGETS Iconv::Iconv
+  CHECK_HEADER iconv.h
+  CONFIGURE_ARGS "--disable-shared" "--enable-static" "--disable-nls" "--with-pic"
+  CONFIGURE_CROSS "--host=@TRIPLE@"
+)

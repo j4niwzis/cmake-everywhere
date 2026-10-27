@@ -1,0 +1,15 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -2167,7 +2167,10 @@ if host_system == 'windows'
+   # any external library for it
+   libiconv = []
+ else
+-  libiconv = dependency('iconv')
++  # Meson's special iconv lookup only searches the target libc and system
++  # paths. The source dependency is supplied by this build through pkg-config;
++  # it is also needed on Android before API 28.
++  libiconv = dependency('libiconv', method : 'pkg-config')
+ endif
+ 
+ pcre2_req = '>=10.32'

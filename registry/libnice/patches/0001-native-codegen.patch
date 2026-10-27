@@ -1,0 +1,24 @@
+diff --git a/agent/meson.build b/agent/meson.build
+index 44fcd6b..7c47509 100644
+--- a/agent/meson.build
++++ b/agent/meson.build
+@@ -25,6 +25,9 @@ agent_sources = files([
+   'stream.c',
+ ])
+ 
++if get_option('cme-mkenums') != ''
++  meson.override_find_program('glib-mkenums', find_program(get_option('cme-mkenums')))
++endif
+ gnome = import('gnome')
+ 
+ agent_enum_types_c =  gnome.mkenums('agent-enum-types.c', sources : agent_headers,
+diff --git a/meson_options.txt b/meson_options.txt
+index a720d74..6804008 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -24,3 +24,5 @@ option('gtk_doc', type : 'feature', value : 'disabled', yield : true,
+   description: 'Generate API documentation with gtk-doc')
+ option('introspection', type : 'feature', value : 'auto', yield : true,
+   description : 'Generate gobject-introspection bindings')
++
++option('cme-mkenums', type: 'string', value: '', description: 'Host glib-mkenums supplied by the source dependency build')

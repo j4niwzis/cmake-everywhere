@@ -1,0 +1,9 @@
+# Source fallback, with dependencies resolved through this build.
+cme_declare_port(
+  NAME pcre2 PROVIDES PCRE2 libpcre2-8
+  VERSION 10.44 GITHUB_REPOSITORY PCRE2Project/pcre2 GIT_TAG pcre2-10.44
+  LICENSE BSD-3-Clause
+  OPTIONS "PCRE2_BUILD_PCRE2_8 ON" "PCRE2_BUILD_PCRE2_16 OFF" "PCRE2_BUILD_PCRE2_32 OFF"
+          "PCRE2_BUILD_TESTS OFF" "PCRE2_BUILD_PCRE2GREP OFF" "BUILD_SHARED_LIBS OFF"
+  TARGETS pcre2-8 SYSTEM_PKGCONFIG "libpcre2-8:pcre2-8" LINK_NAMES "pcre2-8=pcre2-8"
+)
