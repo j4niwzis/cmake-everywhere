@@ -7,7 +7,11 @@ cme_declare_port(
   URL "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz"
   URL_HASH "SHA256=3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8"
   LICENSE LGPL-2.1-or-later
+  # The command-line utility's gnulib error support uses Android API 23
+  # globals. GLib only needs the library; do not build or install the CLI.
+  PATCHES "patches/0001-build-libraries-only.patch"
   CONFIGURE YES
+  CONFIGURE_INSTALL install-lib
   INSTALLED_TARGETS "lib/libiconv.a=Iconv::Iconv"
   INSTALLED_INCLUDE include
   SYSTEM_PKGCONFIG "libiconv:Iconv::Iconv"
