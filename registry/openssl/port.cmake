@@ -62,7 +62,7 @@ cme_declare_port(
     "ssl=OpenSSL::SSL"
   SYSTEM_PKGCONFIG
     "libcrypto:OpenSSL::Crypto"
-    "libssl:OpenSSL::SSL"
+    "libssl|openssl:OpenSSL::SSL"
   LINK_NAMES
     "crypto=OpenSSL::Crypto"
     "ssl=OpenSSL::SSL"
