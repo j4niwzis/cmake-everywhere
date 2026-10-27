@@ -124,6 +124,7 @@ echo "builds"
 expect_build features "$here/features"
 expect_build features-from-source "$here/features" -DCME_SYSTEM=NEVER
 expect_build iconv-from-source "$here/iconv" -DCME_SYSTEM=NEVER
+expect_build intl-from-source "$here/intl" -DCME_SYSTEM=NEVER
 expect_build calls-from-source "$here/calls" -DCME_SYSTEM_GLIB=OFF -DCME_SYSTEM_LIBNICE=OFF
 expect_build consumer "$here"
 expect_build consumer-from-source "$here" -DCME_SYSTEM=NEVER

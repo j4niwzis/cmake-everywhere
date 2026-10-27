@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.24)
+project(cme-intl C)
+find_package(proxy-libintl REQUIRED)
+add_executable(cme-intl main.c)
+target_link_libraries(cme-intl PRIVATE Intl::Intl)

@@ -2,8 +2,8 @@
 cme_declare_port(
   NAME glib PROVIDES GLIB glib-2.0 gobject-2.0 gio-2.0 gmodule-2.0 gthread-2.0
   VERSION 2.80.0 GITHUB_REPOSITORY GNOME/glib GIT_TAG 2.80.0
-  LICENSE LGPL-2.1-or-later IMPORT meson DEPENDS pcre2 libffi zlib libiconv
-  PATCHES "patches/0001-source-iconv-dependency.patch"
+  LICENSE LGPL-2.1-or-later IMPORT meson DEPENDS pcre2 libffi zlib libiconv proxy-libintl
+  PATCHES "patches/0001-source-iconv-dependency.patch" "patches/0002-source-intl-fallback.patch"
   IMPORT_TARGETS "glib-2.0=GLIB::glib" "gobject-2.0=GLIB::gobject" "gio-2.0=GLIB::gio"
                  "gmodule-2.0=GLIB::gmodule" "gthread-2.0=GLIB::gthread"
   SYSTEM_PKGCONFIG "glib-2.0:GLIB::glib" "gobject-2.0:GLIB::gobject" "gio-2.0:GLIB::gio"
@@ -27,6 +27,9 @@ function(cme_adapt_glib source binary)
   set_property(GLOBAL PROPERTY CME_GLIB_MKENUMS "${configured}/gobject/glib-mkenums")
   find_package(Threads REQUIRED)
   target_link_libraries(glib_glib-2.0 INTERFACE pcre2-8 Iconv::Iconv Threads::Threads ${CMAKE_DL_LIBS})
+  # The imported Meson compile plan selects the proxy header only when libc
+  # lacks gettext. Link its archive without imposing that header on consumers.
+  target_link_libraries(glib_glib-2.0 INTERFACE "$<LINK_ONLY:Intl::Intl>")
   target_link_libraries(glib_gobject-2.0 INTERFACE GLIB::glib FFI::ffi)
   target_link_libraries(glib_gmodule-2.0 INTERFACE GLIB::glib ${CMAKE_DL_LIBS})
   target_link_libraries(glib_gthread-2.0 INTERFACE GLIB::glib Threads::Threads)

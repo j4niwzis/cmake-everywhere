@@ -1,0 +1,16 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -2259,9 +2259,9 @@
+ if libintl.found() and libintl.type_name() != 'internal'
+   have_bind_textdomain_codeset = cc.has_function('bind_textdomain_codeset', dependencies: libintl_deps, prefix: libintl_prefix)
+ else
+-  # using proxy-libintl fallback
+-  libintl = dependency('intl', allow_fallback: true)
+-  assert(libintl.type_name() == 'internal')
++  # The same proxy-libintl fallback, provided by the parent build rather
++  # than a nested Meson download. Android has no gettext in its libc.
++  libintl = dependency('proxy-libintl', method: 'pkg-config')
+   libintl_deps = [libintl]
+   have_bind_textdomain_codeset = true  # proxy-libintl supports it
+ endif
