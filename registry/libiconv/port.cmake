@@ -4,7 +4,9 @@ cme_declare_port(
   NAME libiconv
   PROVIDES LibIconv libiconv iconv
   VERSION 1.18
-  URL "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz"
+  # From kernel.org's GNU mirror: ftp.gnu.org itself refused mux's Android
+  # build six times in a row. The digest below is the archive's either way.
+  URL "https://mirrors.kernel.org/gnu/libiconv/libiconv-1.18.tar.gz"
   URL_HASH "SHA256=3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8"
   LICENSE LGPL-2.1-or-later
   # The command-line utility's gnulib error support uses Android API 23
