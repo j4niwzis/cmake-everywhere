@@ -5536,6 +5536,9 @@ endfunction()
 
 # The other half: what is done once the machine's copy is the answer.
 function(cme_take_pkgconfig port package)
+  # Marked, for what is written about it later: a meson project built
+  # against it reads the machine's own .pc, not one written here.
+  set_property(GLOBAL PROPERTY CME_FROM_MACHINE_${port} TRUE)
   get_property(aliases GLOBAL PROPERTY CME_PC_TAKE_${port}_ALIASES)
   get_property(imported GLOBAL PROPERTY CME_PC_TAKE_${port}_IMPORTED)
   get_property(includes GLOBAL PROPERTY CME_PC_TAKE_${port}_INCLUDES)

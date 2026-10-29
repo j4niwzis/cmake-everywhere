@@ -202,6 +202,15 @@ function(cme_meson_dependency_pkgconfig port out)
   cme_gn_dependency_ports(${port} deps)
   set(written "")
   foreach(dep IN LISTS deps)
+    # A dependency the machine's copy answered for is left to the machine's
+    # own .pc: written here, it would hide what that file says beyond the
+    # flags -- glib-2.0's glib_mkenums, which GNOME's meson module asks for
+    # with no default, so that libnice's configure failed on a machine with
+    # its own GLib.
+    get_property(from_machine GLOBAL PROPERTY CME_FROM_MACHINE_${dep})
+    if(from_machine)
+      continue()
+    endif()
     # Every name the dependency answers to, which is what the port already
     # says for the sake of pkg_check_modules calls that come this way.
     cme_port_field(names ${dep} PKGCONFIG_NAMES)
