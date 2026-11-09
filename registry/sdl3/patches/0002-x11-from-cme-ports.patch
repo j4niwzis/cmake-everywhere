@@ -1,6 +1,6 @@
 --- a/cmake/sdlchecks.cmake
 +++ b/cmake/sdlchecks.cmake
-@@ -283,44 +283,85 @@
+@@ -283,44 +283,87 @@
      set(Xss_PKG_CONFIG_SPEC xscrnsaver)
      set(Xtst_PKG_CONFIG_SPEC xtst)
  
@@ -59,6 +59,8 @@
 +        endif()
 +      endforeach()
 +      list(REMOVE_DUPLICATES _cme_x11_includes)
++      list(TRANSFORM _cme_x11_includes REPLACE "^\\$<BUILD_INTERFACE:(.*)>$" "\\1")
++      list(FILTER _cme_x11_includes EXCLUDE REGEX "^\\$<")
 +      foreach(_PAIR "Xcursor=XCURSOR" "Xi=XI" "Xfixes=XFIXES" "Xrandr=XRANDR" "Xrender=XRENDER" "Xss=XSS" "Xtst=XTST")
 +        string(REPLACE "=" ";" _PAIR "${_PAIR}")
 +        list(GET _PAIR 0 _LIB)

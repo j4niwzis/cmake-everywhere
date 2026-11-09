@@ -427,6 +427,14 @@ def main(argv):
         directories.add(where)
         mode, wrapped = libtool_of(command)
         if mode == "compile":
+            # libtool names the object itself where the command does not
+            # (-c foo.c makes foo.lo, in the directory it runs in), as
+            # libiconv's hand-written Makefiles leave it to.
+            if "-o" not in wrapped:
+                sources = [w for w in wrapped if os.path.splitext(w)[1] in COMPILED]
+                if sources:
+                    stem = os.path.splitext(os.path.basename(sources[-1]))[0]
+                    wrapped = wrapped + ["-o", stem + ".lo"]
             one = compile_of(wrapped, where)
             if one:
                 compiles[one["object"]] = one
