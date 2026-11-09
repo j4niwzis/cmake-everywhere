@@ -702,8 +702,16 @@ jobs:
           case "${{ matrix.port.port }}" in
             # A window library needs the headers of the windowing systems it
             # is a window library for.
-            glfw|sdl3) sudo apt-get install -y xorg-dev libwayland-dev \
+            glfw) sudo apt-get install -y xorg-dev libwayland-dev \
                     libxkbcommon-dev wayland-protocols ;;
+            # SDL takes its windowing systems from the ports its features
+            # bring, none from the runner: built here with both, its
+            # Wayland is meson (and xkbcommon's parser is bison's), its X11
+            # autotools, which find one another with pkg-config.
+            sdl3) sudo apt-get install -y meson bison pkg-config ;;
+            xkbcommon) sudo apt-get install -y meson bison pkg-config ;;
+            xorgproto|xtrans|xcb-proto|libxau|libxcb|libx11|libxext|libxrender|libxfixes|libxcursor|libxi|libxrandr|libxscrnsaver|libxtst)
+              sudo apt-get install -y pkg-config ;;
             # A port that is imported from meson needs meson to read it,
             # and basu generates part of itself with gperf.
             basu) sudo apt-get install -y meson gperf ;;
@@ -742,6 +750,10 @@ jobs:
           extra=""
           if [ "${{ matrix.port.port }}" = "boost" ]; then
             extra="-DCME_BOOST_ARCHIVE=ON -DCME_PORT_COMPONENTS=filesystem"
+          fi
+          # SDL with both of its windowing systems, each built here.
+          if [ "${{ matrix.port.port }}" = "sdl3" ]; then
+            extra="-DCME_PORT_COMPONENTS=x11;wayland"
           fi
           cmake -S test/port -B build/port -G Ninja \
             -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$PWD/cmake-everywhere.cmake" \
@@ -784,8 +796,16 @@ jobs:
           case "${{ matrix.port.port }}" in
             # A window library needs the headers of the windowing systems it
             # is a window library for.
-            glfw|sdl3) sudo apt-get install -y xorg-dev libwayland-dev \
+            glfw) sudo apt-get install -y xorg-dev libwayland-dev \
                     libxkbcommon-dev wayland-protocols ;;
+            # SDL takes its windowing systems from the ports its features
+            # bring, none from the runner: built here with both, its
+            # Wayland is meson (and xkbcommon's parser is bison's), its X11
+            # autotools, which find one another with pkg-config.
+            sdl3) sudo apt-get install -y meson bison pkg-config ;;
+            xkbcommon) sudo apt-get install -y meson bison pkg-config ;;
+            xorgproto|xtrans|xcb-proto|libxau|libxcb|libx11|libxext|libxrender|libxfixes|libxcursor|libxi|libxrandr|libxscrnsaver|libxtst)
+              sudo apt-get install -y pkg-config ;;
             # A port that is imported from meson needs meson to read it,
             # and basu generates part of itself with gperf.
             basu) sudo apt-get install -y meson gperf ;;
