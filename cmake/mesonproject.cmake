@@ -441,6 +441,12 @@ function(cme_meson_probe port source out_build)
   if(path)
     string(REPLACE ":" "," meson_path "${path}")
     list(APPEND arguments "-Dpkg_config_path=${meson_path}")
+    # And for the build machine's dependencies, in a cross build: Meson
+    # reads PKG_CONFIG_PATH for neither machine there, and wayland's native
+    # wayland-scanner (cme_prepare_wayland's .pc) was looked for nowhere.
+    if(CMAKE_CROSSCOMPILING)
+      list(APPEND arguments "-Dbuild.pkg_config_path=${meson_path}")
+    endif()
   endif()
 
   message(STATUS "cmake-everywhere: asking ${port} what it would build")
