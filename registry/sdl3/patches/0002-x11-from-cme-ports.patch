@@ -1,6 +1,6 @@
 --- a/cmake/sdlchecks.cmake
 +++ b/cmake/sdlchecks.cmake
-@@ -283,44 +283,87 @@
+@@ -283,44 +283,94 @@
      set(Xss_PKG_CONFIG_SPEC xscrnsaver)
      set(Xtst_PKG_CONFIG_SPEC xtst)
  
@@ -61,6 +61,13 @@
 +      list(REMOVE_DUPLICATES _cme_x11_includes)
 +      list(TRANSFORM _cme_x11_includes REPLACE "^\\$<BUILD_INTERFACE:(.*)>$" "\\1")
 +      list(FILTER _cme_x11_includes EXCLUDE REGEX "^\\$<")
++      # What SDL compiles and links a test for is answered from the ports
++      # (libX11 1.8, libXi 1.8, libXfixes 6, xorgproto 2024): the libraries
++      # are compiled in this build after it is configured, and a test cannot
++      # link a target of it.
++      foreach(_cme_known HAVE_XGENERICEVENT SDL_VIDEO_DRIVER_X11_HAS_XKBLIB HAVE_XINPUT2_SCROLLINFO HAVE_XINPUT2_MULTITOUCH HAVE_XINPUT2_GESTURE HAVE_XFIXES_H)
++        set(${_cme_known} 1 CACHE INTERNAL "")
++      endforeach()
 +      foreach(_PAIR "Xcursor=XCURSOR" "Xi=XI" "Xfixes=XFIXES" "Xrandr=XRANDR" "Xrender=XRENDER" "Xss=XSS" "Xtst=XTST")
 +        string(REPLACE "=" ";" _PAIR "${_PAIR}")
 +        list(GET _PAIR 0 _LIB)
