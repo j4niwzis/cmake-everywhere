@@ -281,7 +281,7 @@ function(cme_configure_import port build)
   endif()
   set(dry "${build}/cme-make-dry-run.txt")
   execute_process(
-    COMMAND "${CME_MAKE}" "-n" "--no-print-directory" "V=1"
+    COMMAND "${CME_MAKE}" "-n" "-w" "V=1"
     WORKING_DIRECTORY "${build}"
     RESULT_VARIABLE code OUTPUT_FILE "${dry}" ERROR_VARIABLE output)
   if(NOT code EQUAL 0)
@@ -391,6 +391,16 @@ function(cme_configure_configure port source build prefix)
       endforeach()
     endif()
   endforeach()
+  # And the dependencies compiled in this graph (IMPORT make, meson, cmake),
+  # which install nothing before the build: a .pc for each, written by
+  # cmake-everywhere from what their targets say -- include directories,
+  # the libraries by name, placeholders where -L points so that a link
+  # test links -- the same files a Meson port is shown.
+  cme_meson_dependency_pkgconfig(${port} cme_written)
+  file(GLOB cme_written_any "${cme_written}/*.pc")
+  if(cme_written_any)
+    list(PREPEND cme_pkg_dirs "${cme_written}")
+  endif()
   if(cme_pkg_dirs)
     list(JOIN cme_pkg_dirs ":" cme_pkg_path)
     if(DEFINED ENV{PKG_CONFIG_PATH} AND NOT "$ENV{PKG_CONFIG_PATH}" STREQUAL "")

@@ -1,6 +1,8 @@
-# Missing upstream: any build but its own. libffi is autotools, and there is
-# nothing in it to ask what it would build -- so it is built the way it
-# builds, into a prefix, and the archive that comes out is a target here.
+# Missing upstream: any build but its own. libffi is autotools: its
+# configure runs while this build is configured (it writes fficonfig.h and
+# ffi.h), and then its make is asked what it would do rather than told to
+# do it -- every source compiled in this graph, by this build's compiler,
+# through libtool's command lines read as the compiles they wrap.
 #
 # It is here because wayland is built against it, and because a machine that
 # has no Wayland has no libffi either as often as not.
@@ -14,10 +16,8 @@ cme_declare_port(
   URL_HASH "SHA256=b0dea9df23c863a7a50e825440f3ebffabd65df1497108e5d437747843895a4e"
   LICENSE MIT
   CONFIGURE YES
-  INSTALLED_TARGETS "lib/libffi.a=FFI::ffi"
-  # Autotools puts the two generated headers under the library directory,
-  # which is where ffi.h and ffitarget.h are.
-  INSTALLED_INCLUDE include lib/libffi-3.4.6/include
+  IMPORT make
+  IMPORT_TARGETS "ffi=FFI::ffi"
   SYSTEM_PKGCONFIG "libffi:FFI::ffi"
   LINK_NAMES "ffi=FFI::ffi"
   TARGETS FFI::ffi
@@ -31,3 +31,14 @@ cme_declare_port(
   # one is told differently. This is the autotools spelling.
   CONFIGURE_CROSS "--host=@TRIPLE@"
 )
+
+function(cme_adapt_libffi source binary)
+  # ffi.h and ffitarget.h, which its configure writes into its build
+  # directory, and the headers of its own tree, for whoever links it.
+  set(built "${CMAKE_BINARY_DIR}/_cme/libffi-build")
+  if(TARGET libffi_ffi)
+    target_include_directories(libffi_ffi INTERFACE
+      "$<BUILD_INTERFACE:${built}/include>" "$<BUILD_INTERFACE:${source}/include>")
+  endif()
+  cme_export_variable(libffi LIBFFI_INCLUDE_DIRS "${built}/include")
+endfunction()

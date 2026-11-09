@@ -52,23 +52,36 @@ LANGUAGE = {".c": "C", ".cc": "CXX", ".cpp": "CXX", ".cxx": "CXX",
             ".asm": "ASM_NASM"}
 
 
-def read_commands(path):
-    """What make said it would do, one command to a line.
+def read_commands(path, build):
+    """What make said it would do, one command to a line, each with the
+    directory it is run in.
 
-    Line continuations are joined and the lines make prints about itself --
-    entering a directory, nothing to be done -- are dropped. A recipe line
-    that is several commands separated by && stays one line: it was written
-    to be run by one shell and that is how it is run again.
+    Line continuations are joined. The lines make prints about itself are
+    dropped -- but entering and leaving a directory are read first (make
+    is run with -w): a project made recursively, automake's SUBDIRS as
+    libX11 has them, runs each directory's commands from that directory,
+    and a source named there is named from there. A recipe line that is
+    several commands separated by && stays one line: it was written to be
+    run by one shell and that is how it is run again.
     """
     with open(path) as handle:
         text = handle.read()
     text = re.sub(r"\\\n", " ", text)
     commands = []
+    where = [build]
     for line in text.splitlines():
         line = line.strip()
+        entering = re.match(r"^\S*make(\[\d+\])?: Entering directory [`'](.*)'$", line)
+        if entering:
+            where.append(entering.group(2))
+            continue
+        if re.match(r"^\S*make(\[\d+\])?: Leaving directory ", line):
+            if len(where) > 1:
+                where.pop()
+            continue
         if not line or line.startswith("make"):
             continue
-        commands.append(line)
+        commands.append((where[-1], line))
     return commands
 
 
@@ -87,6 +100,62 @@ def assembler(words):
     -c, every .asm of it was dropped while its C still called what they
     define -- ff_tx_fft*_asm_*, undefined at the link."""
     return bool(words) and os.path.basename(words[0]) in ("nasm", "yasm")
+
+
+LIBTOOL_OPTIONS = ("--tag=", "--silent", "--quiet", "--no-silent", "--verbose", "--preserve-dup-deps")
+
+
+def libtool_of(command):
+    """A libtool command as its mode and the command it wraps.
+
+    automake writes each compile as a shell line around libtool --
+    `depbase=...; /bin/bash ../libtool --tag=CC --mode=compile clang ... &&
+    mv -f $depbase.Tpo $depbase.Plo` -- so the libtool part is found among
+    the line's commands, and what follows its options is the compiler's
+    command line, or the link that makes a library of .lo objects."""
+    for part in re.split(r"&&|;", command):
+        if "--mode=" not in part:
+            continue
+        words = split(part.strip())
+        for index, word in enumerate(words):
+            if word.startswith("--mode="):
+                mode = word[len("--mode="):]
+                rest = words[index + 1:]
+                while rest and rest[0].startswith(LIBTOOL_OPTIONS):
+                    rest = rest[1:]
+                return mode, rest
+    return None, []
+
+
+def libtool_archive_of(words, root):
+    """libtool's link of a library (-o libfoo.la), as the archive it stands
+    for and what goes into it: its objects (.lo), and the objects of the
+    convenience libraries it takes whole (.la, libX11's xcms and xkb)."""
+    output = None
+    objects = []
+    libraries = []
+    index = 0
+    while index < len(words):
+        word = words[index]
+        index += 1
+        if word == "-o" and index < len(words):
+            output = words[index]
+            index += 1
+            continue
+        if word in ("-rpath", "-version-info", "-version-number", "-release", "-export-symbols", "-export-symbols-regex") and index < len(words):
+            index += 1
+            continue
+        if word.startswith("-"):
+            continue
+        if word.endswith(".lo") or word.endswith(".o"):
+            objects.append(os.path.normpath(os.path.join(root, word)))
+        elif word.endswith(".la"):
+            libraries.append(os.path.normpath(os.path.join(root, word)))
+    if output is None or not output.endswith(".la"):
+        return None
+    return {"archive": os.path.normpath(os.path.join(root, output[:-3] + ".a")),
+            "objects": objects,
+            "libraries": [path[:-3] + ".a" for path in libraries]}
 
 
 def compile_of(words, root):
@@ -303,21 +372,54 @@ def main(argv):
     compiles = {}
     archives = {}
     other = []
-    for command in read_commands(dry):
+    whole = {}
+    for where, command in read_commands(dry, build):
+        mode, wrapped = libtool_of(command)
+        if mode == "compile":
+            one = compile_of(wrapped, where)
+            if one:
+                compiles[one["object"]] = one
+                continue
+        if mode == "link":
+            one = libtool_archive_of(wrapped, where)
+            if one:
+                kept = archives.setdefault(one["archive"], [])
+                kept.extend(o for o in one["objects"] if o not in kept)
+                whole.setdefault(one["archive"], []).extend(one["libraries"])
+                continue
+        if mode is not None:
+            other.append(command)
+            continue
         words = split(command)
-        one = compile_of(words, build)
+        one = compile_of(words, where)
         if one:
             compiles[one["object"]] = one
             continue
         # One archive, however many commands add to it: OpenSSL makes
         # libcrypto.a with several, each appending what the one before did
         # not.
-        one = archive_of(words, build)
+        one = archive_of(words, where)
         if one:
             kept = archives.setdefault(one["archive"], [])
             kept.extend(o for o in one["objects"] if o not in kept)
             continue
         other.append(command)
+
+    # A convenience library (libtool's noinst .la) is not a target of its
+    # own: its objects are in every library that takes it.
+    convenience = set()
+    for archive, libraries in whole.items():
+        pending = list(libraries)
+        while pending:
+            library = pending.pop()
+            if library not in archives:
+                continue
+            convenience.add(library)
+            kept = archives[archive]
+            kept.extend(o for o in archives[library] if o not in kept)
+            pending.extend(whole.get(library, []))
+    for library in convenience:
+        archives.pop(library, None)
 
     # A target is an archive, and its sources are the sources of the objects
     # in it. An object nothing archives belongs to no target here.
