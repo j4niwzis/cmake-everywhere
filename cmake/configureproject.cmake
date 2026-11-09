@@ -465,6 +465,7 @@ function(cme_configure_configure port source build prefix)
   endif()
   if(cme_run_before STREQUAL cme_run_now)
     message(STATUS "cmake-everywhere: ${port} configured as before; its configure is not run again")
+    set(CME_CONFIGURED_AS_BEFORE TRUE PARENT_SCOPE)
     return()
   endif()
   file(REMOVE "${cme_run_stamp}")
@@ -598,7 +599,25 @@ function(cme_configure_make_build port source)
   # that it would run autoconf again (xorgproto's configure older than its
   # configure.ac, as the archive was unpacked).
   cme_configure_settle("${source}")
+  set(CME_CONFIGURED_AS_BEFORE FALSE)
   cme_configure_configure(${port} "${source}" "${build}"
                           "${CMAKE_BINARY_DIR}/_cme/${port}-unused-prefix")
+  # Configured as before, and read by the same make_import.py: what its make
+  # would do is what it said last time -- not asked again (the dry runs, a
+  # directory's database each, for every port at every configure).
+  set(description "${build}/cme-targets.cmake")
+  set(said "${build}/cme-targets.sha256")
+  file(SHA256 "${CME_DIR}/cmake/make_import.py" reader)
+  set(reader_before "")
+  if(EXISTS "${said}")
+    file(READ "${said}" reader_before)
+  endif()
+  if(CME_CONFIGURED_AS_BEFORE AND EXISTS "${description}" AND reader_before STREQUAL reader)
+    message(STATUS "cmake-everywhere: ${port}'s make read as before; not asked again")
+    cme_cmake_import(${port} "${description}")
+    cme_cmake_export(${port})
+    return()
+  endif()
   cme_configure_import(${port} "${build}")
+  file(WRITE "${said}" "${reader}")
 endfunction()
