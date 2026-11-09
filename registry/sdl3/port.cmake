@@ -6,25 +6,14 @@
 # SDL3Config.cmake makes of whichever of the shared and static libraries an
 # installation has, and a subdirectory build has no SDL3Config.cmake. A
 # consumer writes SDL3::SDL3 either way, so it is made here.
-# A Linux machine with neither X11's headers nor Wayland's -- a CI runner,
-# a container -- cannot give SDL a windowing system to build for, and SDL
-# then refuses to configure at all (SDL_PrintSummary: "SDL could not find
-# X11 or Wayland development libraries"). Every program that takes a port
-# that takes SDL failed there, even one that never opens a window (a page
-# written out by its native program). There SDL is built as the console
-# build its documentation gives for that case: no desktop windowing system,
-# its offscreen and dummy video drivers; a machine with either is unchanged.
-set(cme_sdl3_console)
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND CMAKE_CXX_COMPILER_LOADED)
-  include(CheckIncludeFileCXX)
-  check_include_file_cxx("X11/Xlib.h" CME_SDL3_HAS_X11)
-  check_include_file_cxx("wayland-client.h" CME_SDL3_HAS_WAYLAND)
-  if(NOT CME_SDL3_HAS_X11 AND NOT CME_SDL3_HAS_WAYLAND)
-    set(cme_sdl3_console "SDL_UNIX_CONSOLE_BUILD ON")
-    message(STATUS "cmake-everywhere: sdl3 without X11 or Wayland headers here: built as SDL's console build (no desktop windows)")
-  endif()
-endif()
-
+# Which desktop windowing systems SDL is built for is said, not found: each
+# is a feature of this port -- x11, wayland -- and a feature asked for is
+# built here with what it needs, as every port's dependency is; a feature
+# not asked for is off, whatever this machine happens to have. With neither,
+# on Linux, SDL is its console build (no desktop windows; its offscreen and
+# dummy video drivers), which is what SDL documents for that case -- and
+# SDL_UNIX_CONSOLE_BUILD only lets SDL configure with no windowing system,
+# it turns off none that a feature turned on.
 cme_declare_port(
   NAME sdl3
   PROVIDES SDL3 sdl3
@@ -54,8 +43,22 @@ cme_declare_port(
     "SDL_INSTALL OFF"
     "SDL_DISABLE_INSTALL ON"
     "SDL_DISABLE_INSTALL_DOCS ON"
-    ${cme_sdl3_console}
+    "SDL_X11 OFF"
+    "SDL_WAYLAND OFF"
+    "SDL_UNIX_CONSOLE_BUILD ON"
 )
+
+# Wayland: libwayland (the client, its EGL glue and its cursors, and the
+# scanner that generates the protocols SDL speaks), libxkbcommon, and EGL's
+# headers -- SDL loads libEGL and links nothing of it. SDL asks pkg-config
+# for them and runs the scanner for its version while it configures; the
+# patch has it take these ports' targets instead, and the scanner as the
+# program its protocol code is generated with when the build reaches it.
+cme_port_feature(sdl3 wayland
+  SUMMARY "the Wayland video backend, with Wayland, xkbcommon and EGL's headers built here"
+  DEPENDS wayland xkbcommon egl-headers
+  OPTIONS "SDL_WAYLAND ON" "SDL_WAYLAND_SHARED OFF" "SDL_WAYLAND_LIBDECOR OFF" "CME_SDL_XKBCOMMON_VERSION 1.7.0"
+  PATCHES "patches/0001-wayland-from-cme-ports.patch")
 
 function(cme_adapt_sdl3 source binary)
   if(NOT TARGET SDL3::SDL3)
