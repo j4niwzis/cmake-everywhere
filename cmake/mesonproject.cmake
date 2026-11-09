@@ -234,11 +234,22 @@ function(cme_meson_dependency_pkgconfig port out)
     foreach(one IN LISTS includes)
       string(APPEND flags " -I${one}")
     endforeach()
-    set(libs "")
+    # The libraries, by name -- and, for each, an empty archive of that
+    # name where -L points: the dependency is built after Meson is asked,
+    # and Meson links each -l a .pc names to see that it is there. Natively
+    # the machine's copy answered (libffi in /usr/lib), and the probe went
+    # on; built for another machine -- musl -- nothing did, and wayland's
+    # configure failed on -lffi. The archive is "!<arch>", no members: it
+    # gives nothing, and the build links the dependency's own.
+    set(libs " -L${directory}/lib")
+    file(MAKE_DIRECTORY "${directory}/lib")
     cme_port_field(link ${dep} LINK_NAMES)
     foreach(pair IN LISTS link)
       if(pair MATCHES "^([^=]+)=")
         string(APPEND libs " -l${CMAKE_MATCH_1}")
+        if(NOT EXISTS "${directory}/lib/lib${CMAKE_MATCH_1}.a")
+          file(WRITE "${directory}/lib/lib${CMAKE_MATCH_1}.a" "!<arch>\n")
+        endif()
       endif()
     endforeach()
     cme_effective_version(${dep} dep_version)
