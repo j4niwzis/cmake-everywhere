@@ -520,7 +520,9 @@ def main(argv):
         split_off = []
         languages = set()
         for key, files in groups.items():
-            if key[0] in languages:
+            # NASM's sources are assembled one by one with their own flags
+            # (cmakeproject.cmake), not compiled by a target's: never split.
+            if key[0] in languages and key[0] != "ASM_NASM":
                 split_off.append((key, files))
             else:
                 languages.add(key[0])
