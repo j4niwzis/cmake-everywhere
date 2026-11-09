@@ -110,6 +110,15 @@ function(cme_cmake_resolve_link out port fragment paths owners)
     set(${out} "${CMAKE_MATCH_1}" PARENT_SCOPE)
     return()
   endif()
+  # A placeholder Meson was shown in place of a dependency not built yet
+  # (mesonproject.cmake: <port>-pc/lib/lib<name>.a, empty), which it then
+  # wrote down as the library itself: the name it stands for, resolved as
+  # -l<name> is -- else the build linked the empty archive (the desktop's
+  # wayland-scanner, with no expat in it).
+  if(fragment MATCHES "/_cme/[^/]+-pc/lib/lib([^/]+)\\.a$")
+    set(${out} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    return()
+  endif()
   if(fragment MATCHES "^-")
     return()
   endif()
