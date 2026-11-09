@@ -1,0 +1,31 @@
+# The common X extensions' client library, from X.org's release tarball: an
+# autotools build, configured and installed into a prefix of its own.
+cme_declare_port(
+  NAME libxext
+  PROVIDES Xext libXext xext
+  VERSION 1.3.6
+  URL "https://xorg.freedesktop.org/archive/individual/lib/libXext-1.3.6.tar.xz"
+  URL_HASH "SHA256=edb59fa23994e405fdc5b400afdf5820ae6160b94f35e3dc3da4457a16e89753"
+  LICENSE MIT
+  CONFIGURE YES
+  DEPENDS libx11 xorgproto
+  INSTALLED_TARGETS "lib/libXext.a=X11::Xext"
+  SYSTEM_PKGCONFIG "xext:X11::Xext"
+  TARGETS X11::Xext
+  CHECK_HEADER X11/extensions/Xext.h
+  CONFIGURE_ARGS
+    "--disable-shared"
+    "--enable-static"
+    "--with-pic"
+    "--disable-specs"
+    "--without-xmlto"
+    "--without-fop"
+  CONFIGURE_CROSS "--host=@TRIPLE@"
+)
+
+# A static library, linked with what it calls: the libraries below it.
+function(cme_adapt_libxext source binary)
+  if(TARGET X11::Xext)
+    set_property(TARGET X11::Xext APPEND PROPERTY INTERFACE_LINK_LIBRARIES X11::X11)
+  endif()
+endfunction()

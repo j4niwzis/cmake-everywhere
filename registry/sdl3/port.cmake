@@ -60,6 +60,18 @@ cme_port_feature(sdl3 wayland
   OPTIONS "SDL_WAYLAND ON" "SDL_WAYLAND_SHARED OFF" "SDL_WAYLAND_LIBDECOR OFF" "CME_SDL_XKBCOMMON_VERSION 1.7.0"
   PATCHES "patches/0001-wayland-from-cme-ports.patch")
 
+# X11: Xlib and the extensions SDL's X11 backend uses -- Xext, which it
+# needs, and Xcursor, XInput 2, Xfixes, XRandR, Xrender, the screen saver
+# extension and XTest, which it takes where they are -- each X.org library
+# built here from its release, with xcb under Xlib. SDL looks for them with
+# FindX11 and in the system's include directories; the patch has it take
+# these ports' targets, and their prefixes for the headers.
+cme_port_feature(sdl3 x11
+  SUMMARY "the X11 video backend, with Xlib and its extensions built here"
+  DEPENDS libx11 libxext libxcursor libxi libxfixes libxrandr libxrender libxscrnsaver libxtst
+  OPTIONS "SDL_X11 ON" "SDL_X11_SHARED OFF"
+  PATCHES "patches/0002-x11-from-cme-ports.patch")
+
 function(cme_adapt_sdl3 source binary)
   if(NOT TARGET SDL3::SDL3)
     cme_alias(SDL3::SDL3 SDL3-static)

@@ -1,0 +1,126 @@
+--- a/cmake/sdlchecks.cmake
++++ b/cmake/sdlchecks.cmake
+@@ -283,44 +283,85 @@
+     set(Xss_PKG_CONFIG_SPEC xscrnsaver)
+     set(Xtst_PKG_CONFIG_SPEC xtst)
+ 
+-    find_package(X11)
+-
+-    foreach(_LIB X11 Xext Xcursor Xi Xfixes Xrandr Xrender Xss Xtst)
+-      get_filename_component(_libdir "${X11_${_LIB}_LIB}" DIRECTORY)
+-      FindLibraryAndSONAME("${_LIB}" LIBDIRS ${_libdir})
+-    endforeach()
+-
+-    find_path(X11_INCLUDEDIR
+-      NAMES X11/Xlib.h
+-      PATHS
+-        ${X11_INCLUDE_DIR}
+-        /usr/pkg/xorg/include
+-        /usr/X11R6/include
+-        /usr/X11R7/include
+-        /usr/local/include/X11
+-        /usr/include/X11
+-        /usr/openwin/include
+-        /usr/openwin/share/include
+-        /opt/graphics/OpenGL/include
+-        /opt/X11/include
+-    )
+-
+-    if(X11_INCLUDEDIR)
+-      sdl_include_directories(PRIVATE SYSTEM "${X11_INCLUDEDIR}")
+-      list(APPEND CMAKE_REQUIRED_INCLUDES ${X11_INCLUDEDIR})
+-    endif()
+-
+-    find_file(HAVE_XCURSOR_H NAMES "X11/Xcursor/Xcursor.h" HINTS "${X11_INCLUDEDIR}")
+-    find_file(HAVE_XINPUT2_H NAMES "X11/extensions/XInput2.h" HINTS "${X11_INCLUDEDIR}")
+-    find_file(HAVE_XRANDR_H NAMES "X11/extensions/Xrandr.h" HINTS "${X11_INCLUDEDIR}")
+-    find_file(HAVE_XFIXES_H_ NAMES "X11/extensions/Xfixes.h" HINTS "${X11_INCLUDEDIR}")
+-    find_file(HAVE_XRENDER_H NAMES "X11/extensions/Xrender.h" HINTS "${X11_INCLUDEDIR}")
+-    find_file(HAVE_XSYNC_H NAMES "X11/extensions/sync.h" HINTS "${X11_INCLUDEDIR}")
+-    find_file(HAVE_XSS_H NAMES "X11/extensions/scrnsaver.h" HINTS "${X11_INCLUDEDIR}")
+-    find_file(HAVE_XSHAPE_H NAMES "X11/extensions/shape.h" HINTS "${X11_INCLUDEDIR}")
+-    find_file(HAVE_XTEST_H NAMES "X11/extensions/XTest.h" HINTS "${X11_INCLUDEDIR}")
+-    find_file(HAVE_XDBE_H NAMES "X11/extensions/Xdbe.h" HINTS "${X11_INCLUDEDIR}")
+-    find_file(HAVE_XEXT_H NAMES "X11/extensions/Xext.h" HINTS "${X11_INCLUDEDIR}")
++    # cmake-everywhere: X11 built here, as ports: their targets for the
++    # libraries, and the include directories of their prefixes -- each X
++    # library installed into a prefix of its own -- where the headers are
++    # looked for.
++    if(TARGET X11::X11 AND TARGET X11::Xext)
++      set(X11_LIB X11::X11)
++      set(XEXT_LIB X11::Xext)
++      set(_cme_x11_includes "")
++      foreach(_LIB X11 Xext Xcursor Xi Xfixes Xrandr Xrender Xss Xtst xcb Xau xorgproto)
++        if(TARGET X11::${_LIB})
++          get_target_property(_cme_dirs X11::${_LIB} INTERFACE_INCLUDE_DIRECTORIES)
++          if(_cme_dirs)
++            list(APPEND _cme_x11_includes ${_cme_dirs})
++          endif()
++        endif()
++      endforeach()
++      list(REMOVE_DUPLICATES _cme_x11_includes)
++      foreach(_PAIR "Xcursor=XCURSOR" "Xi=XI" "Xfixes=XFIXES" "Xrandr=XRANDR" "Xrender=XRENDER" "Xss=XSS" "Xtst=XTST")
++        string(REPLACE "=" ";" _PAIR "${_PAIR}")
++        list(GET _PAIR 0 _LIB)
++        list(GET _PAIR 1 _VAR)
++        if(TARGET X11::${_LIB})
++          set(${_VAR}_LIB X11::${_LIB})
++        endif()
++      endforeach()
++      find_path(X11_INCLUDEDIR NAMES X11/Xlib.h PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      sdl_include_directories(PRIVATE SYSTEM ${_cme_x11_includes})
++      list(APPEND CMAKE_REQUIRED_INCLUDES ${_cme_x11_includes})
++      find_file(HAVE_XCURSOR_H NAMES "X11/Xcursor/Xcursor.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      find_file(HAVE_XINPUT2_H NAMES "X11/extensions/XInput2.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      find_file(HAVE_XRANDR_H NAMES "X11/extensions/Xrandr.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      find_file(HAVE_XFIXES_H_ NAMES "X11/extensions/Xfixes.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      find_file(HAVE_XRENDER_H NAMES "X11/extensions/Xrender.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      find_file(HAVE_XSYNC_H NAMES "X11/extensions/sync.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      find_file(HAVE_XSS_H NAMES "X11/extensions/scrnsaver.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      find_file(HAVE_XSHAPE_H NAMES "X11/extensions/shape.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      find_file(HAVE_XTEST_H NAMES "X11/extensions/XTest.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      find_file(HAVE_XDBE_H NAMES "X11/extensions/Xdbe.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++      find_file(HAVE_XEXT_H NAMES "X11/extensions/Xext.h" PATHS ${_cme_x11_includes} NO_DEFAULT_PATH)
++    else()
++      find_package(X11)
++
++      foreach(_LIB X11 Xext Xcursor Xi Xfixes Xrandr Xrender Xss Xtst)
++        get_filename_component(_libdir "${X11_${_LIB}_LIB}" DIRECTORY)
++        FindLibraryAndSONAME("${_LIB}" LIBDIRS ${_libdir})
++      endforeach()
++
++      find_path(X11_INCLUDEDIR
++        NAMES X11/Xlib.h
++        PATHS
++          ${X11_INCLUDE_DIR}
++          /usr/pkg/xorg/include
++          /usr/X11R6/include
++          /usr/X11R7/include
++          /usr/local/include/X11
++          /usr/include/X11
++          /usr/openwin/include
++          /usr/openwin/share/include
++          /opt/graphics/OpenGL/include
++          /opt/X11/include
++      )
++
++      if(X11_INCLUDEDIR)
++        sdl_include_directories(PRIVATE SYSTEM "${X11_INCLUDEDIR}")
++        list(APPEND CMAKE_REQUIRED_INCLUDES ${X11_INCLUDEDIR})
++      endif()
++
++      find_file(HAVE_XCURSOR_H NAMES "X11/Xcursor/Xcursor.h" HINTS "${X11_INCLUDEDIR}")
++      find_file(HAVE_XINPUT2_H NAMES "X11/extensions/XInput2.h" HINTS "${X11_INCLUDEDIR}")
++      find_file(HAVE_XRANDR_H NAMES "X11/extensions/Xrandr.h" HINTS "${X11_INCLUDEDIR}")
++      find_file(HAVE_XFIXES_H_ NAMES "X11/extensions/Xfixes.h" HINTS "${X11_INCLUDEDIR}")
++      find_file(HAVE_XRENDER_H NAMES "X11/extensions/Xrender.h" HINTS "${X11_INCLUDEDIR}")
++      find_file(HAVE_XSYNC_H NAMES "X11/extensions/sync.h" HINTS "${X11_INCLUDEDIR}")
++      find_file(HAVE_XSS_H NAMES "X11/extensions/scrnsaver.h" HINTS "${X11_INCLUDEDIR}")
++      find_file(HAVE_XSHAPE_H NAMES "X11/extensions/shape.h" HINTS "${X11_INCLUDEDIR}")
++      find_file(HAVE_XTEST_H NAMES "X11/extensions/XTest.h" HINTS "${X11_INCLUDEDIR}")
++      find_file(HAVE_XDBE_H NAMES "X11/extensions/Xdbe.h" HINTS "${X11_INCLUDEDIR}")
++      find_file(HAVE_XEXT_H NAMES "X11/extensions/Xext.h" HINTS "${X11_INCLUDEDIR}")
++    endif()
+ 
+     if(X11_LIB AND HAVE_XEXT_H)
+ 
