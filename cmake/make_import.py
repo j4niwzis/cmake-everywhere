@@ -134,6 +134,7 @@ def libtool_archive_of(words, root):
     output = None
     objects = []
     libraries = []
+    installed = False
     index = 0
     while index < len(words):
         word = words[index]
@@ -142,7 +143,11 @@ def libtool_archive_of(words, root):
             output = words[index]
             index += 1
             continue
-        if word in ("-rpath", "-version-info", "-version-number", "-release", "-export-symbols", "-export-symbols-regex") and index < len(words):
+        if word == "-rpath" and index < len(words):
+            installed = True
+            index += 1
+            continue
+        if word in ("-version-info", "-version-number", "-release", "-export-symbols", "-export-symbols-regex") and index < len(words):
             index += 1
             continue
         if word.startswith("-"):
@@ -155,7 +160,10 @@ def libtool_archive_of(words, root):
         return None
     return {"archive": os.path.normpath(os.path.join(root, output[:-3] + ".a")),
             "objects": objects,
-            "libraries": [path[:-3] + ".a" for path in libraries]}
+            "libraries": [path[:-3] + ".a" for path in libraries],
+            # An installed library is linked with -rpath; a convenience
+            # library (noinst) without, and only that kind is taken whole.
+            "installed": installed}
 
 
 def compile_of(words, root):
@@ -329,6 +337,25 @@ MADE_FOR_COMPILES = (".h", ".hh", ".hpp", ".hxx", ".inc", ".ipp", ".def",
                      ".c", ".cc", ".cpp", ".cxx", ".s", ".S", ".asm")
 
 
+def rules_of(make, directory):
+    """make's database for one directory's Makefile (make -p -q -n there)."""
+    import subprocess
+    import tempfile
+    with tempfile.NamedTemporaryFile("w+", suffix=".txt", delete=False) as handle:
+        path = handle.name
+    with open(path, "w") as out:
+        # MAKE=true: this directory's rules alone. A recursive make asked
+        # for its database runs its sub-makes (-n runs what names $(MAKE)),
+        # and theirs came out as this one's, under names relative to
+        # another directory (libxcb's bigreq.c, made from the top).
+        subprocess.run([make, "-p", "-q", "-n", "--no-print-directory", "V=1", "MAKE=true"],
+                       cwd=directory, stdout=out, stderr=subprocess.DEVNULL)
+    try:
+        return read_rules(path)
+    finally:
+        os.unlink(path)
+
+
 def generated_files(rules, goal, build, roots=()):
     """What make would make that a compile reads: every file reachable from
     the default goal, or from what is compiled and archived, that has a
@@ -359,7 +386,28 @@ def generated_files(rules, goal, build, roots=()):
     return made
 
 
+def archives_made(dry, build):
+    """Every library the dry run says a link makes, as a path: libtool's
+    -o foo.la in the directory it ran in, and an archiver's foo.a."""
+    made = []
+    for where, command in read_commands(dry, build):
+        mode, wrapped = libtool_of(command)
+        if mode == "link":
+            one = libtool_archive_of(wrapped, where)
+            if one:
+                made.append(one["archive"][:-2] + ".la")
+            continue
+        one = archive_of(split(command), where)
+        if one:
+            made.append(one["archive"])
+    return made
+
+
 def main(argv):
+    if len(argv) == 4 and argv[1] == "--archives":
+        for path in archives_made(argv[2], os.path.abspath(argv[3])):
+            print(path)
+        return 0
     if len(argv) not in (4, 6):
         sys.stderr.write("usage: make_import.py <dry-run> <build-dir> <out> [<rules> <make>]\n")
         return 2
@@ -373,7 +421,10 @@ def main(argv):
     archives = {}
     other = []
     whole = {}
+    installable = set()
+    directories = {build}
     for where, command in read_commands(dry, build):
+        directories.add(where)
         mode, wrapped = libtool_of(command)
         if mode == "compile":
             one = compile_of(wrapped, where)
@@ -386,6 +437,8 @@ def main(argv):
                 kept = archives.setdefault(one["archive"], [])
                 kept.extend(o for o in one["objects"] if o not in kept)
                 whole.setdefault(one["archive"], []).extend(one["libraries"])
+                if one["installed"]:
+                    installable.add(one["archive"])
                 continue
         if mode is not None:
             other.append(command)
@@ -407,12 +460,18 @@ def main(argv):
 
     # A convenience library (libtool's noinst .la) is not a target of its
     # own: its objects are in every library that takes it.
+    # An installed library it names is not taken whole: it is what it links
+    # (libxcb-xkb.la names libxcb.la), said as its link.
     convenience = set()
+    links = {}
     for archive, libraries in whole.items():
         pending = list(libraries)
         while pending:
             library = pending.pop()
             if library not in archives:
+                continue
+            if library in installable:
+                links.setdefault(archive, []).append(library)
                 continue
             convenience.add(library)
             kept = archives[archive]
@@ -438,8 +497,31 @@ def main(argv):
             groups.setdefault(key, []).append(one["source"])
         if not groups:
             continue
+        # One target compiles a language one way: where the project compiles
+        # it several ways -- libX11 builds xim_trans.c with -DXIM_t and
+        # x11_trans.c with -DX11_t, each including Xtrans with its own
+        # meaning -- every way but the first is an object library of its
+        # own, with its own flags, whose objects go into the archive.
+        # Flattened into one, every file got every define, and Xtrans was
+        # defined twice over.
+        kept_groups = {}
+        split_off = []
+        languages = set()
+        for key, files in groups.items():
+            if key[0] in languages:
+                split_off.append((key, files))
+            else:
+                languages.add(key[0])
+                kept_groups[key] = files
+        parts = []
+        for index, (key, files) in enumerate(split_off):
+            part = "{}__part{}".format(name, index)
+            artifact = archive["archive"] + ".part{}".format(index)
+            targets.append({"name": part, "archive": artifact,
+                            "groups": {key: files}, "type": "OBJECT_LIBRARY"})
+            parts.append(artifact)
         targets.append({"name": name, "archive": archive["archive"],
-                        "groups": groups})
+                        "groups": kept_groups, "parts": parts})
 
     with open(output, "w") as handle:
         handle.write("# Written by make_import.py from a make dry run.\n")
@@ -458,7 +540,7 @@ def main(argv):
             handle.write("# {}\n".format(target["name"]))
             handle.write("set({}_NAME {})\n".format(prefix,
                                                     quote(target["name"])))
-            handle.write("set({}_TYPE \"STATIC_LIBRARY\")\n".format(prefix))
+            handle.write("set({}_TYPE \"{}\")\n".format(prefix, target.get("type", "STATIC_LIBRARY")))
             emit(handle, prefix + "_SOURCES", sources)
             handle.write("set({}_GROUPS {})\n".format(prefix,
                                                       len(target["groups"])))
@@ -472,7 +554,7 @@ def main(argv):
                      list(includes))
                 emit(handle, "{}_GROUP{}_FLAGS".format(prefix, index),
                      list(flags))
-            emit(handle, prefix + "_LINK", [])
+            emit(handle, prefix + "_LINK", target.get("parts", []) + links.get(target["archive"], []))
             emit(handle, prefix + "_LINK_GROUP", [])
             emit(handle, prefix + "_DEPENDS", [])
             emit(handle, prefix + "_ARTIFACTS", [target["archive"]])
@@ -485,36 +567,72 @@ def main(argv):
         handle.write("\n")
         # The files made some other way, each by the project's make, run for
         # that file alone, from its build directory, after what it needs.
-        roots = [os.path.relpath(path, build) for path in compiles]
-        roots += [os.path.relpath(path, build) for path in archives]
-        generated = generated_files(rules, goal, build, roots) if make else []
-        # And every source a compile reads that is not there yet, whatever
-        # the rules say or do not say: a file made by a pattern rule is not
-        # a target in make's database until something has asked for it,
-        # and asking make for it by name is how it is made.
-        if make:
+        # The files made some other way, each by the project's make, run for
+        # that file alone from the directory whose Makefile has its rule --
+        # a recursive build (libxcb's src) has each directory's rules in
+        # its own Makefile, and only there.
+        def inside(path, directory):
+            relative = os.path.relpath(path, directory)
+            return None if relative.startswith("..") else relative
+
+        def deepest(path):
+            best = None
+            for directory in directories:
+                if inside(path, directory) is not None and (best is None or len(directory) > len(best)):
+                    best = directory
+            return best
+
+        made = []  # (directory, relative file, its rules, files made with it)
+        for directory in sorted(directories):
+            if not make:
+                break
+            d_rules, d_goal = rules_of(make, directory)
+            roots = [r for r in (inside(p, directory) for p in list(compiles) + list(archives)) if r]
+            files = generated_files(d_rules, d_goal, directory, roots)
+            # And every source a compile reads that is not there yet, whatever
+            # the rules say: a file made by a pattern rule is not a target in
+            # make's database until something has asked for it, and asking
+            # make for it by name, where its Makefile is, is how it is made.
             for one in compiles.values():
                 source = one["source"]
-                if os.path.exists(source):
+                if os.path.exists(source) or deepest(source) != directory:
                     continue
-                relative = os.path.relpath(source, build)
-                if relative.startswith(".."):
-                    continue
-                if relative not in generated:
-                    generated.append(relative)
-        known = set(generated)
-        handle.write("set(CMAKE_IMPORT_COMMANDS {})\n".format(len(generated)))
-        for index, one in enumerate(generated):
+                relative = inside(source, directory)
+                if relative and relative not in files:
+                    files.append(relative)
+            # A header nothing has a rule for, needed by the build and not
+            # there, beside a source that is made: made by the same command
+            # -- libxcb's c_client.py writes xproto.c and xproto.h at once,
+            # and make's database names only the .c.
+            orphans = {}
+            for target, rule in d_rules.items():
+                for need in rule["needs"]:
+                    if not need.endswith(".h") or need in d_rules:
+                        continue
+                    if os.path.exists(os.path.join(directory, need)):
+                        continue
+                    for source in (need[:-2] + ".c", need[:-2] + ".cc"):
+                        if source in files:
+                            orphans.setdefault(source, set()).add(need)
+            for one in files:
+                made.append((directory, one, d_rules, sorted(orphans.get(one, ()))))
+        generated = [os.path.relpath(os.path.join(d, f), build) for d, f, _, _ in made]
+        known = {os.path.normpath(os.path.join(d, f)) for d, f, _, _ in made}
+        handle.write("set(CMAKE_IMPORT_COMMANDS {})\n".format(len(made)))
+        for index, (directory, one, d_rules, also) in enumerate(made):
             prefix = "CMAKE_IMPORT_COMMAND{}".format(index)
             inputs = []
-            for need in rules.get(one, {"needs": []})["needs"]:
-                if need in known or os.path.exists(os.path.join(build, need)):
-                    inputs.append(os.path.normpath(os.path.join(build, need)))
-            emit(handle, prefix + "_OUTPUTS", [os.path.normpath(os.path.join(build, one))])
+            for need in d_rules.get(one, {"needs": []})["needs"]:
+                path = os.path.normpath(os.path.join(directory, need))
+                if path in known or os.path.exists(path):
+                    inputs.append(path)
+            emit(handle, prefix + "_OUTPUTS", [os.path.normpath(os.path.join(directory, one))] +
+                 [os.path.normpath(os.path.join(directory, a)) for a in also])
             emit(handle, prefix + "_INPUTS", inputs)
             handle.write("set({}_LINE {})\n".format(
-                prefix, quote("{} --no-print-directory V=1 {}".format(shlex.quote(make), shlex.quote(one)))))
-            handle.write("set({}_DESC {})\n".format(prefix, quote("making " + one)))
+                prefix, quote("{} -C {} --no-print-directory V=1 {}".format(
+                    shlex.quote(make), shlex.quote(directory), shlex.quote(one)))))
+            handle.write("set({}_DESC {})\n".format(prefix, quote("making " + os.path.relpath(os.path.join(directory, one), build))))
         emit(handle, "CMAKE_IMPORT_GENERATED_BY_TOOLS", [])
 
     sys.stderr.write(

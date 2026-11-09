@@ -7,9 +7,12 @@ cme_declare_port(
   URL "https://xorg.freedesktop.org/archive/individual/lib/libxcb-1.17.0.tar.xz"
   URL_HASH "SHA256=599ebf9996710fea71622e6e184f3a8ad5b43d0e5fa8c4e407123c88a59a6d55"
   LICENSE MIT
+  # Its configure at the configure stage; its sources, half of them written
+  # by xcbgen from the protocol's XML, compiled in this graph.
   CONFIGURE YES
+  IMPORT make
+  IMPORT_TARGETS "xcb=X11::xcb"
   DEPENDS xcb-proto libxau xorgproto
-  INSTALLED_TARGETS "lib/libxcb.a=X11::xcb"
   SYSTEM_PKGCONFIG "xcb:X11::xcb"
   TARGETS X11::xcb
   CHECK_HEADER xcb/xcb.h
@@ -23,8 +26,30 @@ cme_declare_port(
 )
 
 # A static library, linked with what it calls: the libraries below it.
+# Its headers under xcb/, as they are installed: those of its tree, and
+# those xcbgen writes into its build directory (made with the library).
 function(cme_adapt_libxcb source binary)
-  if(TARGET X11::xcb)
-    set_property(TARGET X11::xcb APPEND PROPERTY INTERFACE_LINK_LIBRARIES X11::Xau)
+  if(TARGET libxcb_xcb)
+    set(built "${CMAKE_BINARY_DIR}/_cme/libxcb-build/src")
+    set(staged "${CMAKE_BINARY_DIR}/_cme/libxcb-include")
+    file(MAKE_DIRECTORY "${staged}/xcb")
+    file(GLOB written RELATIVE "${source}/src" "${source}/src/*.xml")
+    file(GLOB headers "${source}/src/*.h")
+    foreach(header IN LISTS headers)
+      get_filename_component(name "${header}" NAME)
+      if(NOT EXISTS "${staged}/xcb/${name}")
+        file(CREATE_LINK "${header}" "${staged}/xcb/${name}" SYMBOLIC)
+      endif()
+    endforeach()
+    get_property(source_proto GLOBAL PROPERTY CME_SOURCE_DIR_xcb-proto)
+    file(GLOB protocols "${source_proto}/src/*.xml")
+    foreach(protocol IN LISTS protocols)
+      get_filename_component(name "${protocol}" NAME_WE)
+      if(NOT EXISTS "${staged}/xcb/${name}.h")
+        file(CREATE_LINK "${built}/${name}.h" "${staged}/xcb/${name}.h" SYMBOLIC)
+      endif()
+    endforeach()
+    target_include_directories(libxcb_xcb INTERFACE "$<BUILD_INTERFACE:${staged}>")
+    target_link_libraries(libxcb_xcb INTERFACE X11::Xau)
   endif()
 endfunction()

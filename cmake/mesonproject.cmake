@@ -230,6 +230,43 @@ function(cme_meson_dependency_pkgconfig port out)
     list(REMOVE_DUPLICATES names)
 
     cme_gn_target_includes(includes ${dep})
+    # And the include directories of what its targets link, all the way
+    # down, as a .pc says them through Requires: Xauth.h includes
+    # Xfuncproto.h, which is xorgproto's, and libxcb compiled against xau
+    # alone did not find it.
+    cme_port_field(cme_pc_targets ${dep} TARGETS)
+    set(cme_pc_pending "")
+    foreach(cme_pc_one IN LISTS cme_pc_targets)
+      if(TARGET ${cme_pc_one})
+        get_target_property(cme_pc_links ${cme_pc_one} INTERFACE_LINK_LIBRARIES)
+        if(cme_pc_links)
+          list(APPEND cme_pc_pending ${cme_pc_links})
+        endif()
+      endif()
+    endforeach()
+    set(cme_pc_seen "")
+    while(cme_pc_pending)
+      list(POP_FRONT cme_pc_pending cme_pc_one)
+      if(cme_pc_one IN_LIST cme_pc_seen OR NOT TARGET ${cme_pc_one})
+        continue()
+      endif()
+      list(APPEND cme_pc_seen ${cme_pc_one})
+      get_target_property(cme_pc_dirs ${cme_pc_one} INTERFACE_INCLUDE_DIRECTORIES)
+      foreach(cme_pc_dir IN LISTS cme_pc_dirs)
+        if(cme_pc_dir MATCHES "^\\$<BUILD_INTERFACE:(.+)>$")
+          list(APPEND includes "${CMAKE_MATCH_1}")
+        elseif(cme_pc_dir AND NOT cme_pc_dir MATCHES "^\\$<" AND NOT cme_pc_dir MATCHES "NOTFOUND$")
+          list(APPEND includes "${cme_pc_dir}")
+        endif()
+      endforeach()
+      get_target_property(cme_pc_links ${cme_pc_one} INTERFACE_LINK_LIBRARIES)
+      if(cme_pc_links)
+        list(APPEND cme_pc_pending ${cme_pc_links})
+      endif()
+    endwhile()
+    if(includes)
+      list(REMOVE_DUPLICATES includes)
+    endif()
     set(flags "")
     foreach(one IN LISTS includes)
       string(APPEND flags " -I${one}")
@@ -256,9 +293,22 @@ function(cme_meson_dependency_pkgconfig port out)
     if(NOT dep_version)
       set(dep_version "0")
     endif()
+    # Variables of its .pc a consumer reads for more than flags --
+    # xcb-proto's xcbincludedir and pythondir, where libxcb's configure
+    # finds the protocol's XML and the generator -- as the port says them:
+    # @SOURCE@ its tree, @BUILD@ where its configure ran.
+    cme_port_field(variables ${dep} PKGCONFIG_VARIABLES)
+    get_property(dep_source GLOBAL PROPERTY CME_SOURCE_DIR_${dep})
+    set(said "")
+    foreach(pair IN LISTS variables)
+      string(REPLACE "@SOURCE@" "${dep_source}" pair "${pair}")
+      string(REPLACE "@BUILD@" "${CMAKE_BINARY_DIR}/_cme/${dep}-build" pair "${pair}")
+      string(APPEND said "${pair}\n")
+    endforeach()
     foreach(module IN LISTS names)
       file(WRITE "${directory}/${module}.pc"
            "# Written by cmake-everywhere for ${port}, about ${dep}.\n"
+           "${said}"
            "Name: ${module}\n"
            "Description: ${dep}, as this build has it\n"
            "Version: ${dep_version}\n"

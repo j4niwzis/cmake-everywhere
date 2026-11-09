@@ -8,8 +8,9 @@ cme_declare_port(
   URL_HASH "SHA256=74d0e4dfa3d39ad8939e99bda37f5967aba528211076828464d2777d477fc0fb"
   LICENSE MIT
   CONFIGURE YES
+  IMPORT make
+  IMPORT_TARGETS "Xau=X11::Xau"
   DEPENDS xorgproto
-  INSTALLED_TARGETS "lib/libXau.a=X11::Xau"
   SYSTEM_PKGCONFIG "xau:X11::Xau"
   TARGETS X11::Xau
   CHECK_HEADER X11/Xauth.h
@@ -22,7 +23,8 @@ cme_declare_port(
 
 # A static library, linked with what it calls: the libraries below it.
 function(cme_adapt_libxau source binary)
-  if(TARGET X11::Xau)
-    set_property(TARGET X11::Xau APPEND PROPERTY INTERFACE_LINK_LIBRARIES X11::xorgproto)
+  if(TARGET libxau_Xau)
+    target_include_directories(libxau_Xau INTERFACE "$<BUILD_INTERFACE:${source}/include>")
+    target_link_libraries(libxau_Xau INTERFACE X11::xorgproto)
   endif()
 endfunction()

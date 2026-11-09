@@ -280,11 +280,50 @@ function(cme_configure_import port build)
     set(Python3_EXECUTABLE python3)
   endif()
   set(dry "${build}/cme-make-dry-run.txt")
-  execute_process(
-    COMMAND "${CME_MAKE}" "-n" "-w" "V=1"
-    WORKING_DIRECTORY "${build}"
-    RESULT_VARIABLE code OUTPUT_FILE "${dry}" ERROR_VARIABLE output)
-  if(NOT code EQUAL 0)
+  # Asked again while it names libraries it would have linked and does not
+  # find: in a dry run nothing is made, so a library one directory links
+  # into another (libX11's xcms/libxcms.la, into libX11.la) is never there,
+  # and make says nothing of what needed it -- libX11 itself. Each one it
+  # names is put there empty, as old as can be, for the next asking, and
+  # taken away once make has said everything.
+  set(cme_placed "")
+  foreach(cme_round RANGE 5)
+    execute_process(
+      COMMAND "${CME_MAKE}" "-n" "-k" "-w" "V=1"
+      WORKING_DIRECTORY "${build}"
+      RESULT_VARIABLE code OUTPUT_FILE "${dry}" ERROR_VARIABLE output)
+    execute_process(
+      COMMAND "${Python3_EXECUTABLE}" "${CME_DIR}/cmake/make_import.py" --archives "${dry}" "${build}"
+      OUTPUT_VARIABLE cme_archives OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REPLACE "\n" ";" cme_archives "${cme_archives}")
+    set(cme_new "")
+    foreach(cme_archive IN LISTS cme_archives)
+      if(NOT EXISTS "${cme_archive}")
+        list(APPEND cme_new "${cme_archive}")
+      endif()
+    endforeach()
+    if(NOT cme_new OR code EQUAL 0)
+      break()
+    endif()
+    foreach(cme_archive IN LISTS cme_new)
+      get_filename_component(cme_dir "${cme_archive}" DIRECTORY)
+      file(MAKE_DIRECTORY "${cme_dir}")
+      file(WRITE "${cme_archive}" "")
+      execute_process(COMMAND touch -d "@1" "${cme_archive}")
+      list(APPEND cme_placed "${cme_archive}")
+    endforeach()
+  endforeach()
+  if(cme_placed)
+    file(REMOVE ${cme_placed})
+  endif()
+  # Kept going (-k): a file a dry run cannot see made -- libxcb's xproto.h,
+  # written by the command that writes xproto.c, which -n does not run --
+  # stops make at the first thing that needs it. What it could not say is
+  # said in what it printed anyway; a dry run that printed nothing failed.
+  file(SIZE "${dry}" cme_dry_size)
+  if(NOT code EQUAL 0 AND cme_dry_size GREATER 0)
+    message(STATUS "cmake-everywhere: ${port}'s make, asked what it would do, stopped at a file it would have made along the way; kept going")
+  elseif(NOT code EQUAL 0)
     message(FATAL_ERROR
       "cmake-everywhere: asking ${port}'s make what it would do failed\n"
       "${output}")
@@ -554,6 +593,11 @@ endfunction()
 # Configured, and then asked what it would make.
 function(cme_configure_make_build port source)
   set(build "${CMAKE_BINARY_DIR}/_cme/${port}-build")
+  # The generated files touched in the order they depend on each other, as
+  # for a port that is made: else make, asked what it would do, answers
+  # that it would run autoconf again (xorgproto's configure older than its
+  # configure.ac, as the archive was unpacked).
+  cme_configure_settle("${source}")
   cme_configure_configure(${port} "${source}" "${build}"
                           "${CMAKE_BINARY_DIR}/_cme/${port}-unused-prefix")
   cme_configure_import(${port} "${build}")

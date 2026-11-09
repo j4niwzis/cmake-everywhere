@@ -8,7 +8,14 @@ cme_declare_port(
   URL "https://xorg.freedesktop.org/archive/individual/proto/xcb-proto-1.17.0.tar.xz"
   URL_HASH "SHA256=2c1bacd2110f4799f74de6ebb714b94cf6f80fb112316b1219480fd22562148c"
   LICENSE MIT
+  # The protocol in XML and xcbgen, the generator libxcb runs on it: both
+  # its tree's, and named in the .pc libxcb's configure reads them from.
   CONFIGURE YES
+  IMPORT make
+  PKGCONFIG_NAMES "xcb-proto"
+  PKGCONFIG_VARIABLES
+    "xcbincludedir=@SOURCE@/src"
+    "pythondir=@SOURCE@"
   TARGETS X11::xcb-proto
   CONFIGURE_CROSS "--host=@TRIPLE@"
 )

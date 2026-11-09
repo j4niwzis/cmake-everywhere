@@ -7,9 +7,12 @@ cme_declare_port(
   URL "https://xorg.freedesktop.org/archive/individual/lib/libX11-1.8.10.tar.xz"
   URL_HASH "SHA256=2b3b3dad9347db41dca56beb7db5878f283bde1142f04d9f8e478af435dfdc53"
   LICENSE MIT
+  # Its configure at the configure stage, its make read (a recursive
+  # automake build: src, xcms, xkb, xlibi18n), every source compiled here.
   CONFIGURE YES
+  IMPORT make
+  IMPORT_TARGETS "X11=X11::X11"
   DEPENDS xorgproto xtrans libxcb libxau
-  INSTALLED_TARGETS "lib/libX11.a=X11::X11"
   SYSTEM_PKGCONFIG "x11:X11::X11"
   TARGETS X11::X11
   CHECK_HEADER X11/Xlib.h
@@ -26,7 +29,10 @@ cme_declare_port(
 
 # A static library, linked with what it calls: the libraries below it.
 function(cme_adapt_libx11 source binary)
-  if(TARGET X11::X11)
-    set_property(TARGET X11::X11 APPEND PROPERTY INTERFACE_LINK_LIBRARIES X11::xcb X11::xorgproto)
+  if(TARGET libx11_X11)
+    target_include_directories(libx11_X11 INTERFACE
+      "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/_cme/libx11-build/include>"
+      "$<BUILD_INTERFACE:${source}/include>")
+    target_link_libraries(libx11_X11 INTERFACE X11::xcb X11::xorgproto)
   endif()
 endfunction()
