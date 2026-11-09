@@ -87,32 +87,61 @@ function(cme_adapt_wayland source binary)
   # uses any protocol beyond the core does. The program that reads it is
   # the Wayland::scanner target, when this was built rather than found.
   cme_export_variable(Wayland WAYLAND_PROTOCOL_XML "${source}/protocol/wayland.xml")
-  # In a cross build, the scanner again for the machine doing the building
-  # -- the one above is built for the target -- compiled as a step of the
-  # build by the build machine's compiler: scanner.c and wayland-util.c,
-  # with expat's three sources, the expat port's tree and configuration.
-  # A consumer that generates protocol code runs this one (SDL does).
-  if(CMAKE_CROSSCOMPILING)
-    get_property(expat_source GLOBAL PROPERTY CME_SOURCE_DIR_expat)
-    set(expat_configured "${CMAKE_BINARY_DIR}/_deps/expat-build")
-    if(expat_source AND EXISTS "${expat_source}/expat/lib")
-      set(expat_source "${expat_source}/expat")
-    endif()
-    set(cc "${CME_BUILD_MACHINE_C_COMPILER}")
-    if(NOT cc)
-      set(cc cc)
-    endif()
-    set(scanner "${CMAKE_BINARY_DIR}/_cme/wayland-scanner-for-this-machine")
-    set(sources "${source}/src/scanner.c" "${source}/src/wayland-util.c"
-                "${expat_source}/lib/xmlparse.c" "${expat_source}/lib/xmlrole.c" "${expat_source}/lib/xmltok.c")
-    add_custom_command(
-      OUTPUT "${scanner}"
-      COMMAND "${cc}" -O2 -DXML_STATIC -o "${scanner}" ${sources}
-              "-I${source}/src" "-I${configured}/src" "-I${expat_source}/lib" "-I${expat_configured}"
-      DEPENDS ${sources}
-      COMMENT "cmake-everywhere: wayland-scanner, for this machine"
-      VERBATIM)
-    add_custom_target(cme_wayland_scanner_for_this_machine DEPENDS "${scanner}")
-    set_property(GLOBAL PROPERTY CME_WAYLAND_SCANNER_FOR_THIS_MACHINE "${scanner}")
+  # The build machine's scanner (cme_prepare_wayland), as a target a
+  # consumer that generates protocol code can be ordered after (SDL).
+  if(CMAKE_CROSSCOMPILING AND NOT TARGET cme_wayland_scanner_for_this_machine)
+    add_custom_target(cme_wayland_scanner_for_this_machine)
   endif()
+endfunction()
+
+# In a cross build, a wayland-scanner for the machine doing the building,
+# before wayland is asked what it would build: its own cross build finds
+# one by its .pc -- a native dependency, of its own version, whose program
+# Meson looks for while it is set up -- and runs it on the build machine to
+# write its protocol code. scanner.c and wayland-util.c, with expat's three
+# sources (the expat port's tree and configuration), compiled by the build
+# machine's compiler: a tool for this machine, as a probe is, not a library
+# of the program's. SDL runs the same one.
+function(cme_prepare_wayland source)
+  if(NOT CMAKE_CROSSCOMPILING)
+    return()
+  endif()
+  get_property(expat_source GLOBAL PROPERTY CME_SOURCE_DIR_expat)
+  if(EXISTS "${expat_source}/expat/lib")
+    set(expat_source "${expat_source}/expat")
+  endif()
+  set(expat_configured "${CMAKE_BINARY_DIR}/_deps/expat-build")
+  set(cc "${CME_BUILD_MACHINE_C_COMPILER}")
+  if(NOT cc)
+    set(cc cc)
+  endif()
+  set(here "${CMAKE_BINARY_DIR}/_cme/wayland-scanner-for-this-machine.d")
+  set(scanner "${here}/wayland-scanner")
+  string(REPLACE "." ";" parts "${port_version}")
+  list(GET parts 0 WAYLAND_VERSION_MAJOR)
+  list(GET parts 1 WAYLAND_VERSION_MINOR)
+  list(GET parts 2 WAYLAND_VERSION_MICRO)
+  set(WAYLAND_VERSION "${port_version}")
+  configure_file("${source}/src/wayland-version.h.in" "${here}/wayland-version.h" @ONLY)
+  if(NOT EXISTS "${scanner}")
+    execute_process(
+      COMMAND "${cc}" -O2 -DXML_STATIC -o "${scanner}"
+              "${source}/src/scanner.c" "${source}/src/wayland-util.c"
+              "${expat_source}/lib/xmlparse.c" "${expat_source}/lib/xmlrole.c" "${expat_source}/lib/xmltok.c"
+              "-I${here}" "-I${source}/src" "-I${expat_source}/lib" "-I${expat_configured}"
+      RESULT_VARIABLE code OUTPUT_VARIABLE output ERROR_VARIABLE output)
+    if(NOT code EQUAL 0)
+      message(FATAL_ERROR "cmake-everywhere: the build machine's wayland-scanner did not compile\n${output}")
+    endif()
+  endif()
+  # Its .pc, where wayland's setup looks for native dependencies.
+  file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/_cme/wayland-pc")
+  file(WRITE "${CMAKE_BINARY_DIR}/_cme/wayland-pc/wayland-scanner.pc"
+       "# Written by cmake-everywhere: the build machine's wayland-scanner.\n"
+       "wayland_scanner=${scanner}\n"
+       "pkgdatadir=${source}/protocol\n"
+       "Name: wayland-scanner\n"
+       "Description: the build machine's wayland-scanner\n"
+       "Version: ${port_version}\n")
+  set_property(GLOBAL PROPERTY CME_WAYLAND_SCANNER_FOR_THIS_MACHINE "${scanner}")
 endfunction()
