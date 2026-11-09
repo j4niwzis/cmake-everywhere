@@ -1,0 +1,14 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -4156,7 +4156,10 @@
+   export(TARGETS SDL3-shared NAMESPACE "SDL3::" FILE "SDL3sharedTargets.cmake")
+ endif()
+ 
+-if(SDL_STATIC)
++# cmake-everywhere: SDL is a part of the consumer's build, linking libraries
++# that are targets of that build (the X11 ports, compiled there); a
++# build-tree export of it names them, and they are in no export set.
++if(SDL_STATIC AND NOT CME_SDL_NO_BUILD_TREE_EXPORT)
+   export(TARGETS SDL3-static NAMESPACE "SDL3::" FILE "SDL3staticTargets.cmake")
+ endif()
+ 

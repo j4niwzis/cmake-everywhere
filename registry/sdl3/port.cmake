@@ -34,7 +34,11 @@ cme_declare_port(
   # program built with X11 and Wayland support runs on a machine that has
   # only one of them. That is the behaviour SDL documents and distributions
   # rely on, and choosing here would only take support away.
+  # Not exported from the build tree: it links targets of the consumer's
+  # build (the X11 ports are compiled there), which no export set holds.
+  PATCHES "patches/0003-no-build-tree-export.patch"
   OPTIONS
+    "CME_SDL_NO_BUILD_TREE_EXPORT ON"
     "SDL_SHARED OFF"
     "SDL_STATIC ON"
     "SDL_TEST_LIBRARY OFF"
