@@ -326,6 +326,16 @@ function(cme_meson_probe port source out_build)
     set(path "${pkgconfig}:$ENV{PKG_CONFIG_PATH}")
   endif()
 
+  # Said to Meson as its option too: in a cross build it reads
+  # PKG_CONFIG_PATH for the build machine's dependencies only, and the
+  # host's -- the ports' .pc files -- were never looked for (wayland's
+  # libffi and expat, built for musl: -lffi from nowhere).
+  # (A list there is written with commas.)
+  if(path)
+    string(REPLACE ":" "," meson_path "${path}")
+    list(APPEND arguments "-Dpkg_config_path=${meson_path}")
+  endif()
+
   message(STATUS "cmake-everywhere: asking ${port} what it would build")
   execute_process(
     COMMAND ${CMAKE_COMMAND} -E env "NINJA=${CME_NINJA}"
