@@ -73,7 +73,9 @@ def read_commands(path, build):
         line = line.strip()
         entering = re.match(r"^\S*make(\[\d+\])?: Entering directory [`'](.*)'$", line)
         if entering:
-            where.append(entering.group(2))
+            # The top make's own directory is the build directory, by
+            # whatever name it printed it.
+            where.append(build if entering.group(1) is None else entering.group(2))
             continue
         if re.match(r"^\S*make(\[\d+\])?: Leaving directory ", line):
             if len(where) > 1:
@@ -339,6 +341,8 @@ MADE_FOR_COMPILES = (".h", ".hh", ".hpp", ".hxx", ".inc", ".ipp", ".def",
 
 def rules_of(make, directory):
     """make's database for one directory's Makefile (make -p -q -n there)."""
+    if not os.path.isdir(directory):
+        return {}, None
     import subprocess
     import tempfile
     with tempfile.NamedTemporaryFile("w+", suffix=".txt", delete=False) as handle:
@@ -594,7 +598,10 @@ def main(argv):
         for directory in sorted(directories):
             if not make:
                 break
-            d_rules, d_goal = rules_of(make, directory)
+            if directory == build and rules:
+                d_rules, d_goal = rules, goal
+            else:
+                d_rules, d_goal = rules_of(make, directory)
             roots = [r for r in (inside(p, directory) for p in list(compiles) + list(archives)) if r]
             files = generated_files(d_rules, d_goal, directory, roots)
             # And every source a compile reads that is not there yet, whatever
@@ -638,8 +645,10 @@ def main(argv):
                  [os.path.normpath(os.path.join(directory, a)) for a in also])
             emit(handle, prefix + "_INPUTS", inputs)
             handle.write("set({}_LINE {})\n".format(
-                prefix, quote("{} -C {} --no-print-directory V=1 {}".format(
-                    shlex.quote(make), shlex.quote(directory), shlex.quote(one)))))
+                prefix, quote("{}{} --no-print-directory V=1 {}".format(
+                    shlex.quote(make),
+                    "" if directory == build else " -C " + shlex.quote(directory),
+                    shlex.quote(one)))))
             handle.write("set({}_DESC {})\n".format(prefix, quote("making " + os.path.relpath(os.path.join(directory, one), build))))
         emit(handle, "CMAKE_IMPORT_GENERATED_BY_TOOLS", [])
 

@@ -336,7 +336,7 @@ function(cme_configure_import port build)
   # would have been, which is not a failure here.
   set(rules "${build}/cme-make-rules.txt")
   execute_process(
-    COMMAND "${CME_MAKE}" "-p" "-q" "-n" "--no-print-directory" "V=1"
+    COMMAND "${CME_MAKE}" "-p" "-q" "-n" "--no-print-directory" "V=1" "MAKE=true"
     WORKING_DIRECTORY "${build}"
     OUTPUT_FILE "${rules}" ERROR_QUIET)
   set(description "${build}/cme-targets.cmake")

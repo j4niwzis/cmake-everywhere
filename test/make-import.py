@@ -105,17 +105,25 @@ def main():
             if got != want:
                 problems.append("{}:\n  is   {}\n  want {}".format(what, got, want))
 
-        check("an archive is a target, named as the library is",
-              sorted(values["CMAKE_IMPORT_TARGETS"]), ["avcodec", "avutil"])
-        check("its sources are the sources of the objects in it",
-              sorted(values["CMAKE_IMPORT_avutil_SOURCES"]),
+        # A language compiled two ways in one archive: the second way an
+        # object library of its own, with its own flags, its objects in
+        # the archive (linked by it) -- not one target with the union.
+        check("an archive is a target, named as the library is, and each "
+              "further way of compiling a language an object library",
+              sorted(values["CMAKE_IMPORT_TARGETS"]), ["avcodec", "avutil", "avutil__part0"])
+        check("its sources are the sources of the objects in it, a way each",
+              sorted(values["CMAKE_IMPORT_avutil_SOURCES"] + values["CMAKE_IMPORT_avutil__part0_SOURCES"]),
               sorted([os.path.join(build, "libavutil", "mem.c"),
                       os.path.join(build, "libavutil", "log.c"),
                       os.path.join(build, "libavutil", "extra.c"),
                       os.path.join(build, "libavutil", "made.c")]))
+        check("the part is an object library",
+              values["CMAKE_IMPORT_avutil__part0_TYPE"], ["OBJECT_LIBRARY"])
+        check("and the archive links it",
+              values["CMAKE_IMPORT_avutil_LINK"], values["CMAKE_IMPORT_avutil__part0_ARTIFACTS"])
         # A count is written as a number rather than a string, so it is
         # looked for as one.
-        if "set(CMAKE_IMPORT_avutil_GROUPS 2)" not in open(out).read():
+        if "set(CMAKE_IMPORT_avutil_GROUPS 1)" not in open(out).read():
             problems.append("two objects compiled with different -I are one "
                             "group, and their flags would be the union")
         check("the language comes from the source",
