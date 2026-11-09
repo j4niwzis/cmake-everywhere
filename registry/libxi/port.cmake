@@ -8,8 +8,9 @@ cme_declare_port(
   URL_HASH "SHA256=d0e0555e53d6e2114eabfa44226ba162d2708501a25e18d99cfb35c094c6c104"
   LICENSE MIT
   CONFIGURE YES
+  IMPORT make
   DEPENDS libxext libxfixes libx11
-  INSTALLED_TARGETS "lib/libXi.a=X11::Xi"
+  IMPORT_TARGETS "Xi=X11::Xi"
   SYSTEM_PKGCONFIG "xi:X11::Xi"
   TARGETS X11::Xi
   CHECK_HEADER X11/Xlib.h X11/extensions/XInput2.h
@@ -26,7 +27,9 @@ cme_declare_port(
 
 # A static library, linked with what it calls: the libraries below it.
 function(cme_adapt_libxi source binary)
-  if(TARGET X11::Xi)
-    set_property(TARGET X11::Xi APPEND PROPERTY INTERFACE_LINK_LIBRARIES X11::Xext X11::Xfixes X11::X11)
+  # Its headers are its tree's (include/X11/extensions), compiled here.
+  if(TARGET libxi_Xi)
+    target_include_directories(libxi_Xi INTERFACE "$<BUILD_INTERFACE:${source}/include>")
+    target_link_libraries(libxi_Xi INTERFACE X11::Xext X11::Xfixes X11::X11)
   endif()
 endfunction()

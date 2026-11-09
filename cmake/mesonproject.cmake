@@ -199,7 +199,21 @@ endfunction()
 function(cme_meson_dependency_pkgconfig port out)
   set(directory "${CMAKE_BINARY_DIR}/_cme/${port}-pc")
   file(MAKE_DIRECTORY "${directory}")
+  # Every port below it, not only those it names: a .pc names what it
+  # needs in its Requires, and a configure asks for those by name too --
+  # libXcursor for fixesproto, which is xorgproto's, through libXfixes.
   cme_gn_dependency_ports(${port} deps)
+  set(cme_pc_below ${deps})
+  while(cme_pc_below)
+    list(POP_FRONT cme_pc_below cme_pc_dep)
+    cme_gn_dependency_ports(${cme_pc_dep} cme_pc_more)
+    foreach(cme_pc_one IN LISTS cme_pc_more)
+      if(NOT cme_pc_one IN_LIST deps)
+        list(APPEND deps ${cme_pc_one})
+        list(APPEND cme_pc_below ${cme_pc_one})
+      endif()
+    endforeach()
+  endwhile()
   set(written "")
   foreach(dep IN LISTS deps)
     # A dependency the machine's copy answered for is left to the machine's
@@ -284,8 +298,40 @@ function(cme_meson_dependency_pkgconfig port out)
     foreach(pair IN LISTS link)
       if(pair MATCHES "^([^=]+)=")
         string(APPEND libs " -l${CMAKE_MATCH_1}")
-        if(NOT EXISTS "${directory}/lib/lib${CMAKE_MATCH_1}.a")
-          file(WRITE "${directory}/lib/lib${CMAKE_MATCH_1}.a" "!<arch>\n")
+        set(cme_probe_name "${CMAKE_MATCH_1}")
+        if(NOT EXISTS "${directory}/lib/lib${cme_probe_name}.a")
+          cme_port_field(cme_probe_symbols ${dep} PROBE_SYMBOLS)
+          if(cme_probe_symbols)
+            # A configure that links a test against the library -- FFmpeg's
+            # against x264_encoder_encode -- is answered by the functions
+            # the port names, empty, in the placeholder: one small compile
+            # for the probe, as a try_compile is; the library is still
+            # compiled in the build.
+            set(cme_probe_c "${directory}/lib/${cme_probe_name}-probe.c")
+            set(cme_probe_text "/* Placeholders for configure-time link tests only. */\n")
+            foreach(cme_symbol IN LISTS cme_probe_symbols)
+              string(APPEND cme_probe_text "void ${cme_symbol}(void) {}\n")
+            endforeach()
+            file(WRITE "${cme_probe_c}" "${cme_probe_text}")
+            set(cme_probe_flags "")
+            if(CMAKE_C_COMPILER_TARGET)
+              list(APPEND cme_probe_flags "--target=${CMAKE_C_COMPILER_TARGET}")
+            endif()
+            if(CMAKE_SYSROOT)
+              list(APPEND cme_probe_flags "--sysroot=${CMAKE_SYSROOT}")
+            endif()
+            execute_process(
+              COMMAND "${CMAKE_C_COMPILER}" ${cme_probe_flags} -fPIC -c "${cme_probe_c}"
+                      -o "${directory}/lib/${cme_probe_name}-probe.o"
+              RESULT_VARIABLE cme_probe_code)
+            if(cme_probe_code EQUAL 0)
+              execute_process(COMMAND "${CMAKE_AR}" rcs "${directory}/lib/lib${cme_probe_name}.a"
+                                      "${directory}/lib/${cme_probe_name}-probe.o")
+            endif()
+          endif()
+          if(NOT EXISTS "${directory}/lib/lib${cme_probe_name}.a")
+            file(WRITE "${directory}/lib/lib${cme_probe_name}.a" "!<arch>\n")
+          endif()
         endif()
       endif()
     endforeach()

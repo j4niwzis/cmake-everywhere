@@ -8,8 +8,9 @@ cme_declare_port(
   URL_HASH "SHA256=b50d4c25b97009a744706c1039c598f4d8e64910c9fde381994e1cae235d9242"
   LICENSE MIT
   CONFIGURE YES
+  IMPORT make
   DEPENDS libxext libxi libx11
-  INSTALLED_TARGETS "lib/libXtst.a=X11::Xtst"
+  IMPORT_TARGETS "Xtst=X11::Xtst"
   SYSTEM_PKGCONFIG "xtst:X11::Xtst"
   TARGETS X11::Xtst
   CHECK_HEADER X11/Xlib.h X11/extensions/XTest.h
@@ -25,7 +26,9 @@ cme_declare_port(
 
 # A static library, linked with what it calls: the libraries below it.
 function(cme_adapt_libxtst source binary)
-  if(TARGET X11::Xtst)
-    set_property(TARGET X11::Xtst APPEND PROPERTY INTERFACE_LINK_LIBRARIES X11::Xext X11::Xi X11::X11)
+  # Its headers are its tree's (include/X11/extensions), compiled here.
+  if(TARGET libxtst_Xtst)
+    target_include_directories(libxtst_Xtst INTERFACE "$<BUILD_INTERFACE:${source}/include>")
+    target_link_libraries(libxtst_Xtst INTERFACE X11::Xext X11::Xi X11::X11)
   endif()
 endfunction()

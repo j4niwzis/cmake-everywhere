@@ -8,8 +8,9 @@ cme_declare_port(
   URL_HASH "SHA256=fde9402dd4cfe79da71e2d96bb980afc5e6ff4f8a7d74c159e1966afb2b2c2c0"
   LICENSE MIT
   CONFIGURE YES
+  IMPORT make
   DEPENDS libxrender libxfixes libx11
-  INSTALLED_TARGETS "lib/libXcursor.a=X11::Xcursor"
+  IMPORT_TARGETS "Xcursor=X11::Xcursor"
   SYSTEM_PKGCONFIG "xcursor:X11::Xcursor"
   TARGETS X11::Xcursor
   CHECK_HEADER X11/Xlib.h X11/Xcursor/Xcursor.h
@@ -22,7 +23,9 @@ cme_declare_port(
 
 # A static library, linked with what it calls: the libraries below it.
 function(cme_adapt_libxcursor source binary)
-  if(TARGET X11::Xcursor)
-    set_property(TARGET X11::Xcursor APPEND PROPERTY INTERFACE_LINK_LIBRARIES X11::Xrender X11::Xfixes X11::X11)
+  # Its headers are its tree's (include/X11/extensions), compiled here.
+  if(TARGET libxcursor_Xcursor)
+    target_include_directories(libxcursor_Xcursor INTERFACE "$<BUILD_INTERFACE:${source}/include>")
+    target_link_libraries(libxcursor_Xcursor INTERFACE X11::Xrender X11::Xfixes X11::X11)
   endif()
 endfunction()

@@ -12,10 +12,11 @@ cme_declare_port(
   # The command-line utility's gnulib error support uses Android API 23
   # globals. GLib only needs the library; do not build or install the CLI.
   PATCHES "patches/0001-build-libraries-only.patch"
+  # Its configure at the configure stage (iconv.h is written there), its
+  # make read and its library compiled here.
   CONFIGURE YES
-  CONFIGURE_INSTALL install-lib
-  INSTALLED_TARGETS "lib/libiconv.a=Iconv::Iconv"
-  INSTALLED_INCLUDE include
+  IMPORT make
+  IMPORT_TARGETS "iconv=Iconv::Iconv"
   SYSTEM_PKGCONFIG "libiconv:Iconv::Iconv"
   LINK_NAMES "iconv=Iconv::Iconv"
   TARGETS Iconv::Iconv
@@ -23,3 +24,11 @@ cme_declare_port(
   CONFIGURE_ARGS "--disable-shared" "--enable-static" "--disable-nls" "--with-pic"
   CONFIGURE_CROSS "--host=@TRIPLE@"
 )
+
+function(cme_adapt_libiconv source binary)
+  # iconv.h, as its configure wrote it for this machine.
+  if(TARGET libiconv_iconv)
+    target_include_directories(libiconv_iconv INTERFACE
+      "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/_cme/libiconv-build/include>")
+  endif()
+endfunction()

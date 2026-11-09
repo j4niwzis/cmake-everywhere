@@ -1921,7 +1921,7 @@ function(cme_declare_port)
   # the rest -- which is what happened, and what the compiler then reported
   # as a missing brace on the last line it was given.
   set(many CARGO_FEATURES
-           PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG PKGCONFIG_NAMES
+           PROVIDES OPTIONS DEPENDS SYSTEM_PKGCONFIG PKGCONFIG_NAMES PKGCONFIG_VARIABLES PROBE_SYMBOLS
            SYSTEM_CODE
            EXCLUDES LICENSE
            LINK_NAMES TARGETS SYSTEMS PROGRAMS CHECK_HEADER
@@ -6329,6 +6329,10 @@ function(cme_build_port port package version exact)
     cme_note_decision("${port}" "fetched" "${port_version}")
     return()
   endif()
+
+  # Where its tree is, for what is said about it elsewhere -- a .pc
+  # variable naming a directory of it (PKGCONFIG_VARIABLES, @SOURCE@).
+  set_property(GLOBAL PROPERTY CME_SOURCE_DIR_${port} "${${port}_SOURCE_DIR}")
 
   # What the port said it reads out of another port's tree, put there before
   # anything is asked to compile it.

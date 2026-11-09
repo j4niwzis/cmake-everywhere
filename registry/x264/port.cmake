@@ -38,9 +38,15 @@ cme_declare_port(
   # file describes an install: a prefix with headers under include and the
   # archive under lib. So this port produces one, which is the shape the
   # thing that wants it can use.
+  # Its configure at the configure stage, its make read: every C source and
+  # every assembly file (nasm) compiled in this graph.
   CONFIGURE YES
-  INSTALLED_TARGETS "lib/libx264.a=x264::x264"
-  INSTALLED_INCLUDE include
+  IMPORT make
+  IMPORT_TARGETS "x264=x264::x264"
+  # What FFmpeg's configure links its test of libx264 against, which is
+  # not built until the build is: placeholders, for that test alone.
+  PROBE_SYMBOLS x264_encoder_encode x264_encoder_open_164 x264_param_default
+                x264_encoder_close x264_picture_init x264_param_apply_profile
   SYSTEM_PKGCONFIG "x264:x264::x264"
   LINK_NAMES "x264=x264::x264"
   TARGETS x264::x264
@@ -84,7 +90,11 @@ function(cme_adapt_x264 source binary)
   cme_export_variable(x264 X264_FOUND TRUE)
   cme_export_variable(x264 X264_LIBRARY x264::x264)
   cme_export_variable(x264 X264_LIBRARIES x264::x264)
-  if(CME_INSTALLED_x264)
-    cme_export_variable(x264 X264_INCLUDE_DIRS "${CME_INSTALLED_x264}/include")
+  # x264.h is its tree's, x264_config.h its configure's.
+  set(built "${CMAKE_BINARY_DIR}/_cme/x264-build")
+  if(TARGET x264_x264)
+    target_include_directories(x264_x264 INTERFACE
+      "$<BUILD_INTERFACE:${source}>" "$<BUILD_INTERFACE:${built}>")
   endif()
+  cme_export_variable(x264 X264_INCLUDE_DIRS "${source};${built}")
 endfunction()
