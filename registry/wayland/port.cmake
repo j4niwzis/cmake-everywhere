@@ -60,6 +60,15 @@ function(cme_adapt_wayland source binary)
         "$<BUILD_INTERFACE:${configured}/src>")
     endif()
   endforeach()
+  # The connection marshals with libffi: built here, the libraries are
+  # static, and whatever links wayland-client (or -server) links libffi too
+  # -- else ffi_call and ffi_type_* were left undefined (SDL's video, in a
+  # program's window).
+  foreach(target wayland-client wayland-server)
+    if(TARGET wayland_${target} AND TARGET FFI::ffi)
+      target_link_libraries(wayland_${target} INTERFACE FFI::ffi)
+    endif()
+  endforeach()
   if(TARGET wayland_wayland-cursor)
     target_include_directories(wayland_wayland-cursor INTERFACE
       "$<BUILD_INTERFACE:${source}/cursor>")
