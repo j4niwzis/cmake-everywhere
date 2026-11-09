@@ -49,10 +49,12 @@ function(cme_adapt_libxcb source binary)
         file(CREATE_LINK "${built}/${name}.h" "${staged}/xcb/${name}.h" SYMBOLIC)
       endif()
     endforeach()
-    # And where xcbgen writes them: xcb.h includes "xproto.h" by itself,
-    # from beside it -- its tree, where xproto.h is not -- and finds it on
-    # the include path instead (SDL's Vulkan renderer, through xcb.h).
-    target_include_directories(libxcb_xcb INTERFACE "$<BUILD_INTERFACE:${staged}>" "$<BUILD_INTERFACE:${built}>")
+    # And both halves as they are, unstaged: xcb.h includes "xproto.h" and
+    # xproto.h includes "xcb.h", each from beside itself -- one in the tree,
+    # the other where xcbgen writes it -- and each finds the other on the
+    # include path instead (SDL's Vulkan renderer, through xcb.h).
+    target_include_directories(libxcb_xcb INTERFACE "$<BUILD_INTERFACE:${staged}>" "$<BUILD_INTERFACE:${built}>"
+      "$<BUILD_INTERFACE:${source}/src>")
     target_link_libraries(libxcb_xcb INTERFACE X11::Xau)
   endif()
 endfunction()
