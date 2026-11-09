@@ -87,4 +87,32 @@ function(cme_adapt_wayland source binary)
   # uses any protocol beyond the core does. The program that reads it is
   # the Wayland::scanner target, when this was built rather than found.
   cme_export_variable(Wayland WAYLAND_PROTOCOL_XML "${source}/protocol/wayland.xml")
+  # In a cross build, the scanner again for the machine doing the building
+  # -- the one above is built for the target -- compiled as a step of the
+  # build by the build machine's compiler: scanner.c and wayland-util.c,
+  # with expat's three sources, the expat port's tree and configuration.
+  # A consumer that generates protocol code runs this one (SDL does).
+  if(CMAKE_CROSSCOMPILING)
+    get_property(expat_source GLOBAL PROPERTY CME_SOURCE_DIR_expat)
+    set(expat_configured "${CMAKE_BINARY_DIR}/_deps/expat-build")
+    if(expat_source AND EXISTS "${expat_source}/expat/lib")
+      set(expat_source "${expat_source}/expat")
+    endif()
+    set(cc "${CME_BUILD_MACHINE_C_COMPILER}")
+    if(NOT cc)
+      set(cc cc)
+    endif()
+    set(scanner "${CMAKE_BINARY_DIR}/_cme/wayland-scanner-for-this-machine")
+    set(sources "${source}/src/scanner.c" "${source}/src/wayland-util.c"
+                "${expat_source}/lib/xmlparse.c" "${expat_source}/lib/xmlrole.c" "${expat_source}/lib/xmltok.c")
+    add_custom_command(
+      OUTPUT "${scanner}"
+      COMMAND "${cc}" -O2 -DXML_STATIC -o "${scanner}" ${sources}
+              "-I${source}/src" "-I${configured}/src" "-I${expat_source}/lib" "-I${expat_configured}"
+      DEPENDS ${sources}
+      COMMENT "cmake-everywhere: wayland-scanner, for this machine"
+      VERBATIM)
+    add_custom_target(cme_wayland_scanner_for_this_machine DEPENDS "${scanner}")
+    set_property(GLOBAL PROPERTY CME_WAYLAND_SCANNER_FOR_THIS_MACHINE "${scanner}")
+  endif()
 endfunction()
