@@ -10,9 +10,9 @@
 cme_declare_port(
   NAME wayland
   PROVIDES Wayland wayland
-  VERSION 1.24.0
+  VERSION 1.26.0
   GIT_REPOSITORY https://gitlab.freedesktop.org/wayland/wayland.git
-  GIT_TAG 1.24.0
+  GIT_TAG 1.26.0
   GIT_TAG_TEMPLATE "@VERSION@"
   LICENSE MIT
   IMPORT meson

@@ -12,7 +12,7 @@ cme_declare_port(
   INSTALLED_TARGETS "lib/libXext.a=X11::Xext"
   SYSTEM_PKGCONFIG "xext:X11::Xext"
   TARGETS X11::Xext
-  CHECK_HEADER X11/extensions/Xext.h
+  CHECK_HEADER X11/Xlib.h X11/extensions/Xext.h
   CONFIGURE_ARGS
     "--disable-shared"
     "--enable-static"

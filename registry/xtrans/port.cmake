@@ -8,6 +8,7 @@ cme_declare_port(
   URL_HASH "SHA256=5c5cbfe34764a9131d048f03c31c19e57fb4c682d67713eab6a65541b4dff86c"
   LICENSE MIT
   CONFIGURE YES
+  DEPENDS xorgproto
   SYSTEM_PKGCONFIG "xtrans:X11::xtrans"
   TARGETS X11::xtrans
   CHECK_HEADER X11/Xtrans/Xtrans.h
@@ -18,5 +19,7 @@ function(cme_adapt_xtrans source binary)
   if(NOT TARGET X11::xtrans)
     add_library(X11::xtrans INTERFACE IMPORTED GLOBAL)
     set_property(TARGET X11::xtrans PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${CME_INSTALLED_xtrans}/include")
+    # Xtrans.h includes Xfuncproto.h, which is xorgproto's.
+    set_property(TARGET X11::xtrans PROPERTY INTERFACE_LINK_LIBRARIES X11::xorgproto)
   endif()
 endfunction()

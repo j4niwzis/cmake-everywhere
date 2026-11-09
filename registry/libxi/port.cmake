@@ -12,7 +12,7 @@ cme_declare_port(
   INSTALLED_TARGETS "lib/libXi.a=X11::Xi"
   SYSTEM_PKGCONFIG "xi:X11::Xi"
   TARGETS X11::Xi
-  CHECK_HEADER X11/extensions/XInput2.h
+  CHECK_HEADER X11/Xlib.h X11/extensions/XInput2.h
   CONFIGURE_ARGS
     "--disable-shared"
     "--enable-static"

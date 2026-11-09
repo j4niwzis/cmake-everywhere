@@ -12,7 +12,7 @@ cme_declare_port(
   INSTALLED_TARGETS "lib/libXcursor.a=X11::Xcursor"
   SYSTEM_PKGCONFIG "xcursor:X11::Xcursor"
   TARGETS X11::Xcursor
-  CHECK_HEADER X11/Xcursor/Xcursor.h
+  CHECK_HEADER X11/Xlib.h X11/Xcursor/Xcursor.h
   CONFIGURE_ARGS
     "--disable-shared"
     "--enable-static"

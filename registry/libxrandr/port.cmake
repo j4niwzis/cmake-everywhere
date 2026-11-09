@@ -12,7 +12,7 @@ cme_declare_port(
   INSTALLED_TARGETS "lib/libXrandr.a=X11::Xrandr"
   SYSTEM_PKGCONFIG "xrandr:X11::Xrandr"
   TARGETS X11::Xrandr
-  CHECK_HEADER X11/extensions/Xrandr.h
+  CHECK_HEADER X11/Xlib.h X11/extensions/Xrandr.h
   CONFIGURE_ARGS
     "--disable-shared"
     "--enable-static"

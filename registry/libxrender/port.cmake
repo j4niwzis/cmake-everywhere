@@ -12,7 +12,7 @@ cme_declare_port(
   INSTALLED_TARGETS "lib/libXrender.a=X11::Xrender"
   SYSTEM_PKGCONFIG "xrender:X11::Xrender"
   TARGETS X11::Xrender
-  CHECK_HEADER X11/extensions/Xrender.h
+  CHECK_HEADER X11/Xlib.h X11/extensions/Xrender.h
   CONFIGURE_ARGS
     "--disable-shared"
     "--enable-static"

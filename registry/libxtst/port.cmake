@@ -12,7 +12,7 @@ cme_declare_port(
   INSTALLED_TARGETS "lib/libXtst.a=X11::Xtst"
   SYSTEM_PKGCONFIG "xtst:X11::Xtst"
   TARGETS X11::Xtst
-  CHECK_HEADER X11/extensions/XTest.h
+  CHECK_HEADER X11/Xlib.h X11/extensions/XTest.h
   CONFIGURE_ARGS
     "--disable-shared"
     "--enable-static"

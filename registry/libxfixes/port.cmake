@@ -12,7 +12,7 @@ cme_declare_port(
   INSTALLED_TARGETS "lib/libXfixes.a=X11::Xfixes"
   SYSTEM_PKGCONFIG "xfixes:X11::Xfixes"
   TARGETS X11::Xfixes
-  CHECK_HEADER X11/extensions/Xfixes.h
+  CHECK_HEADER X11/Xlib.h X11/extensions/Xfixes.h
   CONFIGURE_ARGS
     "--disable-shared"
     "--enable-static"

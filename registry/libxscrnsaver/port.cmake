@@ -12,7 +12,7 @@ cme_declare_port(
   INSTALLED_TARGETS "lib/libXss.a=X11::Xss"
   SYSTEM_PKGCONFIG "xscrnsaver:X11::Xss"
   TARGETS X11::Xss
-  CHECK_HEADER X11/extensions/scrnsaver.h
+  CHECK_HEADER X11/Xlib.h X11/extensions/scrnsaver.h
   CONFIGURE_ARGS
     "--disable-shared"
     "--enable-static"
