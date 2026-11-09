@@ -612,11 +612,15 @@ function(cme_configure_make_build port source)
                           "${CMAKE_BINARY_DIR}/_cme/${port}-unused-prefix")
   # And what the configure wrote, newer than every source it was written
   # from: make, run for a file in the build, finds its Makefiles current.
-  file(GLOB_RECURSE cme_written "${build}/Makefile" "${build}/config.status" "${build}/config.h"
-                                "${build}/stamp-h*" "${build}/libtool")
-  foreach(cme_one IN LISTS cme_written)
-    file(TOUCH_NOCREATE "${cme_one}")
-  endforeach()
+  # Only where it ran, and not config.h: touched at every configure, every
+  # object that includes it was compiled again (all of the X libraries).
+  if(NOT CME_CONFIGURED_AS_BEFORE)
+    file(GLOB_RECURSE cme_written "${build}/Makefile" "${build}/config.status"
+                                  "${build}/stamp-h*" "${build}/libtool")
+    foreach(cme_one IN LISTS cme_written)
+      file(TOUCH_NOCREATE "${cme_one}")
+    endforeach()
+  endif()
   # Configured as before, and read by the same make_import.py: what its make
   # would do is what it said last time -- not asked again (the dry runs, a
   # directory's database each, for every port at every configure).
