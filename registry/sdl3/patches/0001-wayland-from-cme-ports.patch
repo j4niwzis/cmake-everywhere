@@ -1,6 +1,6 @@
 --- a/cmake/sdlchecks.cmake
 +++ b/cmake/sdlchecks.cmake
-@@ -644,12 +644,32 @@
+@@ -644,12 +644,35 @@
    if(SDL_WAYLAND)
      set(WAYLAND_PKG_CONFIG_SPEC "wayland-client>=1.18" wayland-egl wayland-cursor egl "xkbcommon>=0.5.0")
      set(PC_WAYLAND_FOUND FALSE)
@@ -18,9 +18,12 @@
 +      endif()
 +      set(PC_WAYLAND_FOUND TRUE)
 +      set(PC_WAYLAND_xkbcommon_VERSION "${CME_SDL_XKBCOMMON_VERSION}")
-+      get_target_property(WAYLAND_SCANNER Wayland::scanner ALIASED_TARGET)
-+      if(NOT WAYLAND_SCANNER)
-+        set(WAYLAND_SCANNER Wayland::scanner)
++      # The scanner runs on the build machine: in a cross build the
++      # machine's own (the port's is built for the target), else the port's.
++      if(CMAKE_CROSSCOMPILING)
++        find_program(WAYLAND_SCANNER NAMES wayland-scanner REQUIRED)
++      else()
++        set(WAYLAND_SCANNER "$<TARGET_FILE:Wayland::scanner>")
 +      endif()
 +      set(WAYLAND_FOUND TRUE)
 +      set(WAYLAND_SCANNER_CODE_MODE "private-code")
@@ -34,7 +37,7 @@
      if(PC_WAYLAND_FOUND AND WAYLAND_SCANNER)
        execute_process(
          COMMAND ${WAYLAND_SCANNER} --version
-@@ -670,6 +690,7 @@
+@@ -670,6 +693,7 @@
            endif()
          endif()
        endif()
