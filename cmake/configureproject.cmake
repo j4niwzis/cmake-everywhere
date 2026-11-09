@@ -364,7 +364,23 @@ function(cme_configure_configure port source build prefix)
   # this build installed a moment ago is in a prefix of its own that nothing
   # on this machine knows about. Its .pc file is in there, correct and
   # unread; naming the directory is all it takes.
+  #
+  # Every dependency's, not only the port's own: a .pc names what it needs
+  # in its Requires, and pkg-config reads those too -- x11.pc requires xcb,
+  # and a port built on Xlib was told where x11.pc was and not xcb.pc, and
+  # pkg-config said xcb, required by x11, was not found.
   cme_gn_dependency_ports(${port} cme_deps)
+  set(cme_pending ${cme_deps})
+  while(cme_pending)
+    list(POP_FRONT cme_pending cme_one)
+    cme_gn_dependency_ports(${cme_one} cme_below)
+    foreach(cme_dep IN LISTS cme_below)
+      if(NOT cme_dep IN_LIST cme_deps)
+        list(APPEND cme_deps ${cme_dep})
+        list(APPEND cme_pending ${cme_dep})
+      endif()
+    endforeach()
+  endwhile()
   set(cme_pkg_dirs "")
   foreach(cme_dep IN LISTS cme_deps)
     if(CME_INSTALLED_${cme_dep})
