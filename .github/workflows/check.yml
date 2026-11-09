@@ -190,7 +190,17 @@ jobs:
             -DCME_PORT_PACKAGE=Boost \
             -DCME_PORT_TARGETS=Boost::pfr \
             "-DCME_PORT_COMPONENTS=pfr[modules]" 2>&1 | tee configure.log || true
-          grep -q "so all of boost is built here" configure.log
+          # Which it is follows the installed version: one older than Boost's
+          # interface units (1.89) has all of Boost built here; from 1.89 on,
+          # pfr alone, at the installed version (ubuntu-latest has 1.90 since
+          # it became 26.04).
+          installed=$(sed -n 's/^#define BOOST_LIB_VERSION "1_\([0-9]*\).*"/\1/p' /usr/include/boost/version.hpp)
+          echo "installed Boost 1.$installed"
+          if [ "$installed" -ge 89 ]; then
+            grep -qE "^boost-pfr 1\.$installed\.[0-9]+ from port, asked for by boost\[pfr\]" configure.log
+          else
+            grep -q "so all of boost is built here" configure.log
+          fi
       # And a Boost new enough to have interface units, installed the way a
       # distribution installs one -- headers and CMake configs, no modules:
       # only pfr is built, and the rest is the installed Boost.
@@ -423,6 +433,10 @@ jobs:
         run: |
           guix shell nss-certs cmake ninja gcc-toolchain pkg-config zlib -- sh -c '
             set -e
+            # Guix's compiler, not the runner's: gcc-toolchain has gcc and
+            # g++ and no cc, and CMake took /usr/bin/cc -- built against one
+            # C library and run with another, the program crashed.
+            export CC=gcc CXX=g++
             # A shell with no certificates cannot check one, and anything
             # that reaches the network then fails on the certificate rather
             # than on the reaching.
@@ -454,6 +468,10 @@ jobs:
         run: |
           guix shell nss-certs cmake ninja gcc-toolchain pkg-config git -- sh -c '
             set -e
+            # Guix's compiler, not the runner's: gcc-toolchain has gcc and
+            # g++ and no cc, and CMake took /usr/bin/cc -- built against one
+            # C library and run with another, the program crashed.
+            export CC=gcc CXX=g++
             # A shell with no certificates cannot check one, and anything
             # that reaches the network then fails on the certificate rather
             # than on the reaching.
@@ -478,6 +496,10 @@ jobs:
           fi
           $run guix shell nss-certs cmake ninja gcc-toolchain pkg-config -- sh -c '
             set -e
+            # Guix's compiler, not the runner's: gcc-toolchain has gcc and
+            # g++ and no cc, and CMake took /usr/bin/cc -- built against one
+            # C library and run with another, the program crashed.
+            export CC=gcc CXX=g++
             # A shell with no certificates cannot check one, and anything
             # that reaches the network then fails on the certificate rather
             # than on the reaching.
