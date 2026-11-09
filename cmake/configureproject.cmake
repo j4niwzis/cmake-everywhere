@@ -598,10 +598,25 @@ function(cme_configure_make_build port source)
   # for a port that is made: else make, asked what it would do, answers
   # that it would run autoconf again (xorgproto's configure older than its
   # configure.ac, as the archive was unpacked).
-  cme_configure_settle("${source}")
+  # Once: touched again at every configure, the sources were newer than
+  # what the configure wrote from them, and a file made by the project's
+  # make in the build (libxcb's generated sources) ran its configure again
+  # first (am--refresh), several at once, trampling each other.
+  if(NOT EXISTS "${build}/cme-settled")
+    cme_configure_settle("${source}")
+    file(MAKE_DIRECTORY "${build}")
+    file(TOUCH "${build}/cme-settled")
+  endif()
   set(CME_CONFIGURED_AS_BEFORE FALSE)
   cme_configure_configure(${port} "${source}" "${build}"
                           "${CMAKE_BINARY_DIR}/_cme/${port}-unused-prefix")
+  # And what the configure wrote, newer than every source it was written
+  # from: make, run for a file in the build, finds its Makefiles current.
+  file(GLOB_RECURSE cme_written "${build}/Makefile" "${build}/config.status" "${build}/config.h"
+                                "${build}/stamp-h*" "${build}/libtool")
+  foreach(cme_one IN LISTS cme_written)
+    file(TOUCH_NOCREATE "${cme_one}")
+  endforeach()
   # Configured as before, and read by the same make_import.py: what its make
   # would do is what it said last time -- not asked again (the dry runs, a
   # directory's database each, for every port at every configure).
